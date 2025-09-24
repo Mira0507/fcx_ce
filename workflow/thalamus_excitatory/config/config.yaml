@@ -1,0 +1,13 @@
+# Path to sampletable
+sampletable: "../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Metadata column for aggregating reads
+key_col: 'study_specific_disease_specific'
+
+# Path to AnnData
+adata:
+  ExNeu1: "../../input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad"
+  ExNeu2: "../../input/thalamus_excitatory/ExNeu2_FOR_DEG.h5ad"
+
+# Path to output directory
+outdir: "results"
