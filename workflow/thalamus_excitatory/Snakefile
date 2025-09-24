@@ -25,22 +25,38 @@ barcode_file = f"{outdir}/barcodes.tsv"
 # Prep sampletable
 sampletable = pd.read_csv(config['sampletable']).set_index('SampleID', drop=False)
 
-# Prep barcode table if missing
-if not os.path.exists(barcode_file):
-    meta_list = []
-    for celltype, path in config['adata'].items():
-        # Read AnnData
-        meta_df = ad.read_h5ad(path).obs
-        # Add new columns for celltypes and barcodes
-        meta_df['celltype'] = celltype
-        meta_df['barcode'] = meta_df.index
-        # Remove sample suffixes from the barcodes
-        barcode_df = meta_df['barcode'].str.split('_', expand=True)
-        barcode_df.columns = ['barcode', 'disease']
-        meta_df['barcode'] = barcode_df['barcode']
-        meta_list.append(meta_df)
+# Prep barcode table
+# NOTE: This step may require manual data cleaning depending on your metadata
+meta_list = []
+for celltype, path in config['adata'].items():
+    # Read AnnData
+    meta_df = ad.read_h5ad(path).obs[list(config['all_cols'])]
+    print(meta_df.shape[0])
+    # Add new columns for celltypes and barcodes
+    meta_df['celltype'] = celltype
+    meta_df['barcode'] = meta_df.index
+    # Remove sample suffixes from the barcodes
+    barcode_df = meta_df['barcode'].str.split('_', expand=True)
+    barcode_df.columns = ['barcode', 'SampleID']
+    # Add new columns to the metadata
+    meta_df['barcode'] = barcode_df['barcode']
+    meta_df['SampleID'] = barcode_df['SampleID']
+    meta_list.append(meta_df)
 
-    meta_df = pd.concat(meta_list, axis=0)
-    meta_df.to_csv(barcode_file, sep="\t", index=False)
+meta_df = pd.concat(meta_list, axis=0)
+print(meta_df['SampleID'].unique())
+print(len(meta_df['SampleID'].unique()))
+print(meta_df['celltype'].unique())
 
+all_samples = meta_df['SampleID'].unique()
+missing = [sample for sample in sampletable.index if sample not in all_samples]
+print(missing)
+
+# Save as a tsv file
+meta_df.to_csv(barcode_file, sep="\t", index=False)
+print(meta_df.shape[0])
+
+# meta_df = pd.read_csv(barcode_file, sep="\t").set_index("SampleID", drop=False)
+# print(sampletable.head())
+# print(meta_df.head())
 
