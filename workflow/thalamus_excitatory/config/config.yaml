@@ -2,6 +2,18 @@
 sampletable: "../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
 
 # Metadata column for aggregating reads
+all_cols: 
+  - 'status'
+  - 'study'
+  - 'Genetics'
+  - 'AgeDeath'
+  - 'Disease'
+  - 'BrainRegion'
+  - 'Sex'
+  - 'general_disease'
+  - 'study_disease'
+  - 'study_specific_disease_specific'
+
 key_col: 'study_specific_disease_specific'
 
 # Path to AnnData
