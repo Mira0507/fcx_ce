@@ -1,0 +1,223 @@
+fcx_ce
+======
+
+@Mira0507
+
+- prep conda env
+    - requirements: ``requirements.yaml``
+
+- prep input files
+    - anndata manually copied
+        - from ``../../trujilloae/thalamus_atlas/Subsetted_cell_types/NEU/ExNeu1_FOR_DEG.h5ad``
+          to ``input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad``
+        - from ``../../trujilloae/thalamus_atlas/Subsetted_cell_types/NEU/ExNeu2_FOR_DEG.h5ad``
+          to ``input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad``
+    - bam copied by running ``workflow/thalamus_excitatory/prep_input.py``
+        - from:
+            - ``../../../data/biogen/CELLRANGER``
+            - ``../../../data/marsan_2023_thalamus/CELLRANGER``
+            - ``../../../data/syn52383413/CELLRANGER``
+        - to: 
+
+        .. code-block:: bash
+
+            $ tree input/thalamus_excitatory/bam/
+            input/thalamus_excitatory/bam/
+            ├── 3075-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 3075-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 3514-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 3514-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 3549-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 3549-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 3676-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 3676-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 3733-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 3733-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 3862-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 3862-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 3937-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 3937-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 4571-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 4571-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 4984-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 4984-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 5166-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 5166-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 5189-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 5189-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 6025-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 6025-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 6203-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 6203-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 6243-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 6243-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 6283-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 6283-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 6400-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 6400-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 6433-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 6433-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 6562-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 6562-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 6636-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 6636-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 6658-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 6658-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 6863-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 6863-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 7024-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 7024-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 7197-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 7197-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 7228-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 7228-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 7624-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 7624-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 8047-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 8047-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 8130-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 8130-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 8251-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 8251-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── 8699-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 8699-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 8813-T_FTD-Biogen_possorted_genome_bam.bam
+            ├── 8813-T_FTD-Biogen_possorted_genome_bam.bam.bai
+            ├── 8866-T_Control-Biogen_possorted_genome_bam.bam
+            ├── 8866-T_Control-Biogen_possorted_genome_bam.bam.bai
+            ├── Control10_Control-Marsan_possorted_genome_bam.bam
+            ├── Control10_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control11_Control-Marsan_possorted_genome_bam.bam
+            ├── Control11_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control1_Control-Marsan_possorted_genome_bam.bam
+            ├── Control1_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control2_Control-Marsan_possorted_genome_bam.bam
+            ├── Control2_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control3_Control-Marsan_possorted_genome_bam.bam
+            ├── Control3_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control4_Control-Marsan_possorted_genome_bam.bam
+            ├── Control4_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control5_Control-Marsan_possorted_genome_bam.bam
+            ├── Control5_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control6_Control-Marsan_possorted_genome_bam.bam
+            ├── Control6_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control7_Control-Marsan_possorted_genome_bam.bam
+            ├── Control7_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control8_Control-Marsan_possorted_genome_bam.bam
+            ├── Control8_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── Control9_Control-Marsan_possorted_genome_bam.bam
+            ├── Control9_Control-Marsan_possorted_genome_bam.bam.bai
+            ├── D19-12358_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12358_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12359_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12359_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12360_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12360_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12361_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12361_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12362_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12362_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12363_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12363_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12365_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12365_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12366_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12366_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12368_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12368_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12369_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12369_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12370_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12370_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12371_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12371_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12372_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12372_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12373_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12373_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12374_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12374_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12375_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12375_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12376_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12376_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12377_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12377_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12378_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12378_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12379_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12379_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12380_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12380_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12381_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12381_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12382_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12382_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12383_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12383_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12384_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12384_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12385_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12385_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12386_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12386_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12387_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12387_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12388_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12388_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12389_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12389_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12390_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12390_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12391_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12391_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12392_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12392_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12393_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12393_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12394_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12394_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12395_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12395_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12396_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12396_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12397_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12397_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12398_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12398_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12399_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12399_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12400_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12400_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12401_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12401_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12402_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12402_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12403_AD-Mathys_possorted_genome_bam.bam
+            ├── D19-12403_AD-Mathys_possorted_genome_bam.bam.bai
+            ├── D19-12404_Control-Mathys_possorted_genome_bam.bam
+            ├── D19-12404_Control-Mathys_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN10_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN10_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN1_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN1_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN2_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN2_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN3_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN3_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN4_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN4_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN5_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN5_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN6_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN6_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN7_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN7_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN8_FTD-Marsan_possorted_genome_bam.bam
+            ├── FTLD-GRN8_FTD-Marsan_possorted_genome_bam.bam.bai
+            ├── FTLD-GRN9_FTD-Marsan_possorted_genome_bam.bam
+            └── FTLD-GRN9_FTD-Marsan_possorted_genome_bam.bam.bai
+
+            0 directories, 194 files
+
+    - metadata: ``input/thalamus_excitatory/combined_thalamus_metadata.csv``
