@@ -224,18 +224,41 @@ fcx_ce
 
     - metadata: ``input/thalamus_excitatory/combined_thalamus_metadata.csv``
 
-- analysis groups
-    - group 1: Marsan, control, ExNeu1
-    - group 2: Marsan, control, ExNeu2
-    - group 3: Marsan, FTD, ExNeu1
-    - group 4: Marsan, FTD, ExNeu2
+- read aggregation
+    - by group: 12 groups (for sashimi plot in IGV)
+        - group 1: Marsan, control, ExNeu1
+        - group 2: Marsan, control, ExNeu2
+        - group 3: Marsan, FTD, ExNeu1
+        - group 4: Marsan, FTD, ExNeu2
 
-    - group 5: Mathys, control, ExNeu1
-    - group 6: Mathys, control, ExNeu2
-    - group 7: Mathys, AD, ExNeu1
-    - group 8: Mathys, AD, ExNeu2
+        - group 5: Mathys, control, ExNeu1
+        - group 6: Mathys, control, ExNeu2
+        - group 7: Mathys, AD, ExNeu1
+        - group 8: Mathys, AD, ExNeu2
 
-    - group 9: Biogen, control, ExNeu1
-    - group 10: Biogen, control, ExNeu2
-    - group 11: Biogen, FTD, ExNeu1
-    - group 12: Biogen, FTD, ExNeu2
+        - group 9: Biogen, control, ExNeu1
+        - group 10: Biogen, control, ExNeu2
+        - group 11: Biogen, FTD, ExNeu1
+        - group 12: Biogen, FTD, ExNeu2
+    - by sample: 97 samples (for potential differential testing)
+    - by barcode: ? cells (TBD)
+
+- genes of interest: STMN2 and UNC13A
+
+
+2025-09-24
+----------
+
+@Mira0507
+
+- ``workflow/thalamus_excitatory/Snakefile`` in progress
+    - barcode table prepared by concatenating two metadata tables
+        - input:
+            - ``input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad``
+            - ``input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad``
+        - output:
+            - ``workflow/thalamus_excitatory/Snakefile/results/barcodes.tsv``
+    - notes
+        - ['D19-12386', 'D19-12393', 'Control10', 'FTLD-GRN1'] found 
+          in none of the AnnData objects
+        - the output barcode table consists of a total of 27,719 rows 
