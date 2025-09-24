@@ -1,0 +1,5 @@
+pysam
+samtools=1.19
+python=3.9.15
+snakemake
+anndata
