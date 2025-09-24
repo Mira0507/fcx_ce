@@ -1,0 +1,46 @@
+import os
+import sys
+import subprocess
+import re
+import numpy as np
+import pandas as pd
+import pysam
+import anndata as ad
+
+#################################### USER CONFIGURATION ####################################
+
+# Path to config file
+configfile: 'config/config.yaml'
+
+# Create the output directory
+outdir = config['outdir']
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
+
+# Path to barcode table
+barcode_file = f"{outdir}/barcodes.tsv"
+
+#################################### PREP BARCODES AND SAMPLETABLE ####################################
+
+# Prep sampletable
+sampletable = pd.read_csv(config['sampletable']).set_index('SampleID', drop=False)
+
+# Prep barcode table if missing
+if not os.path.exists(barcode_file):
+    meta_list = []
+    for celltype, path in config['adata'].items():
+        # Read AnnData
+        meta_df = ad.read_h5ad(path).obs
+        # Add new columns for celltypes and barcodes
+        meta_df['celltype'] = celltype
+        meta_df['barcode'] = meta_df.index
+        # Remove sample suffixes from the barcodes
+        barcode_df = meta_df['barcode'].str.split('_', expand=True)
+        barcode_df.columns = ['barcode', 'disease']
+        meta_df['barcode'] = barcode_df['barcode']
+        meta_list.append(meta_df)
+
+    meta_df = pd.concat(meta_list, axis=0)
+    meta_df.to_csv(barcode_file, sep="\t", index=False)
+
+
