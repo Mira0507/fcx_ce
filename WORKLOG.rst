@@ -4,7 +4,9 @@ fcx_ce
 @Mira0507
 
 - prep conda env
-    - requirements: ``requirements.yaml``
+    - requirements: ``requirements.txt``
+    - env: ``env``
+    - archived: ``env.archived.yaml``
 
 - prep input files
     - anndata manually copied
@@ -221,3 +223,19 @@ fcx_ce
             0 directories, 194 files
 
     - metadata: ``input/thalamus_excitatory/combined_thalamus_metadata.csv``
+
+- analysis groups
+    - group 1: Marsan, control, ExNeu1
+    - group 2: Marsan, control, ExNeu2
+    - group 3: Marsan, FTD, ExNeu1
+    - group 4: Marsan, FTD, ExNeu2
+
+    - group 5: Mathys, control, ExNeu1
+    - group 6: Mathys, control, ExNeu2
+    - group 7: Mathys, AD, ExNeu1
+    - group 8: Mathys, AD, ExNeu2
+
+    - group 9: Biogen, control, ExNeu1
+    - group 10: Biogen, control, ExNeu2
+    - group 11: Biogen, FTD, ExNeu1
+    - group 12: Biogen, FTD, ExNeu2
