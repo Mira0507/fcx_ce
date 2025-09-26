@@ -262,3 +262,24 @@ fcx_ce
         - ['D19-12386', 'D19-12393', 'Control10', 'FTLD-GRN1'] found 
           in none of the AnnData objects
         - the output barcode table consists of a total of 27,719 rows 
+
+
+2025-09-26
+----------
+
+@Mira0507
+
+- recopied input bam files
+    - conda env: ``env``
+    - updated script: ``workflow/thalamus_excitatory/prep_input.py``
+    - note: file names changed from 
+      ``<sampleid>_<study-disease>_possorted_genome_bam.bam`` to
+      ``<sampleid>_possorted_genome_bam.bam``
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - paths to input bam files added to the metadata table 
+          (``workflow/thalamus_excitatory/results/barcodes.tsv``)
+        - rules ``create_header`` and ``prep_sam`` added
+
