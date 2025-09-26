@@ -14,7 +14,10 @@ all_cols:
   - 'study_disease'
   - 'study_specific_disease_specific'
 
-key_col: 'study_specific_disease_specific'
+# Required column names
+key_col: 'study_specific_disease_specific' # column for read aggregation
+index_col: 'SampleID' # column for unique sample ID, aka index
+bam_col: 'bam' # column for paths to bam files
 
 # Path to AnnData
 adata:
@@ -23,3 +26,13 @@ adata:
 
 # Path to output directory
 outdir: "results"
+
+# Path to bam directory
+bam_dir: '../../input/thalamus_excitatory/bam'
+
+# Genes of interest
+genes:
+  - 'STMN2'
+  - 'UNC13A'
+
+
