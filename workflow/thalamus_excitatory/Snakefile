@@ -93,7 +93,7 @@ rule all:
         expand("{outdir}/header.sam", outdir=config['outdir']),
         expand("{outdir}/{sample}.sam",
                outdir=config['outdir'],
-               sample=list(set(meta_df[config['index_col']])[:5]))
+               sample=list(set(meta_df[config['index_col']]))[:5])
 
 rule create_header:
     """
