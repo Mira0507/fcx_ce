@@ -85,18 +85,6 @@ def extract_headers_SQ(bam):
             headers.add((line['SN'], line['LN']))
     return headers
 
-def get_bam_path(wildcards):
-    # Subset rows by groups of interest
-    df = df_df[(df_bcd[config['key_col']] == wildcards.sample)]
-    # Break if no rows are filtered
-    if df.shape[0] == 0:
-        raise ValueError("No values returned!")
-    bam_list = list(set(df.bam))
-    if len(bam_list) > 1:
-        raise ValueError("More than one values returned!")
-    # Return a single string
-    return "".join(bam_list)
-
 #################################### RULES ####################################
 
 
@@ -136,14 +124,14 @@ rule prep_sam:
     This rule preps barcodes corresonding to the celltype of interest in a txt file
     """
     input:
-        bam = "{outdir}/{sample}_possorted_genome_bam.bam"
+        bam = lambda wildcards: "{}/".format(config['bam_dir']) + "{sample}_possorted_genome_bam.bam"
     output:
         temp_sam = temp("{outdir}/{sample}_temp.sam"),
-        sam = "{out_dir}/{sample}.sam"
+        sam = "{outdir}/{sample}.sam"
     resources:
         mem_mb = 1024 * 60,
         disk_mb = 1024 * 30,
-        runtime = 60
+        runtime = 120
     params:
         genes = config['genes']
     run:
