@@ -282,4 +282,55 @@ fcx_ce
         - paths to input bam files added to the metadata table 
           (``workflow/thalamus_excitatory/results/barcodes.tsv``)
         - rules ``create_header`` and ``prep_sam`` added
+        - filter barcodes based on *CR* (raw) or *CB* (corrected)? 
+
+        .. code-block:: python
+
+            # Leave or remove `-1` suffix from the barcodes extracted from AnnData
+            barcode_list_cr = [f"CR:Z:{barcode.strip('-1')}" for barcode in set(df.barcode)]
+            barcode_list_cb = [f"CB:Z:{barcode.strip()}" for barcode in set(df.barcode)]
+            # Join barcodes into a single string for each option
+            cr_joined = "|".join(barcode_list_cr)
+            cb_joined = "|".join(barcode_list_cb)
+
+            b_dic = {'cr': cr_joined, 'cb': cb_joined}
+            for key, value in c_dic.items():
+
+                # Create filtered sam files
+                cmd = [
+                    "samtools view ",
+                    bam,
+                    " | grep -E '",
+                    value,
+                    "'", 
+                    f" >> temp_{key}.sam"
+                ]
+                cmd = "".join(cmd)
+                subprocess.run(cmd, shell=True)
+
+                # Sort
+                cmd = [
+                    f"grep -v '^@' temp_{key}.sam | ",
+                    f"sort > {key}_sorted.txt"
+                ]
+                subprocess.run(cmd, shell=True)
+
+
+            # Filter reads unique to each sam file
+            cmd1 = "comm -23 cr_sorted.txt cb_sorted.txt > unique_to_cr.txt"
+            cmd2 = "comm -13 cr_sorted.txt cb_sorted.txt > unique_to_cb.txt"
+            subprocess.run(cmd1, chell=True)
+            subprocess.run(cmd2, chell=True)
+
+            # $ ll | grep unique_to
+            # -rw-rw---- 1 sohnm CARD_MPU    0 Sep 26 21:22 unique_to_cr.txt
+            # -rw-rw---- 1 sohnm CARD_MPU 7.0K Sep 26 21:22 unique_to_cb.txt
+
+        - more reads were filtered by *CB*. this is because *CR* only includes
+          exact matches and any reads with a hamming distance of 1 or larget
+          are not included. in contrast, *CB* includes reads after seq-error
+          correction performed by cellranger in addition to exact matches.
+          this results in more reads filtered using the *CB* field.
+
+
 
