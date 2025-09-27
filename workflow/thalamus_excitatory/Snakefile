@@ -93,7 +93,7 @@ rule all:
         expand("{outdir}/header.sam", outdir=config['outdir']),
         expand("{outdir}/{sample}.sam",
                outdir=config['outdir'],
-               sample=list(set(meta_df[config['index_col']])))
+               sample=list(set(meta_df[config['index_col']])[:5]))
 
 rule create_header:
     """
@@ -131,7 +131,7 @@ rule prep_sam:
     resources:
         mem_mb = 1024 * 60,
         disk_mb = 1024 * 30,
-        runtime = 120
+        runtime = 30
     params:
         genes = config['genes']
     run:
@@ -141,7 +141,7 @@ rule prep_sam:
         # Filter rows by groups of interest
         df = meta_df[(meta_df[config['index_col']] == wildcards.sample)]
         # Create a list storing unique barcodes filtered by cluster and genotype
-        barcode_list = [f"CR:Z:{barcode.strip()}" for barcode in set(df.barcode)]
+        barcode_list = [f"CB:Z:{barcode.strip()}" for barcode in set(df.barcode)]
         # Join barcodes into a single string (w header)
         barcode_joined = "|".join(barcode_list)
         # Prep a list for genes of interest
