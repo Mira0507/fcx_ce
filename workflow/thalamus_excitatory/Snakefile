@@ -73,6 +73,13 @@ meta_df.to_csv(barcode_file, sep="\t", index=False)
 # 0  Control1                  Control-Marsan  ../../input/thalamus_excitatory/bam/Control1_C...  Control  Marsan  Control        68  Control    Thalamus   F         Control       Control   ExNeu1  CGTCTACTCAAAGTAG-1
 # 1  Control1                  Control-Marsan  ../../input/thalamus_excitatory/bam/Control1_C...  Control  Marsan  Control        68  Control    Thalamus   F         Control       Control   ExNeu1  CCATGTCAGTTGTAGA-1
 
+# Prep a dictionary with keys corresponding to groups 
+# and values corresponding to unique sample ids
+group_dic = {}
+for g in list(set(meta_df[config['key_col']])):
+    # Filter rows for group
+    df = meta_df[meta_df[config['key_col']] == g]
+    group_dic[g] = list(set(df[config['index_col']]))
 
 #################################### PREP FUNCTIONS ####################################
 
@@ -85,15 +92,20 @@ def extract_headers_SQ(bam):
             headers.add((line['SN'], line['LN']))
     return headers
 
+def list_group_sams(wildcards):
+    samples = group_dic[wildcards.group]
+    samlist = [f"{wildcards.outdir}/{s}.sam" for s in samples]
+    return samlist
+
 #################################### RULES ####################################
 
 
 rule all:
     input:
         expand("{outdir}/header.sam", outdir=config['outdir']),
-        expand("{outdir}/{sample}.sam",
-               outdir=config['outdir'],
-               sample=list(set(meta_df[config['index_col']]))[:5])
+        expand("{outdir}/{sample}.sam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:10]),
+        # expand("{outdir}/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:10]),
+        # expand("{outdir}/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']]))[:5])
 
 rule create_header:
     """
@@ -129,9 +141,9 @@ rule prep_sam:
         temp_sam = temp("{outdir}/{sample}_temp.sam"),
         sam = "{outdir}/{sample}.sam"
     resources:
-        mem_mb = 1024 * 60,
-        disk_mb = 1024 * 30,
-        runtime = 30
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 120
     params:
         genes = config['genes']
     run:
@@ -155,3 +167,50 @@ rule prep_sam:
             cat {output.temp_sam} | grep -E "{gene_joined}" > {output.sam}
             """
             )
+
+rule create_sample_bam:
+    """
+    This rule aggregates header and filtered sam files into a bam file
+    """
+    input:
+        header = "{outdir}/header.sam",
+        sam = "{outdir}/{sample}.sam"
+    output:
+        temp_bam = temp("{outdir}/{sample}_unsorted.bam"),
+        bam = "{outdir}/bam/{sample}_sorted.bam",
+        bai = "{outdir}/bam/{sample}_sorted.bam.bai",
+    resources:
+        mem_mb = 1024 * 40,
+        disk_mb = 1024 * 20,
+        runtime = 60
+    threads: 12
+    shell:
+        """
+        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {output.temp_bam}
+        samtools sort -@ {threads} {output.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        """
+
+rule create_group_bam:
+    """
+    This rule aggregates header and filtered sam files into a bam file
+    """
+    input:
+        header = "{outdir}/header.sam",
+        sam = list_group_sams
+    output:
+        temp_bam = temp("{outdir}/{group}_unsorted.bam"),
+        bam = "{outdir}/bam/{group}_sorted.bam",
+        bai = "{outdir}/bam/{group}_sorted.bam.bai"
+    resources:
+        mem_mb = 1024 * 40,
+        disk_mb = 1024 * 20,
+        runtime = 60
+    threads: 12
+    shell:
+        """
+        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {output.temp_bam}
+        samtools sort -@ {threads} {output.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        """
+
