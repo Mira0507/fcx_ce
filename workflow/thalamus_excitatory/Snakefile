@@ -102,10 +102,10 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        expand("{outdir}/header.sam", outdir=config['outdir']),
-        expand("{outdir}/{sample}.sam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:10]),
-        # expand("{outdir}/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:10]),
+        # expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:10]),
         # expand("{outdir}/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']]))[:5])
+        expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))),
+        expand("{outdir}/bam/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
 
 rule create_header:
     """
@@ -138,12 +138,11 @@ rule prep_sam:
     input:
         bam = lambda wildcards: "{}/".format(config['bam_dir']) + "{sample}_possorted_genome_bam.bam"
     output:
-        temp_sam = temp("{outdir}/{sample}_temp.sam"),
         sam = "{outdir}/{sample}.sam"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 120
+        runtime = 180
     params:
         genes = config['genes']
     run:
@@ -160,11 +159,13 @@ rule prep_sam:
         gene_list = [f"GN:Z:{g.strip()}" for g in params.genes]
         # Join genes into a single string (w header)
         gene_joined = "|".join(gene_list)
+        # Specify temporary sam file 
+        temp_sam = f"{wildcards.outdir}/{wildcards.sample}_temp.sam"
         # Run samtools with or without module load samtools/1.19
         shell(
             """
-            samtools view {input.bam} | grep -E "{barcode_joined}" >> {output.temp_sam}
-            cat {output.temp_sam} | grep -E "{gene_joined}" > {output.sam}
+            samtools view {input.bam} | grep -E "{barcode_joined}" >> {temp_sam}
+            cat {temp_sam} | grep -E "{gene_joined}" > {output.sam}
             """
             )
 
