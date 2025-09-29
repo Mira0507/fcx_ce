@@ -102,10 +102,10 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        # expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:10]),
+        expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:20]),
         # expand("{outdir}/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']]))[:5])
-        expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))),
-        expand("{outdir}/bam/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
+        # expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))),
+        # expand("{outdir}/bam/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
 
 rule create_header:
     """
@@ -159,13 +159,14 @@ rule prep_sam:
         gene_list = [f"GN:Z:{g.strip()}" for g in params.genes]
         # Join genes into a single string (w header)
         gene_joined = "|".join(gene_list)
-        # Specify temporary sam file 
+        # Specify a temporary sam file 
         temp_sam = f"{wildcards.outdir}/{wildcards.sample}_temp.sam"
         # Run samtools with or without module load samtools/1.19
         shell(
             """
             samtools view {input.bam} | grep -E "{barcode_joined}" >> {temp_sam}
             cat {temp_sam} | grep -E "{gene_joined}" > {output.sam}
+            rm {temp_sam}
             """
             )
 
@@ -177,19 +178,21 @@ rule create_sample_bam:
         header = "{outdir}/header.sam",
         sam = "{outdir}/{sample}.sam"
     output:
-        temp_bam = temp("{outdir}/{sample}_unsorted.bam"),
         bam = "{outdir}/bam/{sample}_sorted.bam",
         bai = "{outdir}/bam/{sample}_sorted.bam.bai",
     resources:
-        mem_mb = 1024 * 40,
-        disk_mb = 1024 * 20,
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
         runtime = 60
+    params:
+        temp_bam = lambda wildcards: "{outdir}/{sample}_unsorted.bam"
     threads: 12
     shell:
         """
-        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {output.temp_bam}
-        samtools sort -@ {threads} {output.temp_bam} -o {output.bam}
+        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
+        rm {params.temp_bam}
         """
 
 rule create_group_bam:
@@ -200,9 +203,10 @@ rule create_group_bam:
         header = "{outdir}/header.sam",
         sam = list_group_sams
     output:
-        temp_bam = temp("{outdir}/{group}_unsorted.bam"),
         bam = "{outdir}/bam/{group}_sorted.bam",
         bai = "{outdir}/bam/{group}_sorted.bam.bai"
+    params:
+        temp_bam = lambda wildcards: "{outdir}/{group}_unsorted.bam"
     resources:
         mem_mb = 1024 * 40,
         disk_mb = 1024 * 20,
@@ -210,8 +214,9 @@ rule create_group_bam:
     threads: 12
     shell:
         """
-        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {output.temp_bam}
-        samtools sort -@ {threads} {output.temp_bam} -o {output.bam}
+        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
+        rm {params.temp_bam}
         """
 
