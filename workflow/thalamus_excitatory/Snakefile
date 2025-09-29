@@ -142,7 +142,7 @@ rule prep_sam:
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 180
+        runtime = 480
     params:
         genes = config['genes']
     run:
@@ -185,8 +185,8 @@ rule create_sample_bam:
         disk_mb = 1024 * 10,
         runtime = 60
     params:
-        temp_bam = lambda wildcards: "{outdir}/{sample}_unsorted.bam"
-    threads: 12
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/{wildcards.sample}_unsorted.bam"
+    threads: 8
     shell:
         """
         cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
@@ -206,12 +206,12 @@ rule create_group_bam:
         bam = "{outdir}/bam/{group}_sorted.bam",
         bai = "{outdir}/bam/{group}_sorted.bam.bai"
     params:
-        temp_bam = lambda wildcards: "{outdir}/{group}_unsorted.bam"
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/{wildcards.group}_unsorted.bam"
     resources:
         mem_mb = 1024 * 40,
         disk_mb = 1024 * 20,
         runtime = 60
-    threads: 12
+    threads: 8
     shell:
         """
         cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
