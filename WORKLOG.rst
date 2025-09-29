@@ -334,3 +334,17 @@ fcx_ce
 
 
 
+2025-09-29
+----------
+
+@Mira0507
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - runtime changed from 30min to 4hrs for the rule ``prep_sam``
+        - rules ``prep_sam`` and ``create_sample_bam`` ran on every 20 samples 
+          to make sure these rules run error-free and temporary files 
+          ranging from 20G to 50G don't exceed the quota
+        - rules ``create_sample_bam`` added
+        - rules ``create_group_bam`` added
