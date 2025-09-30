@@ -168,10 +168,10 @@ rule prep_sam:
         # Run samtools with or without module load samtools/1.19
         shell(
             """
-            samtools view {input.bam} | grep -E "{barcode_joined}" > {temp_sam}
             cat {input.header} > {output.sam}
-            cat {temp_sam} | grep -E "{gene_joined}" >> {output.sam}
-            rm {temp_sam}
+            samtools view {input.bam} | grep -E "{barcode_joined}" > {temp_sam} || true
+            cat {temp_sam} | grep -E "{gene_joined}" >> {output.sam} || true
+            rm -f {temp_sam}
             """
             )
 
