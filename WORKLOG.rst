@@ -363,6 +363,16 @@ fcx_ce
     - notes
         - add celltype-specific filtering 
           (e.g. ``"{wildcards.sample}_{wildcards.celltype}.sam"``)
-        - rerun every 20 samples per Snakemake job submission
-        - 3733-T_ExNeu1 doesn't express STMN2 nor UNC13A. How do I handle
-          this sample in creating bam files?
+        - rerun every 30 samples per Snakemake job submission
+        - STMN2 nor UNC13A undetected in 3733-T_ExNeu1. This issue results in an error
+          when generating the sam file. Therefore, header is added to the sam file 
+          at the ``prep_sam`` rule, as shown below:
+
+        .. code-block:: bash
+
+            samtools view ../../input/thalamus_excitatory/bam/3733-T_possorted_genome_bam.bam |
+                grep -E "CB:Z:ATTCCATTCAGGGTAG-1" > 3733-T_ExNeu1_temp.sam
+            cat results/header.sam > 3733-T_ExNeu1.sam
+            cat 3733-T_ExNeu1_temp.sam | grep -E "GN:Z:STMN2|GN:Z:UNC13A" >> 3733-T_ExNeu1.sam
+            rm 3733-T_ExNeu1_temp.sam
+
