@@ -351,3 +351,18 @@ fcx_ce
 
 - reference transcriptome for all cellranger runs:
   ``/fdb/cellranger/refdata-cellranger-2024-A/refdata-gex-GRCh38-2024-A``
+
+
+2025-09-30
+----------
+
+@Mira0507
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - add celltype-specific filtering 
+          (e.g. ``"{wildcards.sample}_{wildcards.celltype}.sam"``)
+        - rerun every 20 samples per Snakemake job submission
+        - 3733-T_ExNeu1 doesn't express STMN2 nor UNC13A. How do I handle
+          this sample in creating bam files?
