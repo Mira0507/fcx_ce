@@ -208,8 +208,8 @@ rule create_group_bam:
     params:
         temp_bam = lambda wildcards: f"{wildcards.outdir}/{wildcards.group}_unsorted.bam"
     resources:
-        mem_mb = 1024 * 40,
-        disk_mb = 1024 * 20,
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
         runtime = 60
     threads: 8
     shell:
