@@ -94,7 +94,7 @@ def extract_headers_SQ(bam):
 
 def list_group_sams(wildcards):
     samples = group_dic[wildcards.group]
-    samlist = [f"{wildcards.outdir}/{s}.sam" for s in samples]
+    samlist = [f"{wildcards.outdir}/sam/{s}_{wildcards.celltype}.sam" for s in samples]
     return samlist
 
 #################################### RULES ####################################
@@ -102,9 +102,11 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))[:20]),
-        # expand("{outdir}/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']]))[:5])
-        # expand("{outdir}/bam/{sample}_sorted.bam", outdir=config['outdir'], sample=list(set(meta_df[config['index_col']]))),
+        expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+               # expand("{outdir}/sam/{sample}_{celltype}.sam",
+               outdir=config['outdir'],
+               sample=list(set(meta_df[config['index_col']]))[:20],
+               celltype=list(set(meta_df[config['celltype_col']])))
         # expand("{outdir}/bam/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
 
 rule create_header:
@@ -138,7 +140,7 @@ rule prep_sam:
     input:
         bam = lambda wildcards: "{}/".format(config['bam_dir']) + "{sample}_possorted_genome_bam.bam"
     output:
-        sam = "{outdir}/{sample}.sam"
+        sam = "{outdir}/sam/{sample}_{celltype}.sam"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
@@ -151,6 +153,8 @@ rule prep_sam:
             raise ValueError("Input bam file not found!")
         # Filter rows by groups of interest
         df = meta_df[(meta_df[config['index_col']] == wildcards.sample)]
+        if config['celltype_col'] != '':
+            df = df[(df[config['celltype_col']] == wildcards.celltype)]
         # Create a list storing unique barcodes filtered by cluster and genotype
         barcode_list = [f"CB:Z:{barcode.strip()}" for barcode in set(df.barcode)]
         # Join barcodes into a single string (w header)
@@ -160,7 +164,8 @@ rule prep_sam:
         # Join genes into a single string (w header)
         gene_joined = "|".join(gene_list)
         # Specify a temporary sam file 
-        temp_sam = f"{wildcards.outdir}/{wildcards.sample}_temp.sam"
+        # temp_sam = f"{wildcards.outdir}/{wildcards.sample}_temp.sam"
+        temp_sam = f"{wildcards.outdir}/{wildcards.sample}_{wildcards.celltype}_temp.sam"
         # Run samtools with or without module load samtools/1.19
         shell(
             """
@@ -170,22 +175,22 @@ rule prep_sam:
             """
             )
 
-rule create_sample_bam:
+rule create_sample_celltype_bam:
     """
     This rule aggregates header and filtered sam files into a bam file
     """
     input:
         header = "{outdir}/header.sam",
-        sam = "{outdir}/{sample}.sam"
+        sam = "{outdir}/sam/{sample}_{celltype}.sam"
     output:
-        bam = "{outdir}/bam/{sample}_sorted.bam",
-        bai = "{outdir}/bam/{sample}_sorted.bam.bai",
+        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+        bai = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
         runtime = 60
     params:
-        temp_bam = lambda wildcards: f"{wildcards.outdir}/{wildcards.sample}_unsorted.bam"
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/sample/{wildcards.sample}_{wildcards.celltype}_unsorted.bam"
     threads: 8
     shell:
         """
@@ -195,7 +200,7 @@ rule create_sample_bam:
         rm {params.temp_bam}
         """
 
-rule create_group_bam:
+rule create_group_celltype_bam:
     """
     This rule aggregates header and filtered sam files into a bam file
     """
@@ -203,10 +208,10 @@ rule create_group_bam:
         header = "{outdir}/header.sam",
         sam = list_group_sams
     output:
-        bam = "{outdir}/bam/{group}_sorted.bam",
-        bai = "{outdir}/bam/{group}_sorted.bam.bai"
+        bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
+        bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai"
     params:
-        temp_bam = lambda wildcards: f"{wildcards.outdir}/{wildcards.group}_unsorted.bam"
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,

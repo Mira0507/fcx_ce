@@ -18,6 +18,7 @@ all_cols:
 key_col: 'study_specific_disease_specific' # column for read aggregation
 index_col: 'SampleID' # column for unique sample ID, aka index
 bam_col: 'bam' # column for paths to bam files
+celltype_col: 'celltype'  # column for celltype (leave '' to skip this option)
 
 # Path to AnnData
 adata:
