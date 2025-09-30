@@ -348,3 +348,6 @@ fcx_ce
           ranging from 20G to 50G don't exceed the quota
         - rules ``create_sample_bam`` added
         - rules ``create_group_bam`` added
+
+- reference transcriptome for all cellranger runs:
+  ``/fdb/cellranger/refdata-cellranger-2024-A/refdata-gex-GRCh38-2024-A``
