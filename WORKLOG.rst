@@ -371,8 +371,11 @@ fcx_ce
         .. code-block:: bash
 
             samtools view ../../input/thalamus_excitatory/bam/3733-T_possorted_genome_bam.bam |
-                grep -E "CB:Z:ATTCCATTCAGGGTAG-1" > 3733-T_ExNeu1_temp.sam
+                grep -E "CB:Z:ATTCCATTCAGGGTAG-1" > 3733-T_ExNeu1_temp.sam || true
             cat results/header.sam > 3733-T_ExNeu1.sam
-            cat 3733-T_ExNeu1_temp.sam | grep -E "GN:Z:STMN2|GN:Z:UNC13A" >> 3733-T_ExNeu1.sam
+            cat 3733-T_ExNeu1_temp.sam | grep -E "GN:Z:STMN2|GN:Z:UNC13A" >> 3733-T_ExNeu1.sam || true
             rm 3733-T_ExNeu1_temp.sam
+
+            # NOTE: || true ensures that Snakemake doesn't raise an erro even if the `grep`
+            # command returns nothing
 
