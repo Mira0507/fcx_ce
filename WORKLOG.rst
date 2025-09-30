@@ -224,18 +224,158 @@ fcx_ce
 
     - metadata: ``input/thalamus_excitatory/combined_thalamus_metadata.csv``
 
-- analysis groups
-    - group 1: Marsan, control, ExNeu1
-    - group 2: Marsan, control, ExNeu2
-    - group 3: Marsan, FTD, ExNeu1
-    - group 4: Marsan, FTD, ExNeu2
+- read aggregation
+    - by group: 12 groups (for sashimi plot in IGV)
+        - group 1: Marsan, control, ExNeu1
+        - group 2: Marsan, control, ExNeu2
+        - group 3: Marsan, FTD, ExNeu1
+        - group 4: Marsan, FTD, ExNeu2
 
-    - group 5: Mathys, control, ExNeu1
-    - group 6: Mathys, control, ExNeu2
-    - group 7: Mathys, AD, ExNeu1
-    - group 8: Mathys, AD, ExNeu2
+        - group 5: Mathys, control, ExNeu1
+        - group 6: Mathys, control, ExNeu2
+        - group 7: Mathys, AD, ExNeu1
+        - group 8: Mathys, AD, ExNeu2
 
-    - group 9: Biogen, control, ExNeu1
-    - group 10: Biogen, control, ExNeu2
-    - group 11: Biogen, FTD, ExNeu1
-    - group 12: Biogen, FTD, ExNeu2
+        - group 9: Biogen, control, ExNeu1
+        - group 10: Biogen, control, ExNeu2
+        - group 11: Biogen, FTD, ExNeu1
+        - group 12: Biogen, FTD, ExNeu2
+    - by sample: 97 samples (for potential differential testing)
+    - by barcode: ? cells (TBD)
+
+- genes of interest: STMN2 and UNC13A
+
+
+2025-09-24
+----------
+
+@Mira0507
+
+- ``workflow/thalamus_excitatory/Snakefile`` in progress
+    - barcode table prepared by concatenating two metadata tables
+        - input:
+            - ``input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad``
+            - ``input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad``
+        - output:
+            - ``workflow/thalamus_excitatory/Snakefile/results/barcodes.tsv``
+    - notes
+        - ['D19-12386', 'D19-12393', 'Control10', 'FTLD-GRN1'] found 
+          in none of the AnnData objects
+        - the output barcode table consists of a total of 27,719 rows 
+
+
+2025-09-26
+----------
+
+@Mira0507
+
+- recopied input bam files
+    - conda env: ``env``
+    - updated script: ``workflow/thalamus_excitatory/prep_input.py``
+    - note: file names changed from 
+      ``<sampleid>_<study-disease>_possorted_genome_bam.bam`` to
+      ``<sampleid>_possorted_genome_bam.bam``
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - paths to input bam files added to the metadata table 
+          (``workflow/thalamus_excitatory/results/barcodes.tsv``)
+        - rules ``create_header`` and ``prep_sam`` added
+        - filter barcodes based on *CR* (raw) or *CB* (corrected)? 
+
+        .. code-block:: python
+
+            # Leave or remove `-1` suffix from the barcodes extracted from AnnData
+            barcode_list_cr = [f"CR:Z:{barcode.strip('-1')}" for barcode in set(df.barcode)]
+            barcode_list_cb = [f"CB:Z:{barcode.strip()}" for barcode in set(df.barcode)]
+            # Join barcodes into a single string for each option
+            cr_joined = "|".join(barcode_list_cr)
+            cb_joined = "|".join(barcode_list_cb)
+
+            b_dic = {'cr': cr_joined, 'cb': cb_joined}
+            for key, value in c_dic.items():
+
+                # Create filtered sam files
+                cmd = [
+                    "samtools view ",
+                    bam,
+                    " | grep -E '",
+                    value,
+                    "'", 
+                    f" >> temp_{key}.sam"
+                ]
+                cmd = "".join(cmd)
+                subprocess.run(cmd, shell=True)
+
+                # Sort
+                cmd = [
+                    f"grep -v '^@' temp_{key}.sam | ",
+                    f"sort > {key}_sorted.txt"
+                ]
+                subprocess.run(cmd, shell=True)
+
+
+            # Filter reads unique to each sam file
+            cmd1 = "comm -23 cr_sorted.txt cb_sorted.txt > unique_to_cr.txt"
+            cmd2 = "comm -13 cr_sorted.txt cb_sorted.txt > unique_to_cb.txt"
+            subprocess.run(cmd1, chell=True)
+            subprocess.run(cmd2, chell=True)
+
+            # $ ll | grep unique_to
+            # -rw-rw---- 1 sohnm CARD_MPU    0 Sep 26 21:22 unique_to_cr.txt
+            # -rw-rw---- 1 sohnm CARD_MPU 7.0K Sep 26 21:22 unique_to_cb.txt
+
+        - more reads were filtered by *CB*. this is because *CR* only includes
+          exact matches and any reads with a hamming distance of 1 or larget
+          are not included. in contrast, *CB* includes reads after seq-error
+          correction performed by cellranger in addition to exact matches.
+          this results in more reads filtered using the *CB* field.
+
+
+
+2025-09-29
+----------
+
+@Mira0507
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - runtime changed from 30min to 4hrs for the rule ``prep_sam``
+        - rules ``prep_sam`` and ``create_sample_bam`` ran on every 20 samples 
+          to make sure these rules run error-free and temporary files 
+          ranging from 20G to 50G don't exceed the quota
+        - rules ``create_sample_bam`` added
+        - rules ``create_group_bam`` added
+
+- reference transcriptome for all cellranger runs:
+  ``/fdb/cellranger/refdata-cellranger-2024-A/refdata-gex-GRCh38-2024-A``
+
+
+2025-09-30
+----------
+
+@Mira0507
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - add celltype-specific filtering 
+          (e.g. ``"{wildcards.sample}_{wildcards.celltype}.sam"``)
+        - rerun every 30 samples per Snakemake job submission
+        - STMN2 nor UNC13A undetected in 3733-T_ExNeu1. This issue results in an error
+          when generating the sam file. Therefore, header is added to the sam file 
+          at the ``prep_sam`` rule, as shown below:
+
+        .. code-block:: bash
+
+            samtools view ../../input/thalamus_excitatory/bam/3733-T_possorted_genome_bam.bam |
+                grep -E "CB:Z:ATTCCATTCAGGGTAG-1" > 3733-T_ExNeu1_temp.sam || true
+            cat results/header.sam > 3733-T_ExNeu1.sam
+            cat 3733-T_ExNeu1_temp.sam | grep -E "GN:Z:STMN2|GN:Z:UNC13A" >> 3733-T_ExNeu1.sam || true
+            rm 3733-T_ExNeu1_temp.sam
+
+            # NOTE: || true ensures that Snakemake doesn't raise an erro even if the `grep`
+            # command returns nothing
+

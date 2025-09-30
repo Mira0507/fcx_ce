@@ -28,10 +28,9 @@ for id in df.index:
             raise ValueError(f"{file} not found!")
         else:
             disease_study = df.loc[id, 'study_specific_disease_specific']
-            newid = f"{id}_{disease_study}"
             filename = file.split("/")[-1]
             # Specify command
-            outfile = f"{outdir}/{newid}_{filename}"
+            outfile = f"{outdir}/{id}_{filename}"
             cmd = f"cp {file} {outfile}"
             # Copy
             if not os.path.exists(outfile):
