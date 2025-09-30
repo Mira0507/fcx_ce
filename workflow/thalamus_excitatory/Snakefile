@@ -103,9 +103,8 @@ def list_group_sams(wildcards):
 rule all:
     input:
         expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
-               # expand("{outdir}/sam/{sample}_{celltype}.sam",
                outdir=config['outdir'],
-               sample=list(set(meta_df[config['index_col']]))[:20],
+               sample=list(set(meta_df[config['index_col']]))[:30],
                celltype=list(set(meta_df[config['celltype_col']])))
         # expand("{outdir}/bam/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
 
@@ -138,6 +137,7 @@ rule prep_sam:
     This rule preps barcodes corresonding to the celltype of interest in a txt file
     """
     input:
+        header = "{outdir}/header.sam",
         bam = lambda wildcards: "{}/".format(config['bam_dir']) + "{sample}_possorted_genome_bam.bam"
     output:
         sam = "{outdir}/sam/{sample}_{celltype}.sam"
@@ -164,13 +164,13 @@ rule prep_sam:
         # Join genes into a single string (w header)
         gene_joined = "|".join(gene_list)
         # Specify a temporary sam file 
-        # temp_sam = f"{wildcards.outdir}/{wildcards.sample}_temp.sam"
         temp_sam = f"{wildcards.outdir}/{wildcards.sample}_{wildcards.celltype}_temp.sam"
         # Run samtools with or without module load samtools/1.19
         shell(
             """
-            samtools view {input.bam} | grep -E "{barcode_joined}" >> {temp_sam}
-            cat {temp_sam} | grep -E "{gene_joined}" > {output.sam}
+            samtools view {input.bam} | grep -E "{barcode_joined}" > {temp_sam}
+            cat {input.header} > {output.sam}
+            cat {temp_sam} | grep -E "{gene_joined}" >> {output.sam}
             rm {temp_sam}
             """
             )
@@ -180,7 +180,6 @@ rule create_sample_celltype_bam:
     This rule aggregates header and filtered sam files into a bam file
     """
     input:
-        header = "{outdir}/header.sam",
         sam = "{outdir}/sam/{sample}_{celltype}.sam"
     output:
         bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
@@ -194,7 +193,7 @@ rule create_sample_celltype_bam:
     threads: 8
     shell:
         """
-        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        cat {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
@@ -205,7 +204,6 @@ rule create_group_celltype_bam:
     This rule aggregates header and filtered sam files into a bam file
     """
     input:
-        header = "{outdir}/header.sam",
         sam = list_group_sams
     output:
         bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
@@ -219,7 +217,7 @@ rule create_group_celltype_bam:
     threads: 8
     shell:
         """
-        cat {input.header} {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        cat {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
