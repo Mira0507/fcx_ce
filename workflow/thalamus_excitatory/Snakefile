@@ -104,7 +104,7 @@ rule all:
     input:
         expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
                outdir=config['outdir'],
-               sample=list(set(meta_df[config['index_col']]))[:30],
+               sample=list(set(meta_df[config['index_col']]))[30:],
                celltype=list(set(meta_df[config['celltype_col']])))
         # expand("{outdir}/bam/{group}_sorted.bam", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
 
@@ -204,7 +204,8 @@ rule create_group_celltype_bam:
     This rule aggregates header and filtered sam files into a bam file
     """
     input:
-        sam = list_group_sams
+        sam = list_group_sams,
+        header = "{outdir}/header.sam"
     output:
         bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
         bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai"
@@ -217,7 +218,8 @@ rule create_group_celltype_bam:
     threads: 8
     shell:
         """
-        cat {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        cat {input.header} > {params.temp_bam}
+        cat {input.sam} | grep -v "^@SQ" | samtools view -bS -@ {threads} >> {params.temp_bam}
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
