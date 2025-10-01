@@ -376,6 +376,6 @@ fcx_ce
             cat 3733-T_ExNeu1_temp.sam | grep -E "GN:Z:STMN2|GN:Z:UNC13A" >> 3733-T_ExNeu1.sam || true
             rm 3733-T_ExNeu1_temp.sam
 
-            # NOTE: || true ensures that Snakemake doesn't raise an erro even if the `grep`
+            # NOTE: || true ensures that Snakemake doesn't raise an error even if the `grep`
             # command returns nothing
 
