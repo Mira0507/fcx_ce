@@ -402,3 +402,44 @@ fcx_ce
     - notes
         - rule ``create_group_celltype_bam`` updated
         - subset of output bam files inspected using IGV
+
+- update ``README.md``
+
+
+2025-10-06
+----------
+
+@Mira0507
+
+- run ``workflow/thalamus_excitatory/Snakefile``
+  on all input files
+    - conda env: ``env``
+    - dryrun:
+
+    .. code-block:: bash
+
+        Job stats:
+        job                           count
+        --------------------------  -------
+        all                               1
+        create_group_celltype_bam        12
+        create_header                     1
+        create_sample_celltype_bam      186
+        prep_sam                        186
+        total                           386
+
+    - all input samples
+
+    .. code-block:: bash
+
+        # Print all unique sample identifiers
+        $ cut -f 1 workflow/thalamus_excitatory/results/barcodes.tsv | sort | uniq | head -n 3
+        3075-T
+        3514-T
+        3549-T
+
+        # Print the number of unique identifiers. This returns the column name. 
+        $ cut -f 1 workflow/thalamus_excitatory/results/barcodes.tsv | sort | uniq | wc -l
+        94  # A total of 93 input samples analyzed except for column name...
+
+- update ``README.md``
