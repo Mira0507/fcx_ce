@@ -379,3 +379,26 @@ fcx_ce
             # NOTE: || true ensures that Snakemake doesn't raise an error even if the `grep`
             # command returns nothing
 
+
+2025-10-01
+----------
+
+@Mira0507
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - function ``list_group_sams`` updated
+        - rule ``create_group_celltype_bam`` updated
+
+
+2025-10-03
+----------
+
+@Mira0507
+
+- update ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - notes
+        - rule ``create_group_celltype_bam`` updated
+        - subset of output bam files inspected using IGV

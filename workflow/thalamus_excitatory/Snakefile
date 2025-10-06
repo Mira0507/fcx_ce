@@ -93,8 +93,8 @@ def extract_headers_SQ(bam):
     return headers
 
 def list_group_sams(wildcards):
-    samples = group_dic[wildcards.group]
-    samlist = [f"{wildcards.outdir}/sam/{s}_{wildcards.celltype}.sam" for s in samples]
+    groups = group_dic[wildcards.group]
+    samlist = [f"{outdir}/sam/{g}_{wildcards.celltype}.sam" for g in groups]
     return samlist
 
 #################################### RULES ####################################
@@ -102,11 +102,14 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
-               outdir=config['outdir'],
-               sample=list(set(meta_df[config['index_col']]))[30:],
-               celltype=list(set(meta_df[config['celltype_col']])))
-        # expand("{outdir}/bam/{group}_sorted.bam.bai", outdir=config['outdir'], group=list(set(meta_df[config['key_col']])))
+        # expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
+        # outdir=config['outdir'],
+        # sample=list(set(meta_df[config['index_col']]))[30:],
+        # celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
+            outdir=config['outdir'],
+            group=list(set(meta_df[config['key_col']])),
+            celltype=list(set(meta_df[config['celltype_col']])))
 
 rule create_header:
     """
@@ -205,8 +208,7 @@ rule create_group_celltype_bam:
     This rule aggregates header and filtered sam files into a bam file
     """
     input:
-        sam = list_group_sams,
-        header = "{outdir}/header.sam"
+        sam = list_group_sams
     output:
         bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
         bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai"
@@ -219,10 +221,8 @@ rule create_group_celltype_bam:
     threads: 8
     shell:
         """
-        cat {input.header} > {params.temp_bam}
-        cat {input.sam} | grep -v "^@SQ" | samtools view -bS -@ {threads} >> {params.temp_bam}
+        samtools merge -f -@ {threads} {params.temp_bam} {input.sam}
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
         """
-
