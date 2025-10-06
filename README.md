@@ -93,8 +93,10 @@ all_cols:
 
 ### Barcodes
 
-
-
+Barcodes are required to filter celltypes of interest. Note that this workflow 
+is designed to use the [*AnnData*](https://anndata.readthedocs.io/en/stable/)
+object in Python as input material containing barcode information. Set the format to
+`celltype: "path/to/anndata"`, as demonstrated below:
 
 ```yaml
 
