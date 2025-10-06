@@ -102,10 +102,10 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        # expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
-        # outdir=config['outdir'],
-        # sample=list(set(meta_df[config['index_col']]))[30:],
-        # celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
+            outdir=config['outdir'],
+            sample=list(set(meta_df[config['index_col']])),
+            celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
             outdir=config['outdir'],
             group=list(set(meta_df[config['key_col']])),
