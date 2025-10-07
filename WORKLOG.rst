@@ -449,5 +449,54 @@ fcx_ce
         - https://regtools.readthedocs.io/en/latest/commands/junctions-extract/
         - https://www.nature.com/articles/s41467-023-37266-6
 
-
 - update ``README.md``
+
+
+2025-10-07
+----------
+
+@Mira0507
+
+- install ``regtools`` in ``env`` (w ``--freeze-installed`` parameter)
+
+- splicing junctions extracted on all samples 
+    - script: ``workflow/thalamus_excitatory/Snakefile``
+    - conda env: ``env``
+    - input: output of the ``create_sample_celltype_bam`` rule
+    - output: 
+      ``workflow/thalamus_excitatory/results/bed/sample/<sample>_<celltype>_regtools.bed``
+
+    .. code-block:: bash
+
+        $ head -n 4 workflow/thalamus_excitatory/results/bed/sample/D19-12358_ExNeu2_regtools.bed
+        chr19   17601563        17602859        JUNC00000001    2       ?       17601563        17602859        255,0,0 2       35,56   0,1240
+        chr19   17609229        17612687        JUNC00000002    2       ?       17609229        17612687        255,0,0 2       20,76   0,3382
+        chr19   17619641        17619962        JUNC00000003    1       ?       17619641        17619962        255,0,0 2       46,45   0,276
+        chr19   17620638        17621837        JUNC00000004    2       ?       17620638        17621837        255,0,0 2       84,6    0,1193
+
+    - notes
+        - this step is conducted by the ``extract_junctions`` rule
+        - some input bam files have no reads. such input files return
+          empty output bed.
+        - output bed columns
+            - chrom: chromosome 
+            - chromStart: The starting position of the junction-anchor. This includes 
+              the maximum overhang for the junction on the left. For the exact junction 
+              start add blockSizes[0].
+            - chromEnd: The ending position of the junction-anchor. This includes 
+              the maximum overhang for the juncion on the left. For the exact 
+              junction end subtract blockSizes[1].
+            - name: The name of the junctions, the junctions are just numbered JUNC1 to 
+              JUNCn.
+            - score: The number of reads supporting the junction.
+            - strand: Defines the strand - either '+' or '-'. This is calculated 
+              using the XS tag in the BAM file.
+            - thickStart: Same as chromStart
+            - thinkEnd: Same as chromEnd
+            - itemRgb: RGB value ("255,0,0" by default)
+            - blockCount: The number of blocks, 2 by default.
+            - blockSize: A comma-separated list of the block sizes. The number of items 
+              in this list should correspond to blockCount.
+            - blockStart: A comma-separated list of block starts. All of the blockStart
+              positions should be calculated relative to chromStart. The number of items
+              in this list should correspond to blockCount.
