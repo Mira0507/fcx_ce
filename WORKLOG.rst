@@ -442,4 +442,12 @@ fcx_ce
         $ cut -f 1 workflow/thalamus_excitatory/results/barcodes.tsv | sort | uniq | wc -l
         94  # A total of 93 input samples analyzed except for column name...
 
+- add rule ``extract_junctions`` to ``workflow/thalamus_excitatory/Snakefile``
+    - this rule runs the ``regtools junctions extract`` command that extracts 
+      splicing junctions
+    - references
+        - https://regtools.readthedocs.io/en/latest/commands/junctions-extract/
+        - https://www.nature.com/articles/s41467-023-37266-6
+
+
 - update ``README.md``
