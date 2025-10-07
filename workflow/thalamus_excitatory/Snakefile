@@ -226,3 +226,21 @@ rule create_group_celltype_bam:
         samtools index {output.bam}
         rm {params.temp_bam}
         """
+
+rule extract_junctions:
+    """
+    This rule captures splicing junctions using regtools extract
+    """
+    input:
+        bam_group = "{outdir}/bam/group/{group}_{celltype}_sorted.bam"
+    output:
+        bed = "{outdir}/bed/group/{group}_{celltype}_regtools.bed"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60
+    threads: 8
+    shell:
+        """
+        regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.bed} {input.bam}
+        """
