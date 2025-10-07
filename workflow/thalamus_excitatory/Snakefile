@@ -102,14 +102,19 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
-            outdir=config['outdir'],
-            sample=list(set(meta_df[config['index_col']])),
-            celltype=list(set(meta_df[config['celltype_col']]))),
+        # expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
+        # outdir=config['outdir'],
+        # sample=list(set(meta_df[config['index_col']])),
+        # celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
             outdir=config['outdir'],
             group=list(set(meta_df[config['key_col']])),
+            celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.bed",
+            outdir=config['outdir'],
+            sample=list(set(meta_df[config['index_col']])),
             celltype=list(set(meta_df[config['celltype_col']])))
+
 
 rule create_header:
     """
@@ -147,7 +152,7 @@ rule prep_sam:
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 480
+        runtime = 720
     threads: 8
     params:
         genes = config['genes']
@@ -232,13 +237,13 @@ rule extract_junctions:
     This rule captures splicing junctions using regtools extract
     """
     input:
-        bam_group = "{outdir}/bam/group/{group}_{celltype}_sorted.bam"
+        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam"
     output:
-        bed = "{outdir}/bed/group/{group}_{celltype}_regtools.bed"
+        bed = "{outdir}/bed/sample/{sample}_{celltype}_regtools.bed"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 60
+        runtime = 30
     threads: 8
     shell:
         """
