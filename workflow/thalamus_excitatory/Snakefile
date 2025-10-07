@@ -104,12 +104,17 @@ rule all:
     input:
         # expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
         # outdir=config['outdir'],
-        # sample=list(set(meta_df[config['index_col']]))[30:],
+        # sample=list(set(meta_df[config['index_col']])),
         # celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
             outdir=config['outdir'],
             group=list(set(meta_df[config['key_col']])),
+            celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.bed",
+            outdir=config['outdir'],
+            sample=list(set(meta_df[config['index_col']])),
             celltype=list(set(meta_df[config['celltype_col']])))
+
 
 rule create_header:
     """
@@ -147,7 +152,7 @@ rule prep_sam:
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 480
+        runtime = 720
     threads: 8
     params:
         genes = config['genes']
@@ -225,4 +230,26 @@ rule create_group_celltype_bam:
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
+        """
+
+rule extract_junctions:
+    """
+    This rule captures splicing junctions using regtools extract.
+    If a bam input file contains no reads, this rule will return
+    an ampty bed file.
+    """
+    input:
+        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam"
+    output:
+        bed = "{outdir}/bed/sample/{sample}_{celltype}_regtools.bed"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    threads: 8
+    shell:
+        """
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.bed} {input.bam}; then
+            touch {output.bed}
+        fi
         """
