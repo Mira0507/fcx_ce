@@ -234,7 +234,9 @@ rule create_group_celltype_bam:
 
 rule extract_junctions:
     """
-    This rule captures splicing junctions using regtools extract
+    This rule captures splicing junctions using regtools extract.
+    If a bam input file contains no reads, this rule will return
+    an ampty bed file.
     """
     input:
         bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam"
@@ -247,5 +249,7 @@ rule extract_junctions:
     threads: 8
     shell:
         """
-        regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.bed} {input.bam}
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.bed} {input.bam}; then
+            touch {output.bed}
+        fi
         """
