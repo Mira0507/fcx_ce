@@ -567,3 +567,23 @@ fcx_ce
             - ``mathys.xml``: samples from mathys, both celltypes
 
 
+2025-10-08
+----------
+
+@Mira0507
+
+- install leafcutter
+    - reference: https://davidaknowles.github.io/leafcutter/articles/Installation.html
+    - conda env
+        - recipe: ``lc_requirements.txt``
+        - env: ``lc_env``
+        - installing the R package: 
+
+        .. code-block:: bash
+
+            # Ensure to have ``lc_env`` activated
+            $ mamba install -c davidaknowles r-leafcutter --freeze-installed``
+
+        - env exported: ``lc_env.archived.yaml``
+
+
