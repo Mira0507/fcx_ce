@@ -1,0 +1,4 @@
+python=2.7
+samtools
+regtools
+r-base=3.6
