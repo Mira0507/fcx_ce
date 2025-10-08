@@ -500,3 +500,70 @@ fcx_ce
             - blockStart: A comma-separated list of block starts. All of the blockStart
               positions should be calculated relative to chromStart. The number of items
               in this list should correspond to blockCount.
+
+- prep IGV session files per group in ``../shipped/igv``
+
+    .. code-block:: bash
+
+        $ tree
+        .
+        ├── all.xml
+        ├── biogen.xml
+        ├── exneu1.xml
+        ├── exneu2.xml
+        ├── marsan.xml
+        ├── mathys.xml
+        └── results
+            └── bam
+                └── group
+                    ├── AD-Mathys_ExNeu1_sorted.bam
+                    ├── AD-Mathys_ExNeu1_sorted.bam.bai
+                    ├── AD-Mathys_ExNeu2_sorted.bam
+                    ├── AD-Mathys_ExNeu2_sorted.bam.bai
+                    ├── Control-Biogen_ExNeu1_sorted.bam
+                    ├── Control-Biogen_ExNeu1_sorted.bam.bai
+                    ├── Control-Biogen_ExNeu2_sorted.bam
+                    ├── Control-Biogen_ExNeu2_sorted.bam.bai
+                    ├── Control-Marsan_ExNeu1_sorted.bam
+                    ├── Control-Marsan_ExNeu1_sorted.bam.bai
+                    ├── Control-Marsan_ExNeu2_sorted.bam
+                    ├── Control-Marsan_ExNeu2_sorted.bam.bai
+                    ├── Control-Mathys_ExNeu1_sorted.bam
+                    ├── Control-Mathys_ExNeu1_sorted.bam.bai
+                    ├── Control-Mathys_ExNeu2_sorted.bam
+                    ├── Control-Mathys_ExNeu2_sorted.bam.bai
+                    ├── FTD-Biogen_ExNeu1_sorted.bam
+                    ├── FTD-Biogen_ExNeu1_sorted.bam.bai
+                    ├── FTD-Biogen_ExNeu2_sorted.bam
+                    ├── FTD-Biogen_ExNeu2_sorted.bam.bai
+                    ├── FTD-Marsan_ExNeu1_sorted.bam
+                    ├── FTD-Marsan_ExNeu1_sorted.bam.bai
+                    ├── FTD-Marsan_ExNeu2_sorted.bam
+                    └── FTD-Marsan_ExNeu2_sorted.bam.bai
+
+    - note
+        - IGV session files were prepared locally and copied to HPC
+        - Relative paths were used to navigate input file paths in each IGV session file
+
+        .. code-block:: bash
+
+            # Relative paths point to input files
+            $ head -n 8 marsan.xml
+            <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+            <Session genome="hg38" locus="chr8:79598936-79685953" nextAutoscaleGroup="2" version="8">
+                <Resources>
+                    <Resource path="results/bam/group/Control-Marsan_ExNeu2_sorted.bam" type="bam"/>
+                    <Resource path="results/bam/group/FTD-Marsan_ExNeu1_sorted.bam" type="bam"/>
+                    <Resource path="results/bam/group/Control-Marsan_ExNeu1_sorted.bam" type="bam"/>
+                    <Resource path="results/bam/group/FTD-Marsan_ExNeu2_sorted.bam" type="bam"/>
+                </Resources>
+
+        - files
+            - ``all.xml``: all groups and celltypes
+            - ``exneu1.xml``: ExNeu1 in all groups
+            - ``exneu2.xml``: ExNeu2 in all groups
+            - ``biogen.xml``: samples from biogen, both celltypes
+            - ``marsan.xml``: samples from marsan, both celltypes
+            - ``mathys.xml``: samples from mathys, both celltypes
+
+
