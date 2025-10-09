@@ -102,18 +102,15 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        # expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
-        # outdir=config['outdir'],
-        # sample=list(set(meta_df[config['index_col']])),
-        # celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
             outdir=config['outdir'],
             group=list(set(meta_df[config['key_col']])),
             celltype=list(set(meta_df[config['celltype_col']]))),
-        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.bed",
-            outdir=config['outdir'],
-            sample=list(set(meta_df[config['index_col']])),
-            celltype=list(set(meta_df[config['celltype_col']])))
+        expand("{outdir}/juncfiles.txt", outdir=config['outdir']),
+        # expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.junc",
+        # outdir=config['outdir'],
+        # sample=list(set(meta_df[config['index_col']])),
+        # celltype=list(set(meta_df[config['celltype_col']])))
 
 
 rule create_header:
@@ -236,12 +233,13 @@ rule extract_junctions:
     """
     This rule captures splicing junctions using regtools extract.
     If a bam input file contains no reads, this rule will return
-    an ampty bed file.
+    an ampty bed file. 
+    Note that the output bed file name has to end with `.junc`.
     """
     input:
         bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam"
     output:
-        bed = "{outdir}/bed/sample/{sample}_{celltype}_regtools.bed"
+        junc = "{outdir}/bed/sample/{sample}_{celltype}_regtools.junc"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
@@ -249,7 +247,29 @@ rule extract_junctions:
     threads: 8
     shell:
         """
-        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.bed} {input.bam}; then
-            touch {output.bed}
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam}; then
+            touch {output.junc}
         fi
         """
+
+rule prep_juncfiles:
+    """
+    This rule prepares a text file storing all input junction 
+    files (<sample>.junc) saved as a bed format. The output of this rule
+    is required to count the number of junctions using leafcutter.
+    """
+    input:
+        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.junc",
+            outdir=config['outdir'],
+            sample=list(set(meta_df[config['index_col']])),
+            celltype=list(set(meta_df[config['celltype_col']])))
+    output:
+        "{outdir}/juncfiles.txt"
+    shell:
+        """
+        for file in {input}; do
+            echo $file >> {output}
+        done
+        """
+
+
