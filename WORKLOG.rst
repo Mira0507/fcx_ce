@@ -586,4 +586,6 @@ fcx_ce
 
         - env exported: ``lc_env.archived.yaml``
 
+- add rule ``prep_juncfiles`` to ``workflow/thalamus_excitatory/Snakefile``
+
 
