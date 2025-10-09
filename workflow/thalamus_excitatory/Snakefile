@@ -265,11 +265,13 @@ rule prep_juncfiles:
             celltype=list(set(meta_df[config['celltype_col']])))
     output:
         "{outdir}/juncfiles.txt"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 10
     shell:
         """
-        for file in {input}; do
-            echo $file >> {output}
-        done
+        printf '%s\n' {input} > {output}
         """
 
 
