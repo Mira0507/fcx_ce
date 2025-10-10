@@ -1,6 +1,10 @@
 # Path to sampletable
 sampletable: "../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
 
+# Path to fasta of reference genome
+# NOTE: Specify the reference fasta used when running `cellranger count`
+fasta: "../../input/thalamus_excitatory/genome.fa"
+
 # Metadata column for aggregating reads
 all_cols: 
   - 'status'
@@ -36,4 +40,6 @@ genes:
   - 'STMN2'
   - 'UNC13A'
 
-
+# Analysis name. This will be used for the file name of
+# the junction count matrix
+analysis: 'thalamus_excitatory'

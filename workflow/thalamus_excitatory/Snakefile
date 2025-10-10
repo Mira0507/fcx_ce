@@ -62,17 +62,6 @@ meta_df = pd.merge(sampletable.loc[:, [config['index_col'], config['key_col'], c
                    on=[config['index_col'], config['key_col']])
 meta_df.to_csv(barcode_file, sep="\t", index=False)
 
-# sohnm@helix:/vf/users/CARD_MPU/users/sohnm/fcx_ce/input/thalamus_excitatory/bam$ ll | head -n 5
-# total 1.4T
-# -rw-rw----. 1 sohnm CARD_MPU  15G Sep 23 19:18 7624-T_FTD-Biogen_possorted_genome_bam.bam
-# -rw-rw----. 1 sohnm CARD_MPU  11M Sep 23 19:18 7624-T_FTD-Biogen_possorted_genome_bam.bam.bai
-# -rw-rw----. 1 sohnm CARD_MPU  15G Sep 23 19:19 4571-T_FTD-Biogen_possorted_genome_bam.bam
-# -rw-rw----. 1 sohnm CARD_MPU 9.5M Sep 23 19:19 4571-T_FTD-Biogen_possorted_genome_bam.bam.bai
-
-#    SampleID study_specific_disease_specific                                                bam   status   study Genetics  AgeDeath  Disease BrainRegion Sex general_disease study_disease celltype             barcode
-# 0  Control1                  Control-Marsan  ../../input/thalamus_excitatory/bam/Control1_C...  Control  Marsan  Control        68  Control    Thalamus   F         Control       Control   ExNeu1  CGTCTACTCAAAGTAG-1
-# 1  Control1                  Control-Marsan  ../../input/thalamus_excitatory/bam/Control1_C...  Control  Marsan  Control        68  Control    Thalamus   F         Control       Control   ExNeu1  CCATGTCAGTTGTAGA-1
-
 # Prep a dictionary with keys corresponding to groups 
 # and values corresponding to unique sample ids
 group_dic = {}
@@ -102,18 +91,12 @@ def list_group_sams(wildcards):
 
 rule all:
     input:
-        # expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
-        # outdir=config['outdir'],
-        # sample=list(set(meta_df[config['index_col']])),
-        # celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
             outdir=config['outdir'],
             group=list(set(meta_df[config['key_col']])),
             celltype=list(set(meta_df[config['celltype_col']]))),
-        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.bed",
-            outdir=config['outdir'],
-            sample=list(set(meta_df[config['index_col']])),
-            celltype=list(set(meta_df[config['celltype_col']])))
+        expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
+               outdir=config['outdir'], analysis=config['analysis'])
 
 
 rule create_header:
@@ -236,12 +219,14 @@ rule extract_junctions:
     """
     This rule captures splicing junctions using regtools extract.
     If a bam input file contains no reads, this rule will return
-    an ampty bed file.
+    an ampty bed file. 
+    Note that the output bed file name has to end with `.junc`.
     """
     input:
-        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam"
+        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+        fasta = config['fasta']
     output:
-        bed = "{outdir}/bed/sample/{sample}_{celltype}_regtools.bed"
+        junc = "{outdir}/bed/sample/{sample}_{celltype}.junc"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
@@ -249,7 +234,64 @@ rule extract_junctions:
     threads: 8
     shell:
         """
-        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.bed} {input.bam}; then
-            touch {output.bed}
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
+            touch {output.junc}
         fi
         """
+
+rule prep_juncfiles:
+    """
+    This rule prepares a text file storing paths to all input junction 
+    files (<sample>.junc) saved as a bed format. The output of this rule
+    is required to count the number of junctions using leafcutter.
+    """
+    input:
+        expand("{outdir}/bed/sample/{sample}_{celltype}.junc",
+            outdir=config['outdir'],
+            sample=list(set(meta_df[config['index_col']])),
+            celltype=list(set(meta_df[config['celltype_col']])))
+    output:
+        "{outdir}/juncfiles.txt"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 10
+    shell:
+        """
+        printf '%s\n' {input} > {output}
+        """
+
+rule count_junctions:
+    """
+    This rule counts the number of junctions across the input 
+    samples or groups using leafcutter. This rule generates
+    the following output files:
+
+    - <sample>_regtools.junc.<analysis>.sorted.gz: per-sample junctions
+    - <analysis>_pooled: all junctions
+    - <analysis>_refined: clustered junctions
+    - <analysis>_sortedlibs: paths to all <sample>_regtools.junc.<analysis>.sorted.gz
+    - <analysis>_perind.counts.gz
+    - <analysis>_perind_numers.counts.gz: output count matrix for junction clusters
+
+    Call `zcat <analysis>_perind_numers.counts.gz` to print 
+    the output count matrix.
+    """
+    input: "{outdir}/juncfiles.txt"
+    output: "{outdir}/junction_counts/{analysis}_perind_numers.counts.gz"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    threads: 8
+    shell:
+        """
+        python leafcutter_cluster_regtools.py \
+           -j {input} \
+           -m 10 \
+           -p 0.0001 \
+           -r {wildcards.outdir}/junction_counts \
+           -o {wildcards.analysis}
+        """
+
+

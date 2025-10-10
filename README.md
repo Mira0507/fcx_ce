@@ -45,6 +45,16 @@ The following keys are configured in the sampletable:
 sampletable: "path/to/metadata.csv"
 ```
 
+### Reference fasta
+
+This is required to identify the strandness of sequencing reads when extracting
+splicing junctions. Specify the reference fasta file you used to run 
+``cellranger count``.
+
+```yaml
+fasta: "../../input/thalamus_excitatory/genome.fa"
+```
+
 ### Columns of interest
 
 Your columns of interest in the sampletable are configured here. Refer to the 
@@ -131,4 +141,13 @@ the `genes` key to your genes of interest.
 genes:
   - 'STMN2'
   - 'UNC13A'
+```
+
+### Analysis name
+
+This will be used as the prefix of the output file name for the junction count
+matrix.
+
+```yaml
+analysis: 'thalamus_excitatory'
 ```
