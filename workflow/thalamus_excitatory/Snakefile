@@ -62,17 +62,6 @@ meta_df = pd.merge(sampletable.loc[:, [config['index_col'], config['key_col'], c
                    on=[config['index_col'], config['key_col']])
 meta_df.to_csv(barcode_file, sep="\t", index=False)
 
-# sohnm@helix:/vf/users/CARD_MPU/users/sohnm/fcx_ce/input/thalamus_excitatory/bam$ ll | head -n 5
-# total 1.4T
-# -rw-rw----. 1 sohnm CARD_MPU  15G Sep 23 19:18 7624-T_FTD-Biogen_possorted_genome_bam.bam
-# -rw-rw----. 1 sohnm CARD_MPU  11M Sep 23 19:18 7624-T_FTD-Biogen_possorted_genome_bam.bam.bai
-# -rw-rw----. 1 sohnm CARD_MPU  15G Sep 23 19:19 4571-T_FTD-Biogen_possorted_genome_bam.bam
-# -rw-rw----. 1 sohnm CARD_MPU 9.5M Sep 23 19:19 4571-T_FTD-Biogen_possorted_genome_bam.bam.bai
-
-#    SampleID study_specific_disease_specific                                                bam   status   study Genetics  AgeDeath  Disease BrainRegion Sex general_disease study_disease celltype             barcode
-# 0  Control1                  Control-Marsan  ../../input/thalamus_excitatory/bam/Control1_C...  Control  Marsan  Control        68  Control    Thalamus   F         Control       Control   ExNeu1  CGTCTACTCAAAGTAG-1
-# 1  Control1                  Control-Marsan  ../../input/thalamus_excitatory/bam/Control1_C...  Control  Marsan  Control        68  Control    Thalamus   F         Control       Control   ExNeu1  CCATGTCAGTTGTAGA-1
-
 # Prep a dictionary with keys corresponding to groups 
 # and values corresponding to unique sample ids
 group_dic = {}
@@ -237,7 +226,8 @@ rule extract_junctions:
     Note that the output bed file name has to end with `.junc`.
     """
     input:
-        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam"
+        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+        fasta = config['fasta']
     output:
         junc = "{outdir}/bed/sample/{sample}_{celltype}_regtools.junc"
     resources:
@@ -247,7 +237,7 @@ rule extract_junctions:
     threads: 8
     shell:
         """
-        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam}; then
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
             touch {output.junc}
         fi
         """
