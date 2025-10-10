@@ -95,11 +95,8 @@ rule all:
             outdir=config['outdir'],
             group=list(set(meta_df[config['key_col']])),
             celltype=list(set(meta_df[config['celltype_col']]))),
-        expand("{outdir}/juncfiles.txt", outdir=config['outdir']),
-        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.junc",
-            outdir=config['outdir'],
-            sample=list(set(meta_df[config['index_col']])),
-            celltype=list(set(meta_df[config['celltype_col']])))
+        expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
+               outdir=config['outdir'], analysis=config['analysis'])
 
 
 rule create_header:
@@ -229,7 +226,7 @@ rule extract_junctions:
         bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
         fasta = config['fasta']
     output:
-        junc = "{outdir}/bed/sample/{sample}_{celltype}_regtools.junc"
+        junc = "{outdir}/bed/sample/{sample}_{celltype}.junc"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
@@ -244,12 +241,12 @@ rule extract_junctions:
 
 rule prep_juncfiles:
     """
-    This rule prepares a text file storing all input junction 
+    This rule prepares a text file storing paths to all input junction 
     files (<sample>.junc) saved as a bed format. The output of this rule
     is required to count the number of junctions using leafcutter.
     """
     input:
-        expand("{outdir}/bed/sample/{sample}_{celltype}_regtools.junc",
+        expand("{outdir}/bed/sample/{sample}_{celltype}.junc",
             outdir=config['outdir'],
             sample=list(set(meta_df[config['index_col']])),
             celltype=list(set(meta_df[config['celltype_col']])))
@@ -262,6 +259,39 @@ rule prep_juncfiles:
     shell:
         """
         printf '%s\n' {input} > {output}
+        """
+
+rule count_junctions:
+    """
+    This rule counts the number of junctions across the input 
+    samples or groups using leafcutter. This rule generates
+    the following output files:
+
+    - <sample>_regtools.junc.<analysis>.sorted.gz: per-sample junctions
+    - <analysis>_pooled: all junctions
+    - <analysis>_refined: clustered junctions
+    - <analysis>_sortedlibs: paths to all <sample>_regtools.junc.<analysis>.sorted.gz
+    - <analysis>_perind.counts.gz
+    - <analysis>_perind_numers.counts.gz: output count matrix for junction clusters
+
+    Call `zcat <analysis>_perind_numers.counts.gz` to print 
+    the output count matrix.
+    """
+    input: "{outdir}/juncfiles.txt"
+    output: "{outdir}/junction_counts/{analysis}_perind_numers.counts.gz"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    threads: 8
+    shell:
+        """
+        python leafcutter_cluster_regtools.py \
+           -j {input} \
+           -m 10 \
+           -p 0.0001 \
+           -r {wildcards.outdir}/junction_counts \
+           -o {wildcards.analysis}
         """
 
 
