@@ -494,7 +494,7 @@ fcx_ce
             - thickStart: Same as chromStart
             - thinkEnd: Same as chromEnd
             - itemRgb: RGB value ("255,0,0" by default)
-            - blockCount: The number of blocks, 2 by default.
+            - blockCount: The number of blocks (exons), 2 by default.
             - blockSize: A comma-separated list of the block sizes. The number of items 
               in this list should correspond to blockCount.
             - blockStart: A comma-separated list of block starts. All of the blockStart
@@ -589,3 +589,66 @@ fcx_ce
 - add rule ``prep_juncfiles`` to ``workflow/thalamus_excitatory/Snakefile``
 
 
+2025-10-09
+----------
+
+@Mira0507
+
+- specify the strandness of each bam file when extracting junctions 
+  using ``regtools``
+    - note
+        - the output of the ``extract_junctions`` rule returned a bed format
+          where the strandness is marked as ``"?"`` for all junctions because
+          the ``-s XS`` parameter passed into the ``regtools junctions extract``
+          command didn't capture the strandness from bam files properly.
+          this is because bam files that were generated using ``cellranger count`` 
+          don't include the ``XS`` tag.
+        - leafcutter is designed to return nothing if the strandness is ambiguous. 
+        - add fasta file when running ``regtools junctions extract``
+          (e.g. ``regtools junctions extract [options] indexed_alignments.bam fasta.fa``)
+    - reference:
+        - https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/outputs/cr-outputs-bam#bam-bc-tags
+        - https://github.com/griffithlab/regtools/issues/173
+        - https://regtools.readthedocs.io/en/latest/commands/junctions-extract/
+
+
+2025-10-10
+----------
+
+@Mira0507
+
+- re-extract junctions with strandness captured using fasta
+    - conda env: ``env``
+    - scripts updated:
+        - ``workflow/thalamus_excitatory/config/config.yaml``
+        - ``workflow/thalamus_excitatory/Snakefile``
+    - notes
+        - ``config.yaml`` is updated to include the path to fasta file that was used 
+          when running ``cellranger count``
+        - the ``extract_junctions`` rule is updated to include the fasta file
+          after the input bam file. here, the ``-s XS`` parameter doesn't do anything 
+          but is required regardless.
+
+        .. code-block:: bash
+
+            # Strandness captured as the "-" or "+" sign
+            $ head -3 workflow/thalamus_excitatory/results/bed/sample/8130-T_ExNeu2_regtools.junc
+            chr19   17610018        17611771        JUNC00000001    1       -       17610018        17611771        255,0,0 2       81,9    0,1744
+            chr19   17621831        17623547        JUNC00000003    1       +       17621831        17623547        255,0,0 2       39,6    0,1710
+            chr19   17623541        17624840        JUNC00000004    1       -       17623541        17624840        255,0,0 2       6,12    0,1287
+
+- count the number of junctions using leafcutter
+    - conda env: ``env``
+    - files:
+        - ``workflow/thalamus_excitatory/config/config.yaml`` updated
+        - ``workflow/thalamus_excitatory/Snakefile`` updated
+        - ``lc_env.archived.yaml`` updated
+        - ``workflow/thalamus_excitatory/leafcutter_cluster_regtools.py`` added
+          (copied from https://github.com/davidaknowles/leafcutter/blob/master/clustering/leafcutter_cluster_regtools.py)
+    - notes
+        - ``config.yaml`` updated to specify the name of analysis. this name will
+          be used to set the file name of the output count matrix.
+        - a new rule named ``count_junctions`` added to the ``Snakefile``. the ``lc_env``
+          conda env was not needed to run this rule.
+
+- ``README.md`` updated
