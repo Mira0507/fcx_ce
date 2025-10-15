@@ -1,0 +1,57 @@
+---
+title: "Differential splicing analysis"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct differential splicing (DS) analysis
+using [LeafCutter](https://www.nature.com/articles/s41588-017-0004-9).
+
+Refer to the following resources for technical details:
+
+- [Documentation](https://davidaknowles.github.io/leafcutter/index.html)
+- [Differential Splicing](https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-3--differential-intron-excision-analysis)
+- [GitHub LeafCutter](https://github.com/davidaknowles/leafcutter)
+- [R demo script](https://github.com/davidaknowles/leafcutter/blob/master/scripts/leafcutter_ds.R)
+
+```{r libraries}
+library(tidyverse)
+library(optparse)
+library(leafcutter)
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables
+# --------------------------------------------------------------------------------
+
+# Path to input matrix
+mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
+
+# Path to barcode table
+barcode_path <- "../results/barcodes.tsv"
+```
+
+```{r import_input}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input files
+# --------------------------------------------------------------------------------
+
+counts <- read.table(mtx_path, header=TRUE, check.names=FALSE)
+```
