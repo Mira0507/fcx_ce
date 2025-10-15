@@ -31,7 +31,11 @@ Refer to the following resources for technical details:
 ```{r libraries}
 library(tidyverse)
 library(optparse)
+library(ggplot2)
 # library(leafcutter)
+
+set.seed(1772)
+source('../config/helpers.R')
 ```
 
 ```{r config}
@@ -77,7 +81,7 @@ factor_groups <- list(
 ```
 
 
-# Loading input data
+# Loading input data {.tabset}
 
 The number of splicing junctions was counted based on cellranger-aligned reads. Briefly, reads in
 cellranger-generated bam files (e.g. `possorted_genome_bam.bam`) were filtered by the following
@@ -90,22 +94,15 @@ command. The resulting junctions were counted using
 We import the output count matrix for splicing junctions and the associated metadata 
 for the current analysis.
 
-```{r import_input}
+```{r import_input, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk imports input files
+# This chunk imports input files. This chunk may require manual work to clean 
+# the metadata table.
 # --------------------------------------------------------------------------------
 
 # Import count matrix
 counts <- read.table(mtx_path, header=TRUE, check.names=FALSE)
-
-# > counts[1:2, 1:4]
-                               # D19-12361_ExNeu1 D19-12361_ExNeu2
-# chr8:79611214:79616822:clu_1_+                0                0
-# chr8:79611214:79636802:clu_1_+                0                0
-                               # D19-12389_ExNeu1 D19-12389_ExNeu2
-# chr8:79611214:79616822:clu_1_+                0                0
-# chr8:79611214:79636802:clu_1_+                3               60
 
 # Prep metadata table
 meta <- data.frame(samplename=colnames(counts)) %>%
@@ -125,43 +122,112 @@ meta <- data.frame(samplename=colnames(counts)) %>%
 rownames(meta) <- meta$samplename
 meta <- meta[colnames(counts),]
 
-# head(meta, 2)
-                       # samplename  SampleID celltype BrainRegion Disease
-# D19-12361_ExNeu1 D19-12361_ExNeu1 D19-12361   ExNeu1    Thalamus Control
-# D19-12361_ExNeu2 D19-12361_ExNeu2 D19-12361   ExNeu2    Thalamus Control
-                 # ClinicalDx NeuropathDx       TDP_Path AgeDeath Sex Genetics
-# D19-12361_ExNeu1       <NA>         Low Not Identified       78   M  APOE 33
-# D19-12361_ExNeu2       <NA>         Low Not Identified       78   M  APOE 33
-                 # PMI Quality_RIN Thal   Braak CERAD MMSE DiseaseDuration  study
-# D19-12361_ExNeu1   5          NA    0 Braak I     4   28              NA Mathys
-# D19-12361_ExNeu2   5          NA    0 Braak I     4   28              NA Mathys
-                  # status general_disease study_disease
-# D19-12361_ExNeu1 Control         Control       Control
-# D19-12361_ExNeu2 Control         Control       Control
-                 # study_specific_disease_specific
-# D19-12361_ExNeu1                  Control-Mathys
-# D19-12361_ExNeu2                  Control-Mathys
-                 # study_disease_specific_celltype
-# D19-12361_ExNeu1           Control-Mathys_ExNeu1
-# D19-12361_ExNeu2           Control-Mathys_ExNeu2
-
-
 # Convert columns of interest into factor
 for (c in names(factor_groups)) {
     meta[[c]] <- factor(meta[[c]], levels=factor_groups[[c]])
 }
 
+# Slice columns of interest in the full metadata table
+meta_core <- meta[, names(factor_groups)]
+
 # Break if missing values were introduced to your metadata columns of interest
-if (any(is.na(meta[, names(factor_groups)]))) {
+if (any(is.na(meta_core))) {
     stop(paste0("Missing values were found in the following metadata columns: ",
                 names(factor_groups)
         )) 
 }
 
+cat('## All samples\n\n')
 DT::datatable(meta[, c('samplename', 'SampleID', names(factor_groups))])
+
+cat('\n\n## N\n\n')
+DT::datatable(
+    meta %>%
+        group_by(study_specific_disease_specific) %>%
+        summarize(N=n())
+)
 ```
 
+# Sample similarity and QC
 
+## Clustered heatmap
+
+In the current QC, heatmap is used to visualize hierarchical clustering of pairwise distances between samples. 
+Darker blue means less distant (i.e. more similar) based on log2-transformed counts. In general we expect 
+to see replicates clustering together and separation of treatments.
+
+
+```{r sample_heatmap, results='asis', fig.width=12, fig.height=12}
+
+# --------------------------------------------------------------------------------
+# This chunk generates sample similarity heatmap
+# --------------------------------------------------------------------------------
+
+# Prep a distance matrix
+sampleDistsMatrix <- as.matrix(dist(t(log2(counts + 0.1))))
+if (!identical(rownames(sampleDistsMatrix), colnames(counts))) {
+    rownames(sampleDistsMatrix) <- colnames(counts)
+}
+
+# Set color to be displayed
+colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
+
+# Print heatmap
+pheatmap::pheatmap(
+    sampleDistsMatrix,
+    scale='none',
+    color=colors,
+    annotation=meta_core,
+    show_rownames=FALSE,
+    show_colnames=FALSE
+)
+```
+
+## PCA {.tabset}
+
+Another way of looking at sample clustering is principal components analysis (PCA). Each axis
+does not have units, rather, it represents the dimensions along which the samples vary the most. The amount 
+of variance explained by each principal component is indicated in the axes label.
+
+```{r run_pca, results='asis'}
+
+for (subset in c('SampleID', names(factor_groups))) {
+
+    cat('###', subset, '{.tabset}\n\n')
+
+    # Run PCA
+    colData <- meta[, c('samplename', subset)]
+    pca <- prcomp(t(counts + 0.1),
+                  center=TRUE,
+                  scale=FALSE)
+
+    # Calculate variance explained by PC
+    var_exp <- round(pca$sdev^2/sum(pca$sdev^2) * 100, 2)
+
+    # Prep input data frame for plotting
+    df <- pca$x[,1:2] %>%
+        as.data.frame() %>%
+        rownames_to_column('samplename') %>%
+        left_join(colData, by='samplename')
+
+    # Prep titles for axes
+    axis_titles <- map_chr(1:2,
+                           ~paste0("PC ", .x, " (", var_exp[.x], "%)"))
+
+    # Plot
+    plot_df <- df[, c('samplename', paste0("PC", 1:2), subset)]
+
+    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset)) +
+        theme_bw() +
+        geom_point(size=3, alpha=0.7) +
+        xlab(axis_titles[1]) +
+        ylab(axis_titles[2])
+
+    subchunkify(paste0("PCA_", subset), input="plot", width=8, height=6)
+    cat('\n\n')
+}
+
+```
 
 
 
