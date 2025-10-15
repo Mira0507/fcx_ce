@@ -652,3 +652,18 @@ fcx_ce
           conda env was not needed to run this rule.
 
 - ``README.md`` updated
+
+
+2025-10-15
+----------
+
+@Mira0507
+
+- Run downstream differential splicing (DS) analysis using leafcutter
+    - conda env: ``lc_env``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - references: 
+        - https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-3--differential-intron-excision-analysis
+        - https://github.com/davidaknowles/leafcutter/blob/master/scripts/leafcutter_ds.R
+
+
