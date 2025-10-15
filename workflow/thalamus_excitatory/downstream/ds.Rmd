@@ -31,7 +31,7 @@ Refer to the following resources for technical details:
 ```{r libraries}
 library(tidyverse)
 library(optparse)
-library(leafcutter)
+# library(leafcutter)
 ```
 
 ```{r config}
@@ -43,9 +43,52 @@ library(leafcutter)
 # Path to input matrix
 mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
 
-# Path to barcode table
-barcode_path <- "../results/barcodes.tsv"
+# Path to metadata table
+meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Path to output directory
+out_dir <- "ds"
+if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    celltype=c('ExNeu1', 'ExNeu2'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c('Control-Marsan',
+                                      'Control-Biogen',
+                                      'Control-Mathys',
+                                      'FTD-Marsan',
+                                      'FTD-Biogen',
+                                      'AD-Mathys'),
+    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Marsan_ExNeu2',
+                                      'Control-Biogen_ExNeu1',
+                                      'Control-Biogen_ExNeu2',
+                                      'Control-Mathys_ExNeu1',
+                                      'Control-Mathys_ExNeu2',
+                                      'FTD-Marsan_ExNeu1',
+                                      'FTD-Marsan_ExNeu2',
+                                      'FTD-Biogen_ExNeu1',
+                                      'FTD-Biogen_ExNeu2',
+                                      'AD-Mathys_ExNeu1',
+                                      'AD-Mathys_ExNeu2')
+)
 ```
+
+
+# Loading input data
+
+The number of splicing junctions was counted based on cellranger-aligned reads. Briefly, reads in
+cellranger-generated bam files (e.g. `possorted_genome_bam.bam`) were filtered by the following
+celltypes: *ExNeu1* and *ExNeu2*. Subsequent extraction of splicing junctions was conducted using the
+[`regtools junctions extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) 
+command. The resulting junctions were counted using
+[`leafcutter_cluster_regtools.py`](https://github.com/davidaknowles/leafcutter/blob/master/clustering/leafcutter_cluster_regtools.py), a wrapper script provided by LeafCutter, following 
+[LeafCutter's Intron clustering instructions](https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-2--intron-clustering).
+
+We import the output count matrix for splicing junctions and the associated metadata 
+for the current analysis.
 
 ```{r import_input}
 
@@ -53,5 +96,77 @@ barcode_path <- "../results/barcodes.tsv"
 # This chunk imports input files
 # --------------------------------------------------------------------------------
 
+# Import count matrix
 counts <- read.table(mtx_path, header=TRUE, check.names=FALSE)
+
+# > counts[1:2, 1:4]
+                               # D19-12361_ExNeu1 D19-12361_ExNeu2
+# chr8:79611214:79616822:clu_1_+                0                0
+# chr8:79611214:79636802:clu_1_+                0                0
+                               # D19-12389_ExNeu1 D19-12389_ExNeu2
+# chr8:79611214:79616822:clu_1_+                0                0
+# chr8:79611214:79636802:clu_1_+                3               60
+
+# Prep metadata table
+meta <- data.frame(samplename=colnames(counts)) %>%
+    separate(samplename,
+             c('SampleID', 'celltype'),
+             sep="_",
+             remove=FALSE) %>%
+    left_join(read.csv(meta_path), by="SampleID") %>%
+    mutate(study_disease_specific_celltype=paste0(study_specific_disease_specific,
+                                                  "_",
+                                                  celltype)) %>%
+    select(-path) %>%
+    unique()
+
+
+# Ensure to have rownames identical to column names in the count matrix
+rownames(meta) <- meta$samplename
+meta <- meta[colnames(counts),]
+
+# head(meta, 2)
+                       # samplename  SampleID celltype BrainRegion Disease
+# D19-12361_ExNeu1 D19-12361_ExNeu1 D19-12361   ExNeu1    Thalamus Control
+# D19-12361_ExNeu2 D19-12361_ExNeu2 D19-12361   ExNeu2    Thalamus Control
+                 # ClinicalDx NeuropathDx       TDP_Path AgeDeath Sex Genetics
+# D19-12361_ExNeu1       <NA>         Low Not Identified       78   M  APOE 33
+# D19-12361_ExNeu2       <NA>         Low Not Identified       78   M  APOE 33
+                 # PMI Quality_RIN Thal   Braak CERAD MMSE DiseaseDuration  study
+# D19-12361_ExNeu1   5          NA    0 Braak I     4   28              NA Mathys
+# D19-12361_ExNeu2   5          NA    0 Braak I     4   28              NA Mathys
+                  # status general_disease study_disease
+# D19-12361_ExNeu1 Control         Control       Control
+# D19-12361_ExNeu2 Control         Control       Control
+                 # study_specific_disease_specific
+# D19-12361_ExNeu1                  Control-Mathys
+# D19-12361_ExNeu2                  Control-Mathys
+                 # study_disease_specific_celltype
+# D19-12361_ExNeu1           Control-Mathys_ExNeu1
+# D19-12361_ExNeu2           Control-Mathys_ExNeu2
+
+
+# Convert columns of interest into factor
+for (c in names(factor_groups)) {
+    meta[[c]] <- factor(meta[[c]], levels=factor_groups[[c]])
+}
+
+# Break if missing values were introduced to your metadata columns of interest
+if (any(is.na(meta[, names(factor_groups)]))) {
+    stop(paste0("Missing values were found in the following metadata columns: ",
+                names(factor_groups)
+        )) 
+}
+
+DT::datatable(meta[, c('samplename', 'SampleID', names(factor_groups))])
+```
+
+
+
+
+
+
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
 ```
