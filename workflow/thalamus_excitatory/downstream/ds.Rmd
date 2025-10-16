@@ -78,6 +78,12 @@ factor_groups <- list(
                                       'AD-Mathys_ExNeu1',
                                       'AD-Mathys_ExNeu2')
 )
+
+# Specify metadata columns used for pairwise comparisons
+contrast_cols <- c('status', 'celltype')
+
+# Specify metadata columns used as confounding factors
+confounder_cols <- c('study')
 ```
 
 
@@ -214,9 +220,10 @@ for (subset in c('SampleID', names(factor_groups))) {
     axis_titles <- map_chr(1:2,
                            ~paste0("PC ", .x, " (", var_exp[.x], "%)"))
 
-    # Plot
+    # Clean input data frame for plotting
     plot_df <- df[, c('samplename', paste0("PC", 1:2), subset)]
 
+    # Plot PCA
     p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset)) +
         theme_bw() +
         geom_point(size=3, alpha=0.7) +
@@ -230,8 +237,29 @@ for (subset in c('SampleID', names(factor_groups))) {
 ```
 
 
+```{r save_meta_tables}
 
+for (c in contrast_cols) {
+    # Slice the metadata frame
+    df <- meta[, c('samplename', c, confounder_cols)]
+    # Reorder rows
+    df <- df[order(df[[c]]),]
 
+    # Save as a tab-separated file
+    # NOTE: 
+    # - Omit both row names and column names
+    # - Ensure the first column corresponds to samplenames that are column names of the count matrix
+    # - Ensure the second column corresponds to a pairwise contrast
+    # - Ensure that the third column is optional and corresponds to confounder
+    write.table(df,
+                paste0("../results/junction_counts/", c, '_groups.txt'),
+                sep="\t",
+                quote=FALSE,
+                col.names=FALSE, 
+                row.names=FALSE)
+
+}
+```
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
