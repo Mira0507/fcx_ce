@@ -13,7 +13,7 @@ The current analysis uses two conda environments, as listed below:
 in the current workflow.
 - ``lcenv``: Required for downstream analysis in R. Refer to `lcenv.archived.yaml` 
 for packages used in the current workflow. Note that this environment includes 
-pacckages installed in R, outside of Conda.
+pacckages installed in R, but there were not exported to the `lcenv.archived.yaml`.
 
 ## Input datasets
 
@@ -157,9 +157,39 @@ matrix.
 analysis: 'thalamus_excitatory'
 ```
 
-###
+### Workflow
+
+The current Snakemake pipeline is designed to return a count matrix for
+splicing junctions by implementing the following rules:
+
+- `create_header`: Checks whether all headers (`@SQ`) are identical across
+the samples and creates a header sam file. The output of this rule is 
+`<output_directory>_header.sam`.
+- `prep_sam`: Extracts barcodes of interest from given `AnnData` objects 
+and creates sam files containing filtered reads based on the extracted barcodes.
+The output of this rule is `<output_directory>/sam/<sample>_<celltype>.sam`.
+- `create_sample_celltype_bam`: Creates bam files by consolidating sam files (for
+the header and filtered reads) by sample and celltype. The output of this rule is 
+`<output_directory>/bam/sample/<sample>_<celltype>_sorted.bam`.
+- `create_group_celltype_bam`: Creates bam files by consolidating sam files (for
+the header and filtered reads) by group and celltype (e.g. disease, treatment, etc).
+This output of this rule is `<output_directory>/bam/group/<group>_<celltype>_sorted.bam`.
+- `extract_junctions`: Captures splicing junctions from filtered bam files using
+[`regtools extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/).
+The output of this rule is `<output_directory>/bed/sample/<sample>_celltype.junc`,
+which is in the [BED12 format](https://genome.ucsc.edu/FAQ/FAQformat.html#format1).
+- `prep_juncfiles`: Creates a text file consisting of paths to all input junction 
+files. The output of this rule is `<output_directory>/juncfiles.txt`.
+- `count_junctions`: Counts the number of junctions across the input samples or 
+groups using LeafCutter.
 
 ## Downstream analyses
 
 Downstream differential splicing (DS) analysis is conducted using the *LeafCutter*
-package in R. Refer to the following
+package in R. Refer to the following resources for more information about
+*LeafCutter*:
+
+- [Li et al., 2018](https://www.nature.com/articles/s41588-017-0004-9)
+- [LeafCutter Documentation](https://davidaknowles.github.io/leafcutter/index.html)
+- [LeafCutter GitHub](https://github.com/davidaknowles/leafcutter)
+
