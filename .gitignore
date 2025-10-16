@@ -9,3 +9,5 @@ input/
 *.html
 *.pdf
 leafcutter/
+*ds/
+*figure/
