@@ -32,16 +32,24 @@ Refer to the following resources for technical details:
 library(tidyverse)
 library(optparse)
 library(ggplot2)
-# library(leafcutter)
+library(leafcutter)
+library(reticulate)
 
 set.seed(1772)
+# use_python("../../../lcenv/bin/python", required=TRUE)
+# use_condaenv('../../../lcenv', required=TRUE)
 source('../config/helpers.R')
+```
+
+```{python ppackages}
+import subprocess
+import os
 ```
 
 ```{r config}
 
 # --------------------------------------------------------------------------------
-# This chunk specifies input paths and variables
+# This chunk specifies input paths and variables in R
 # --------------------------------------------------------------------------------
 
 # Path to input matrix
@@ -49,6 +57,9 @@ mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts
 
 # Path to metadata table
 meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Path to leafcutter wrapper script
+lc_wrapper <- "../../../leafcutter/scripts/leafcutter_ds.R"
 
 # Path to output directory
 out_dir <- "ds"
@@ -197,6 +208,10 @@ of variance explained by each principal component is indicated in the axes label
 
 ```{r run_pca, results='asis'}
 
+# --------------------------------------------------------------------------------
+# This chunk performs PCA
+# --------------------------------------------------------------------------------
+
 for (subset in c('SampleID', names(factor_groups))) {
 
     cat('###', subset, '{.tabset}\n\n')
@@ -236,10 +251,24 @@ for (subset in c('SampleID', names(factor_groups))) {
 
 ```
 
+# DS analysis
 
-```{r save_meta_tables}
+DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and confounders. 
+An explanatory variable is a non-artifact factor that we anticipate is associated with changes in the number of
+splicing junctions. Confounders are technical artifacts that often result in changes in the readout. 
+
+```{r save_group_tables, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk creates grouptables for DS analysis using leafcutter
+# --------------------------------------------------------------------------------
+
+tb_list <- list()
+
+cat("The following variables are tested:")
 
 for (c in contrast_cols) {
+    cat(paste0("- *Explanatory variable* = ", c, ", *Confounder*: ", confounder_cols, "\n"))
     # Slice the metadata frame
     df <- meta[, c('samplename', c, confounder_cols)]
     # Reorder rows
@@ -251,16 +280,41 @@ for (c in contrast_cols) {
     # - Ensure the first column corresponds to samplenames that are column names of the count matrix
     # - Ensure the second column corresponds to a pairwise contrast
     # - Ensure that the third column is optional and corresponds to confounder
+    table_path <- paste0(out_dir, "/", c, '_groups.txt')
     write.table(df,
-                paste0("../results/junction_counts/", c, '_groups.txt'),
+                table_path,
                 sep="\t",
                 quote=FALSE,
                 col.names=FALSE, 
                 row.names=FALSE)
 
+    tb_list[[c]] <- table_path
 }
+```
+
+```{python run_ds_analysis, eval=FALSE}
+
+# --------------------------------------------------------------------------------
+# This chunk runs DS analysis
+# --------------------------------------------------------------------------------
+
+
+counts="results/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
+groupfile1="results/junction_counts/status_groups.txt"
+groupfile2="results/junction_counts/celltype_groups.txt"
+
+../../leafcutter/scripts/leafcutter_ds.R \
+    --num_threads 4 \
+    $counts \
+    $groupfile1 && \
+    mkdir file1 && \
+    mv *.txt file1/. 
+
 ```
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
 ```
+
+
+
