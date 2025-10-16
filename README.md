@@ -6,9 +6,14 @@ which were previously determined.
 
 ## Package installation
 
-Packages required for this analysis are listed in the `requirements.txt` file. The `env.archived.yaml` file shows 
-package versions used for the current analysis. Install packages using [Conda](https://docs.conda.io/projects/conda/en/stable/)
-package manager.
+Packages are mainly managed using [Conda](https://docs.conda.io/projects/conda/en/stable/).
+The current analysis uses two conda environments, as listed below:
+
+- ``env``: Required for Snakemake. Refer to `env.archived.yaml` for packages used
+in the current workflow.
+- ``lcenv``: Required for downstream analysis in R. Refer to `lcenv.archived.yaml` 
+for packages used in the current workflow. Note that this environment includes 
+pacckages installed in R, outside of Conda.
 
 ## Input datasets
 
@@ -24,11 +29,11 @@ Ensure the following files are prepared in the input directory.
 The current analysis uses Snakemake, which runs each step in a pipeline. All commands and configurations
 are designed to be executed within a Snakemake pipeline.
 
-## Configuration
+### Configuration
 
 Configure analysis options using the `config.yaml` file, as demonstrated below:
 
-### Sampletable
+#### Sampletable
 
 The following keys are configured in the sampletable:
 
@@ -45,7 +50,7 @@ The following keys are configured in the sampletable:
 sampletable: "path/to/metadata.csv"
 ```
 
-### Reference fasta
+#### Reference fasta
 
 This is required to identify the strandness of sequencing reads when extracting
 splicing junctions. Specify the reference fasta file you used to run 
@@ -55,7 +60,7 @@ splicing junctions. Specify the reference fasta file you used to run
 fasta: "../../input/thalamus_excitatory/genome.fa"
 ```
 
-### Columns of interest
+#### Columns of interest
 
 Your columns of interest in the sampletable are configured here. Refer to the 
 following summary:
@@ -78,7 +83,7 @@ bam_col: 'bam' # column for paths to bam files
 celltype_col: 'celltype'  # column for celltype (leave '' to skip this option)
 ```
 
-### All metadata columns
+#### All metadata columns
 
 Oftentimes, the input sampletable contains many columns that are not necessarily informative 
 at this point. This key configures column names that will be filtered for the current analysis.
@@ -101,7 +106,7 @@ all_cols:
   - 'study_specific_disease_specific'
 ```
 
-### Barcodes
+#### Barcodes
 
 Barcodes are required to filter celltypes of interest. Note that this workflow 
 is designed to use the [*AnnData*](https://anndata.readthedocs.io/en/stable/)
@@ -116,7 +121,7 @@ adata:
   ExNeu2: "../../input/thalamus_excitatory/ExNeu2_FOR_DEG.h5ad"
 ```
 
-### Paths to input and output directories
+#### Paths to input and output directories
 
 Set paths to directories containing input BAM files (`possorted_genome_bam.bam`) and all output files,
 using the `bam_dir` and `outdir` keys.
@@ -130,7 +135,7 @@ bam_dir: '../../input/thalamus_excitatory/bam'
 outdir: "results"
 ```
 
-### Genes of interest
+#### Genes of interest
 
 Sequencing reads for genes of interest will retain in the output BAM file. Specify 
 the `genes` key to your genes of interest.
@@ -143,7 +148,7 @@ genes:
   - 'UNC13A'
 ```
 
-### Analysis name
+#### Analysis name
 
 This will be used as the prefix of the output file name for the junction count
 matrix.
@@ -151,3 +156,10 @@ matrix.
 ```yaml
 analysis: 'thalamus_excitatory'
 ```
+
+###
+
+## Downstream analyses
+
+Downstream differential splicing (DS) analysis is conducted using the *LeafCutter*
+package in R. Refer to the following
