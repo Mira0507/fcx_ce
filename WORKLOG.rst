@@ -659,11 +659,21 @@ fcx_ce
 
 @Mira0507
 
+- conda env ``lc_env`` updated
+    - ``r-heatmaply``
+    - ``r-pheatmap``
+
 - Run downstream differential splicing (DS) analysis using leafcutter
     - conda env: ``lc_env``
-    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - scripts:
+        - ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+        - ``workflow/thalamus_excitatory/config/helpers.R``
     - references: 
         - https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-3--differential-intron-excision-analysis
         - https://github.com/davidaknowles/leafcutter/blob/master/scripts/leafcutter_ds.R
-
+    - notes
+        - import input counts and metadata tables
+        - run preliminary QC across the samples
+        - installation was incomplete for ``r-leafcutter``. it's not loaded in Rmd nor 
+          executed in terminal. I need to reinstall the package.
 
