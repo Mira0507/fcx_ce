@@ -36,8 +36,6 @@ library(leafcutter)
 library(reticulate)
 
 set.seed(1772)
-# use_python("../../../lcenv/bin/python", required=TRUE)
-# use_condaenv('../../../lcenv', required=TRUE)
 source('../config/helpers.R')
 ```
 
@@ -292,23 +290,30 @@ for (c in contrast_cols) {
 }
 ```
 
-```{python run_ds_analysis, eval=FALSE}
+```{python run_ds_analysis}
 
 # --------------------------------------------------------------------------------
 # This chunk runs DS analysis
 # --------------------------------------------------------------------------------
 
+for c in r.contrast_cols:
+    cmd = [
+        r.lc_wrapper,
+        "--num_threads 4",
+        r.mtx_path,
+        r.tb_list[c],
+        "&&",
+        "mv",
+        "leafcutter_ds_cluster_significance.txt",
+        f"{r.out_dir}/{c}_cluster_significance.txt",
+        "&&",
+        "mv",
+        "leafcutter_ds_effect_sizes.txt",
+        f"{r.out_dir}/{c}_effect_sizes.txt",
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
 
-counts="results/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
-groupfile1="results/junction_counts/status_groups.txt"
-groupfile2="results/junction_counts/celltype_groups.txt"
-
-../../leafcutter/scripts/leafcutter_ds.R \
-    --num_threads 4 \
-    $counts \
-    $groupfile1 && \
-    mkdir file1 && \
-    mv *.txt file1/. 
 
 ```
 
