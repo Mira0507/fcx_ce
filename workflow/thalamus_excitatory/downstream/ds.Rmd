@@ -216,7 +216,8 @@ for (subset in c('SampleID', names(factor_groups))) {
     cat('###', subset, '{.tabset}\n\n')
 
     # Run PCA
-    colData <- meta[, c('samplename', subset)]
+    cols_selected <- unique(c('samplename', 'celltype', subset))
+    colData <- meta[, cols_selected]
     pca <- prcomp(t(counts + 0.1),
                   center=TRUE,
                   scale=FALSE)
@@ -235,10 +236,10 @@ for (subset in c('SampleID', names(factor_groups))) {
                            ~paste0("PC ", .x, " (", var_exp[.x], "%)"))
 
     # Clean input data frame for plotting
-    plot_df <- df[, c('samplename', paste0("PC", 1:2), subset)]
+    plot_df <- df[, c('samplename', paste0("PC", 1:2), cols_selected)]
 
     # Plot PCA
-    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset)) +
+    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset, shape='celltype')) +
         theme_bw() +
         geom_point(size=3, alpha=0.7) +
         xlab(axis_titles[1]) +
