@@ -771,3 +771,13 @@ fcx_ce
     - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
 
 - update ``README.md``
+
+
+2025-10-17
+----------
+
+@Mira0507
+
+- update DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
