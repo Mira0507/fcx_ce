@@ -1,0 +1,396 @@
+---
+title: "Differential splicing analysis"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct differential splicing (DS) analysis
+using [LeafCutter](https://www.nature.com/articles/s41588-017-0004-9).
+
+Refer to the following resources for technical details:
+
+- [Documentation](https://davidaknowles.github.io/leafcutter/index.html)
+- [Differential Splicing](https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-3--differential-intron-excision-analysis)
+- [GitHub LeafCutter](https://github.com/davidaknowles/leafcutter)
+- [R demo script](https://github.com/davidaknowles/leafcutter/blob/master/scripts/leafcutter_ds.R)
+
+```{r libraries}
+library(tidyverse)
+library(optparse)
+library(ggplot2)
+library(leafcutter)
+library(reticulate)
+library(parallel)
+
+set.seed(1772)
+source('../config/helpers.R')
+```
+
+```{python ppackages}
+import subprocess
+import os
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrix
+mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
+
+# Path to metadata table
+meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Path to leafcutter wrapper script
+lc_wrapper <- "../../../leafcutter/scripts/leafcutter_ds.R"
+
+# Path to output directory
+out_dir <- "ds"
+if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    celltype=c('ExNeu1', 'ExNeu2'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c('Control-Marsan',
+                                      'Control-Biogen',
+                                      'Control-Mathys',
+                                      'FTD-Marsan',
+                                      'FTD-Biogen',
+                                      'AD-Mathys'),
+    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Marsan_ExNeu2',
+                                      'Control-Biogen_ExNeu1',
+                                      'Control-Biogen_ExNeu2',
+                                      'Control-Mathys_ExNeu1',
+                                      'Control-Mathys_ExNeu2',
+                                      'FTD-Marsan_ExNeu1',
+                                      'FTD-Marsan_ExNeu2',
+                                      'FTD-Biogen_ExNeu1',
+                                      'FTD-Biogen_ExNeu2',
+                                      'AD-Mathys_ExNeu1',
+                                      'AD-Mathys_ExNeu2')
+)
+
+# Specify metadata columns used for pairwise comparisons
+contrast_cols <- c('status', 'celltype')
+
+# Specify metadata columns used as confounding factors
+confounder_cols <- c('study')
+```
+
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads. Briefly, reads in
+cellranger-generated bam files (e.g. `possorted_genome_bam.bam`) were filtered by the following
+celltypes: *ExNeu1* and *ExNeu2*. Subsequent extraction of splicing junctions was conducted using the
+[`regtools junctions extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) 
+command. The resulting junctions were counted using
+[`leafcutter_cluster_regtools.py`](https://github.com/davidaknowles/leafcutter/blob/master/clustering/leafcutter_cluster_regtools.py), a wrapper script provided by LeafCutter, following 
+[LeafCutter's Intron clustering instructions](https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-2--intron-clustering).
+
+We import the output count matrix for splicing junctions and the associated metadata 
+for the current analysis.
+
+```{r import_input, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input files. This chunk may require manual work to clean 
+# the metadata table.
+# --------------------------------------------------------------------------------
+
+# Import count matrix
+counts <- read.table(mtx_path, header=TRUE, check.names=FALSE)
+
+# Prep metadata table
+meta <- data.frame(samplename=colnames(counts)) %>%
+    separate(samplename,
+             c('SampleID', 'celltype'),
+             sep="_",
+             remove=FALSE) %>%
+    left_join(read.csv(meta_path), by="SampleID") %>%
+    mutate(study_disease_specific_celltype=paste0(study_specific_disease_specific,
+                                                  "_",
+                                                  celltype)) %>%
+    select(-path) %>%
+    unique()
+
+
+# Ensure to have rownames identical to column names in the count matrix
+rownames(meta) <- meta$samplename
+meta <- meta[colnames(counts),]
+
+# Convert columns of interest into factor
+for (c in names(factor_groups)) {
+    meta[[c]] <- factor(meta[[c]], levels=factor_groups[[c]])
+}
+
+# Slice columns of interest in the full metadata table
+meta_core <- meta[, names(factor_groups)]
+
+# Break if missing values were introduced to your metadata columns of interest
+if (any(is.na(meta_core))) {
+    stop(paste0("Missing values were found in the following metadata columns: ",
+                names(factor_groups)
+        )) 
+}
+
+cat('## All samples\n\n')
+DT::datatable(meta[, c('samplename', 'SampleID', names(factor_groups))])
+
+cat('\n\n## N\n\n')
+DT::datatable(
+    meta %>%
+        group_by(study_specific_disease_specific) %>%
+        summarize(N=n())
+)
+```
+
+# Sample similarity and QC
+
+## Clustered heatmap
+
+In the current QC, heatmap is used to visualize hierarchical clustering of pairwise distances between samples. 
+Darker blue means less distant (i.e. more similar) based on log2-transformed counts. In general we expect 
+to see replicates clustering together and separation of treatments.
+
+
+```{r sample_heatmap, results='asis', fig.width=12, fig.height=12}
+
+# --------------------------------------------------------------------------------
+# This chunk generates sample similarity heatmap
+# --------------------------------------------------------------------------------
+
+# Prep a distance matrix
+sampleDistsMatrix <- as.matrix(dist(t(log2(counts + 0.1))))
+if (!identical(rownames(sampleDistsMatrix), colnames(counts))) {
+    rownames(sampleDistsMatrix) <- colnames(counts)
+}
+
+# Set color to be displayed
+colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
+
+# Print heatmap
+pheatmap::pheatmap(
+    sampleDistsMatrix,
+    scale='none',
+    color=colors,
+    annotation=meta_core,
+    show_rownames=FALSE,
+    show_colnames=FALSE
+)
+```
+
+## PCA {.tabset}
+
+Another way of looking at sample clustering is principal components analysis (PCA). Each axis
+does not have units, rather, it represents the dimensions along which the samples vary the most. The amount 
+of variance explained by each principal component is indicated in the axes label.
+
+```{r run_pca, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk performs PCA
+# --------------------------------------------------------------------------------
+
+for (subset in c('SampleID', names(factor_groups))) {
+
+    cat('###', subset, '{.tabset}\n\n')
+
+    # Run PCA
+    colData <- meta[, c('samplename', subset)]
+    pca <- prcomp(t(counts + 0.1),
+                  center=TRUE,
+                  scale=FALSE)
+
+    # Calculate variance explained by PC
+    var_exp <- round(pca$sdev^2/sum(pca$sdev^2) * 100, 2)
+
+    # Prep input data frame for plotting
+    df <- pca$x[,1:2] %>%
+        as.data.frame() %>%
+        rownames_to_column('samplename') %>%
+        left_join(colData, by='samplename')
+
+    # Prep titles for axes
+    axis_titles <- map_chr(1:2,
+                           ~paste0("PC ", .x, " (", var_exp[.x], "%)"))
+
+    # Clean input data frame for plotting
+    plot_df <- df[, c('samplename', paste0("PC", 1:2), subset)]
+
+    # Plot PCA
+    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset)) +
+        theme_bw() +
+        geom_point(size=3, alpha=0.7) +
+        xlab(axis_titles[1]) +
+        ylab(axis_titles[2])
+
+    subchunkify(paste0("PCA_", subset), input="plot", width=8, height=6)
+    cat('\n\n')
+}
+
+```
+
+# DS analysis
+
+DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and confounders. 
+An explanatory variable is a non-artifact factor that we anticipate is associated with changes in the number of
+splicing junctions. Confounders are technical artifacts that often result in changes in the readout. 
+
+```{r save_group_tables, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk creates grouptables for DS analysis using leafcutter
+# --------------------------------------------------------------------------------
+
+tb_list <- list()
+
+cat("The following variables are tested:")
+
+for (c in contrast_cols) {
+    cat(paste0("- *Explanatory variable* = ", c, ", *Confounder*: ", confounder_cols, "\n"))
+    # Slice the metadata frame
+    df <- meta[, c('samplename', c, confounder_cols)]
+    # Reorder rows
+    df <- df[order(df[[c]]),]
+
+    # Save as a tab-separated file
+    # NOTE: 
+    # - Omit both row names and column names
+    # - Ensure the first column corresponds to samplenames that are column names of the count matrix
+    # - Ensure the second column corresponds to a pairwise contrast
+    # - Ensure that the third column is optional and corresponds to confounder
+    table_path <- paste0(out_dir, "/", c, '_groups.txt')
+    write.table(df,
+                table_path,
+                sep="\t",
+                quote=FALSE,
+                col.names=FALSE, 
+                row.names=FALSE)
+
+    tb_list[[c]] <- table_path
+}
+```
+
+```{python run_ds_analysis}
+
+# --------------------------------------------------------------------------------
+# This chunk runs DS analysis
+# --------------------------------------------------------------------------------
+
+for c in r.contrast_cols:
+    cmd = [
+        r.lc_wrapper,
+        "--num_threads 4",
+        r.mtx_path,
+        r.tb_list[c],
+        "&&",
+        "mv",
+        "leafcutter_ds_cluster_significance.txt",
+        f"{r.out_dir}/{c}_cluster_significance.txt",
+        "&&",
+        "mv",
+        "leafcutter_ds_effect_sizes.txt",
+        f"{r.out_dir}/{c}_effect_sizes.txt",
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+
+```
+
+## Links to result tables
+
+LeafCutter generates two tab-separated files: `cluster_significance.txt` and `effect_sizes.txt`.
+
+- `cluster_significance.txt`: This shows per cluster p-values for there being differential intron 
+  excision between the two groups tested with the following metrics:
+    - `status`: whether this cluster was a) successfully tested b) not tested for some reason 
+      (e.g. too many introns) c) there was an error during testing
+    - `loglr`: log likelihood ratio between the null model (no difference between the groups) 
+      and alternative (there is a difference)
+    - `df`: degrees of freedom, equal to the number of introns in the cluster minus one 
+      (assuming two groups)
+    - `p`: raw p-value under the asymptotic Chi-squared distribution.
+    - `cluster`: junction cluster ID
+    - `p.adjust`: false discovery rate (FDR) calculated using the Benjamini-Hochberg (BH) method.
+
+- `effect_sizes.txt`: This shows per intron effect sizes between the groups with the following metrics:
+    - `intron`: chromosome:intron_start:intron_end:cluster_id
+    - `logef`: log effect size fitted by LeafCutter
+    - `<condition1>`: fitted usage proportion in condition 1 (control group)
+    - `<condition2>`: fitted usage proportion in condition 2 (experimental group)
+    - `deltapsi`: the difference in usage proportion (condition 2 - condition 1). Note that in general 
+      this will have the same sign as the log effect size but in some cases the sign may change 
+      as a result of larger changes for other introns in the cluster.
+
+```{r output_tables, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk provides links to result tables
+# --------------------------------------------------------------------------------
+
+# Create a list for result 
+path_list <- lapply(contrast_cols, function(c) {
+    list(
+        significance=paste0(out_dir, "/", c, "_cluster_significance.txt"),
+        effectsize=paste0(out_dir, "/", c, "_effect_sizes.txt")
+    )
+}) %>%
+set_names(contrast_cols)
+
+# Prep links to result tables
+path_df <- data.frame(link=unlist(path_list)) %>%
+    rownames_to_column('category') %>%
+    separate(category, c('explanatory_variable', 'table')) %>%
+    mutate(link=paste("[", link, "](", link, ")"))
+knitr::kable(path_df)
+```
+
+## Exploration of result tables {.tabset}
+
+```{r display_tables, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk prints result tables
+# --------------------------------------------------------------------------------
+
+# Print result tables
+for (name in names(path_list)) {
+    # Retrieve result tables
+    lst <- path_list[[name]] %>%
+        map(read.table, header=TRUE, sep="\t")
+    cat('###', name, '{.tabset}\n\n')
+    cat('#### Significance table\n\n')
+    df <- lst[['significance']]
+    subchunkify(paste0(name, "_sig"))
+    cat('#### Effect size table\n\n')
+    df <- lst[['effectsize']]
+    subchunkify(paste0(name, "_eff"))
+}
+```
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+

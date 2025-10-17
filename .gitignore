@@ -6,3 +6,8 @@ input/
 ._.DS_Store
 *logs/
 *.snakemake/
+*.html
+*.pdf
+leafcutter/
+*ds/
+*figure/

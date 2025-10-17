@@ -652,3 +652,132 @@ fcx_ce
           conda env was not needed to run this rule.
 
 - ``README.md`` updated
+
+
+2025-10-15
+----------
+
+@Mira0507
+
+- conda env ``lc_env`` updated
+    - ``r-heatmaply``
+    - ``r-pheatmap``
+
+- Run downstream differential splicing (DS) analysis using leafcutter
+    - conda env: ``lc_env``
+    - scripts:
+        - ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+        - ``workflow/thalamus_excitatory/config/helpers.R``
+    - references: 
+        - https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-3--differential-intron-excision-analysis
+        - https://github.com/davidaknowles/leafcutter/blob/master/scripts/leafcutter_ds.R
+    - notes
+        - import input counts and metadata tables
+        - run preliminary QC across the samples
+        - installation was incomplete for ``r-leafcutter``. it's not loaded in Rmd nor 
+          executed in terminal. I need to reinstall the ``lc_env`` environment using 
+          ``lc_env.archived.yaml``.
+
+- reinstall ``lc_env`` conda env using ``lc_env.archived.yaml``
+
+.. code-block:: bash
+
+   $ mamba create --file lc_env.archived.yaml -p ./lc_env
+
+- clone the leafcutter repository 
+
+.. code-block:: bash
+
+   $ git clone https://github.com/davidaknowles/leafcutter
+
+
+2025-10-16
+----------
+
+@Mira0507
+
+- reinstall conda env ``lcenv`` for the leafcutter package
+
+    - procedure
+        - install required packages in ``lcenv_requirements.yaml`` based on
+          https://github.com/davidaknowles/leafcutter/issues/265#issuecomment-2913566822
+
+        .. code-block:: bash
+
+            $ mamba create --file lcenv_requirements.yaml -p ./lcenv
+
+        - ``devtools::install_github("davidaknowles/leafcutter/leafcutter", upgrade = "never")``
+          did not work in R. do what's done in 
+          https://github.com/davidaknowles/leafcutter/issues/265#issuecomment-3163837112. 
+          install dependencies that are not installed in R using conda 
+          with the ``freeze-installed`` parameter to prevent unwanted updates. 
+
+        - build a package from source as instructed by 
+          https://davidaknowles.github.io/leafcutter/articles/Installation.html#from-source.
+
+        .. code-block:: bash
+
+            $ git clone https://github.com/davidaknowles/leafcutter
+            $ cd leafcutter
+            $ R CMD INSTALL --build leafcutter
+            # Ran into error messages requiring to install additional dependencies...
+
+        - install additional dependencies required by the error using conda except
+          for the ``TailRank`` package. install ``TailRank`` in R as shown below:
+
+        .. code-block:: r
+
+            $ install.packages("TailRank", repos="http://R-Forge.R-project.org")
+
+        - rebuild leafcutter
+
+        .. code-block:: bash
+
+            $ R CMD INSTALL --build leafcutter
+
+        - install additional packages
+            - ``r-tidyverse``
+            - ``r-reticulate``
+            - ``r-pheatmap``
+            - ``r-plotly``
+
+    - notes
+        - finally the ``leafcutter`` package is loaded in R
+        - the following testing script ran error-free in ``workflow/thalamus_excitatory``:
+
+        .. code-block:: bash
+
+            #!/bin/bash
+
+            counts="results/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
+            groupfile1="results/junction_counts/status_groups.txt"
+
+            ../../leafcutter/scripts/leafcutter_ds.R \
+                --num_threads 4 \
+                $counts \
+                $groupfile1 && \
+                mkdir file1 && \
+                mv *.txt file1/.
+
+            ../../leafcutter/scripts/leafcutter_ds.R \
+                --num_threads 4 \
+                $counts \
+                $groupfile2 && \
+                mkdir file2 && \
+                mv *.txt file2/.
+
+- run DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+
+- update ``README.md``
+
+
+2025-10-17
+----------
+
+@Mira0507
+
+- update DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
