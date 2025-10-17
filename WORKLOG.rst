@@ -781,3 +781,9 @@ fcx_ce
 - update DS analysis
     - conda env: ``lcenv``
     - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes:
+        - DS result tables are linked and displayed, along with the summary
+          of metrics
+        - sample PCA plots are updated with different dot shapes representing
+          celltypes
+
