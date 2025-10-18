@@ -787,3 +787,79 @@ fcx_ce
         - sample PCA plots are updated with different dot shapes representing
           celltypes
 
+
+2025-10-18
+----------
+
+@Mira0507
+
+- run celltype-wise analysis
+    - config:
+        - ExNeu1: ``workflow/thalamus_excitatory/config/config_ExNeu1.yaml``
+        - ExNeu2: ``workflow/thalamus_excitatory/config/config_ExNeu2.yaml``
+    - output directories
+        - ExNeu1: ``workflow/thalamus_excitatory/results_ExNeu1``
+        - ExNeu2: ``workflow/thalamus_excitatory/results_ExNeu2``
+    - notes:
+        - the number of samples for celltype-wise analysis doesn't 
+          necessarily match the number of samples for both celltypes
+
+        .. code-block:: bash
+
+            # ExNeu1
+            Job stats:
+            job                           count
+            --------------------------  -------
+            all                               1
+            count_junctions                   1
+            create_group_celltype_bam         6
+            create_header                     1
+            create_sample_celltype_bam       82
+            extract_junctions                82
+            prep_juncfiles                    1
+            prep_sam                         82
+            total                           256
+
+            # ExNeu2
+            Job stats:
+            job                           count
+            --------------------------  -------
+            all                               1
+            count_junctions                   1
+            create_group_celltype_bam         6
+            create_header                     1
+            create_sample_celltype_bam       92
+            extract_junctions                92
+            prep_juncfiles                    1
+            prep_sam                         92
+            total                           286
+
+            # All
+            tats:
+            job                           count
+            --------------------------  -------
+            all                               1
+            count_junctions                   1
+            create_group_celltype_bam        12
+            create_header                     1
+            create_sample_celltype_bam      186
+            extract_junctions               186
+            prep_juncfiles                    1
+            prep_sam                        186
+            total                           574
+
+        - the following samples don't contain ExNeu1 (11 samples)
+            - Control6
+            - FTLD-GRN3
+            - FTLD-GRN6
+            - FTLD-GRN9
+            - 4571-T
+            - 6025-T
+            - 6203-T
+            - 7024-T
+            - 5166-T
+            - 6863-T
+            - D19-12375
+        - the following samples don't contain ExNeu2 (1 sample)
+            - D19-12369
+
