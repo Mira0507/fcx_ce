@@ -93,7 +93,10 @@ factor_groups <- list(
 contrast_cols <- c('status', 'celltype')
 
 # Specify metadata columns used as confounding factors
-confounder_cols <- c('study')
+confounder_cols <- list(
+    status=c('study', 'celltype'),
+    celltype=c('study', 'status')
+)
 ```
 
 
@@ -253,9 +256,9 @@ for (subset in c('SampleID', names(factor_groups))) {
 
 # DS analysis
 
-DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and confounders. 
-An explanatory variable is a non-artifact factor that we anticipate is associated with changes in the number of
-splicing junctions. Confounders are technical artifacts that often result in changes in the readout. 
+DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and 
+confounders/covariates. An explanatory variable is a non-artifact factor that we anticipate 
+is associated with changes in the number of splicing junctions.
 
 ```{r save_group_tables, results='asis'}
 
@@ -265,12 +268,17 @@ splicing junctions. Confounders are technical artifacts that often result in cha
 
 tb_list <- list()
 
-cat("The following variables are tested:")
+cat("The current analysis accounted for the following variables:")
 
 for (c in contrast_cols) {
-    cat(paste0("- *Explanatory variable* = ", c, ", *Confounder*: ", confounder_cols, "\n"))
+    c_cols <- confounder_cols[[c]]
+    cat(paste0("- *Explanatory variable* = ",
+               c,
+               ",
+               *Confounders/covariates*: ", paste(c_cols, collapse=", "),
+               "\n"))
     # Slice the metadata frame
-    df <- meta[, c('samplename', c, confounder_cols)]
+    df <- meta[, c('samplename', c, confounder_cols[[c]])]
     # Reorder rows
     df <- df[order(df[[c]]),]
 
