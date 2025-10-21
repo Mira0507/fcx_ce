@@ -863,3 +863,32 @@ fcx_ce
         - the following samples don't contain ExNeu2 (1 sample)
             - D19-12369
 
+
+2025-10-20
+----------
+
+@Mira0507
+
+- update DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes
+        - updated explanatory variable, confounding factors, 
+          and covariates as summarized below:
+            - explanatory = status, confounders/covariates = study, celltype
+            - explanatory = celltype, confounders/covariates = study, status
+        - chr8:79611433:79636802:clu_1_+ ended up being an FDR below 0.001
+          for both contrasts
+        - chunks to create input files for leafviz added, in progress
+          (instructions found in 
+          https://davidaknowles.github.io/leafcutter/articles/Visualization.html)
+
+- run DS analysis on ExNeu1 and ExNeu2
+    - conda env: ``lcenv``
+    - scripts: 
+        - ``workflow/thalamus_excitatory/downstream/ds_ExNeu1.Rmd``
+        - ``workflow/thalamus_excitatory/downstream/ds_ExNeu2.Rmd``
+    - notes
+        - only R scripts are prepared without proceeding with further steps
+          within each script
+
