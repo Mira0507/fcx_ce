@@ -1,0 +1,208 @@
+---
+title: "Differential splicing analysis"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct differential splicing (DS) analysis
+using [LeafCutter](https://www.nature.com/articles/s41588-017-0004-9).
+
+Refer to the following resources for technical details:
+
+- [Documentation](https://davidaknowles.github.io/leafcutter/index.html)
+- [Differential Splicing](https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-3--differential-intron-excision-analysis)
+- [GitHub LeafCutter](https://github.com/davidaknowles/leafcutter)
+- [R demo script](https://github.com/davidaknowles/leafcutter/blob/master/scripts/leafcutter_ds.R)
+
+```{r libraries}
+library(tidyverse)
+library(optparse)
+library(ggplot2)
+library(leafcutter)
+library(reticulate)
+library(parallel)
+
+set.seed(1772)
+source('../config/helpers.R')
+```
+
+```{python ppackages}
+import subprocess
+import os
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrix
+mtx_path <- "../results_ExNeu1/junction_counts/thalamus_excitatory_perind_numers.counts.gz"
+
+# Path to metadata table
+meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Path to leafcutter wrapper script
+lc_wrapper <- "../../../leafcutter/scripts/leafcutter_ds.R"
+
+# Path to output directory
+out_dir <- "ds_ExNeu1"
+if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c('Control-Marsan',
+                                      'Control-Biogen',
+                                      'Control-Mathys',
+                                      'FTD-Marsan',
+                                      'FTD-Biogen',
+                                      'AD-Mathys'),
+    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Biogen_ExNeu1',
+                                      'Control-Mathys_ExNeu1',
+                                      'FTD-Marsan_ExNeu1',
+                                      'FTD-Biogen_ExNeu1',
+                                      'AD-Mathys_ExNeu1')
+)
+
+# Specify metadata columns used for pairwise comparisons
+contrast_cols <- c('status')
+
+# Specify metadata columns used as confounding factors
+confounder_cols <- list(
+    status=c('study')
+)
+```
+
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads. Briefly, reads in
+cellranger-generated bam files (e.g. `possorted_genome_bam.bam`) were filtered by the following
+celltypes: *ExNeu1* and *ExNeu2*. Subsequent extraction of splicing junctions was conducted using the
+[`regtools junctions extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) 
+command. The resulting junctions were counted using
+[`leafcutter_cluster_regtools.py`](https://github.com/davidaknowles/leafcutter/blob/master/clustering/leafcutter_cluster_regtools.py), a wrapper script provided by LeafCutter, following 
+[LeafCutter's Intron clustering instructions](https://davidaknowles.github.io/leafcutter/articles/Usage.html#step-2--intron-clustering).
+
+We import the output count matrix for splicing junctions and the associated metadata 
+for the current analysis.
+
+```{r import_input, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input files. This chunk may require manual work to clean 
+# the metadata table.
+# --------------------------------------------------------------------------------
+
+# Import count matrix
+counts <- read.table(mtx_path, header=TRUE, check.names=FALSE)
+
+# Prep metadata table
+meta <- data.frame(samplename=colnames(counts)) %>%
+    separate(samplename,
+             c('SampleID', 'celltype'),
+             sep="_",
+             remove=FALSE) %>%
+    left_join(read.csv(meta_path), by="SampleID") %>%
+    mutate(study_disease_specific_celltype=paste0(study_specific_disease_specific,
+                                                  "_",
+                                                  celltype)) %>%
+    select(-path) %>%
+    unique()
+
+
+# Ensure to have rownames identical to column names in the count matrix
+rownames(meta) <- meta$samplename
+meta <- meta[colnames(counts),]
+
+# Convert columns of interest into factor
+for (c in names(factor_groups)) {
+    meta[[c]] <- factor(meta[[c]], levels=factor_groups[[c]])
+}
+
+# Slice columns of interest in the full metadata table
+meta_core <- meta[, names(factor_groups)]
+
+# Break if missing values were introduced to your metadata columns of interest
+if (any(is.na(meta_core))) {
+    stop(paste0("Missing values were found in the following metadata columns: ",
+                names(factor_groups)
+        )) 
+}
+
+
+cat('## All samples\n\n')
+DT::datatable(meta[, c('samplename', 'SampleID', names(factor_groups))])
+
+cat('\n\n## N\n\n')
+DT::datatable(
+    meta %>%
+        group_by(study_specific_disease_specific) %>%
+        summarize(N=n())
+)
+```
+
+# Sample similarity and QC
+
+## Clustered heatmap
+
+In the current QC, heatmap is used to visualize hierarchical clustering of pairwise distances between samples. 
+Darker blue means less distant (i.e. more similar) based on log2-transformed counts. In general we expect 
+to see replicates clustering together and separation of treatments.
+
+
+```{r sample_heatmap, results='asis', fig.width=12, fig.height=12}
+
+# --------------------------------------------------------------------------------
+# This chunk generates sample similarity heatmap
+# --------------------------------------------------------------------------------
+
+# Prep a distance matrix
+sampleDistsMatrix <- as.matrix(dist(t(log2(counts + 0.1))))
+if (!identical(rownames(sampleDistsMatrix), colnames(counts))) {
+    rownames(sampleDistsMatrix) <- colnames(counts)
+}
+
+# Set color to be displayed
+colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
+
+# Print heatmap
+pheatmap::pheatmap(
+    sampleDistsMatrix,
+    scale='none',
+    color=colors,
+    annotation=meta_core,
+    show_rownames=FALSE,
+    show_colnames=FALSE
+)
+```
+
+
+
+
+
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+

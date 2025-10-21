@@ -11,3 +11,5 @@ input/
 leafcutter/
 *ds/
 *figure/
+results*/
+*.sif

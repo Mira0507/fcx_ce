@@ -57,12 +57,25 @@ mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts
 # Path to metadata table
 meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
 
-# Path to leafcutter wrapper script
-lc_wrapper <- "../../../leafcutter/scripts/leafcutter_ds.R"
+# Path to leafcutter wrapper scripts
+lc_path <- "../../../leafcutter"
+
+lc_wrapper <- file.path(lc_path, "scripts/leafcutter_ds.R")
+gtf2lc <- file.path(lc_path, "leafviz/gtf2leafcutter.pl")
+lc_prepvis <- file.path(lc_path, "leafviz/prepare_results.R")
+gtf <- "../../../input/thalamus_excitatory/genes.gtf.gz"
 
 # Path to output directory
 out_dir <- "ds"
-if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Path to annotation code directory
+annocode_dir <- file.path(out_dir, "annotation")
+annocode_path <- paste0(annocode_dir, "/annotation") # DO NOT CHANGE THIS PATH!!
+
+# Create directories if missing
+for (p in c(out_dir, annocode_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
 
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
@@ -93,7 +106,10 @@ factor_groups <- list(
 contrast_cols <- c('status', 'celltype')
 
 # Specify metadata columns used as confounding factors
-confounder_cols <- c('study')
+confounder_cols <- list(
+    status=c('study', 'celltype'),
+    celltype=c('study', 'status')
+)
 ```
 
 
@@ -216,7 +232,8 @@ for (subset in c('SampleID', names(factor_groups))) {
     cat('###', subset, '{.tabset}\n\n')
 
     # Run PCA
-    colData <- meta[, c('samplename', subset)]
+    cols_selected <- unique(c('samplename', 'celltype', subset))
+    colData <- meta[, cols_selected]
     pca <- prcomp(t(counts + 0.1),
                   center=TRUE,
                   scale=FALSE)
@@ -235,10 +252,10 @@ for (subset in c('SampleID', names(factor_groups))) {
                            ~paste0("PC ", .x, " (", var_exp[.x], "%)"))
 
     # Clean input data frame for plotting
-    plot_df <- df[, c('samplename', paste0("PC", 1:2), subset)]
+    plot_df <- df[, c('samplename', paste0("PC", 1:2), cols_selected)]
 
     # Plot PCA
-    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset)) +
+    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset, shape='celltype')) +
         theme_bw() +
         geom_point(size=3, alpha=0.7) +
         xlab(axis_titles[1]) +
@@ -252,9 +269,9 @@ for (subset in c('SampleID', names(factor_groups))) {
 
 # DS analysis
 
-DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and confounders. 
-An explanatory variable is a non-artifact factor that we anticipate is associated with changes in the number of
-splicing junctions. Confounders are technical artifacts that often result in changes in the readout. 
+DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and 
+confounders/covariates. An explanatory variable is a non-artifact factor that we anticipate 
+is associated with changes in the number of splicing junctions.
 
 ```{r save_group_tables, results='asis'}
 
@@ -264,12 +281,17 @@ splicing junctions. Confounders are technical artifacts that often result in cha
 
 tb_list <- list()
 
-cat("The following variables are tested:")
+cat("The current analysis accounted for the following variables:")
 
 for (c in contrast_cols) {
-    cat(paste0("- *Explanatory variable* = ", c, ", *Confounder*: ", confounder_cols, "\n"))
+    c_cols <- confounder_cols[[c]]
+    cat(paste0("- *Explanatory variable* = ",
+               c,
+               ",
+               *Confounders/covariates*: ", paste(c_cols, collapse=", "),
+               "\n"))
     # Slice the metadata frame
-    df <- meta[, c('samplename', c, confounder_cols)]
+    df <- meta[, c('samplename', c, confounder_cols[[c]])]
     # Reorder rows
     df <- df[order(df[[c]]),]
 
@@ -342,13 +364,45 @@ LeafCutter generates two tab-separated files: `cluster_significance.txt` and `ef
       this will have the same sign as the log effect size but in some cases the sign may change 
       as a result of larger changes for other introns in the cluster.
 
-```{r output_tables, results='asis'}
+Note that only intron clusters that pass filtering criteria are tested in the current analysis.
+
+```{python gtf2lc}
+
+# --------------------------------------------------------------------------------
+# This chunk creates lists of exons, introns, and splice sites using GTF
+# This step is required to annotate output intron clusters
+# Refer to the following reference:
+# https://davidaknowles.github.io/leafcutter/articles/Visualization.html#prerequisites-annotation-data
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+# Specify output files
+annotation_files =[
+    "all_exons.txt.gz",
+    "all_introns.bed.gz",
+    "fiveprime.bed.gz",
+    "threeprime.bed.gz"]
+
+# Create the output files if missing
+if os.listdir(r.annocode_dir).sort() != annotation_files.sort():
+    cmd = [
+        r.gtf2lc,
+        "-o",
+        r.annocode_path,
+        r.gtf
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+```
+
+```{r link_output_tables, result='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk provides links to result tables
 # --------------------------------------------------------------------------------
 
-# Create a list for result 
+# Create a list for paths to result tables
 path_list <- lapply(contrast_cols, function(c) {
     list(
         significance=paste0(out_dir, "/", c, "_cluster_significance.txt"),
@@ -365,19 +419,76 @@ path_df <- data.frame(link=unlist(path_list)) %>%
 knitr::kable(path_df)
 ```
 
+
 ## Exploration of result tables {.tabset}
 
-```{r display_tables, results='asis'}
+```{r print_result_tables, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk prints result tables
 # --------------------------------------------------------------------------------
 
-# Print result tables
-for (name in names(path_list)) {
-    # Retrieve result tables
-    lst <- path_list[[name]] %>%
-        map(read.table, header=TRUE, sep="\t")
+# Import saved result tables
+res_list <- lapply(path_list, function(l) {
+    lapply(l, function(p) read.table(p, header=TRUE, sep="\t"))
+})
+
+exon_list <- list()
+
+for (name in names(res_list)) {
+
+    # Prep data frames for genomic coordinates across introns and exons
+    intron_input <- res_list[[name]][['effectsize']] %>%
+        dplyr::select(intron) %>%
+        separate(intron, c('chr', 'start', 'end', 'cluster_id'), sep=":")
+    exon_input <- read.table(
+        file.path(annocode_dir, 'annotation_all_exons.txt.gz'),
+            sep="\t",
+            header=TRUE)
+    exon_list[[name]] <- exon_input
+
+    gene_df <- mclapply(sort(unique(intron_input$chr)), function(chr) {
+        # Subset each input by chromosome
+        intron_chr <- intron_input[intron_input$chr == chr,]
+        exon_chr <- exon_input[exon_input$chr == chr,]
+        
+        # Prep 3' matches
+        exon_chr$temp <- as.character(exon_chr$start)
+        intron_chr$temp <- as.character(intron_chr$end)
+        threeprime_matches <- inner_join(intron_chr, exon_chr, by="temp")
+
+        # Prep 5' matches
+        exon_chr$temp <- as.character(exon_chr$end)
+        intron_chr$temp <- as.character(intron_chr$start)
+        fiveprime_matches <- inner_join(intron_chr, exon_chr, by="temp")
+
+        # Consolidate both types of matches
+        all_matches <- rbind(threeprime_matches, fiveprime_matches)[, 
+            c('chr.x', 'cluster_id', 'gene_name')] %>%
+            unique()
+
+        # Return NULL if matching clusters are not found
+        if (nrow(all_matches) == 0) return(NULL)
+
+        # Clean the output data frame
+        all_matches <- all_matches %>%
+            mutate(clu=paste0(chr.x, ":", cluster_id)) %>%
+            dplyr::rename(chr=chr.x)
+        return(all_matches)
+        }) %>%
+        bind_rows()
+
+    # Aggregate gene names for clusters matching multiple genes
+    clu_df <- gene_df %>%
+        group_by(clu) %>%
+        summarize(genes=paste(gene_name, collapse=", ")) %>%
+        as.data.frame()
+
+    # Add gene names to the output significance table
+    res_list[[name]][['significance']] <- res_list[[name]][['significance']] %>%
+        left_join(clu_df, by=c('cluster'='clu'))
+
+    lst <- res_list[[name]]
     cat('###', name, '{.tabset}\n\n')
     cat('#### Significance table\n\n')
     df <- lst[['significance']]
@@ -385,8 +496,129 @@ for (name in names(path_list)) {
     cat('#### Effect size table\n\n')
     df <- lst[['effectsize']]
     subchunkify(paste0(name, "_eff"))
+    }
+```
+
+# Visualization
+
+Visualization is conducted using
+[LeafViz](https://davidaknowles.github.io/leafcutter/articles/Visualization.html).
+
+
+```{python prep_visualization}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares input files for leafviz
+# --------------------------------------------------------------------------------
+
+rdata_dic = {}
+
+for c in r.contrast_cols:
+    rdata_out = f"{r.out_dir}/{c}.RData"
+    cmd = [
+        r.lc_prepvis,
+        "--meta_data_file",
+        r.tb_list[c],
+        f"--code {c}",
+        r.mtx_path,
+        r.path_list[c]['significance'],
+        r.path_list[c]['effectsize'],
+        r.annocode_path,
+        f"-o {rdata_out}"
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+    rdata_dic[c] = rdata_out
+
+```
+
+## Overview {.tabset}
+
+```{r open_rdata, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays overview of visualization
+# --------------------------------------------------------------------------------
+
+
+# Retrieve objects before loading LeafViz RData
+prev_vec <- ls()
+
+# Load saved RDatas
+for (c in names(py$rdata_dic)) { 
+    load(py$rdata_dic[[c]])
+    cat('\n\n###', c, '{.tabset}\n\n')
+
+    # Retrieve objects after loading LeafViz RData
+    current_vec <- ls()
+
+    # Filter tables of interest
+    new_vec <- setdiff(current_vec, prev_vec)
+
+    # new_vec
+     # [1] "annotation_code" "cluster_ids"     "cluster_summary" "clusters"       
+     # [5] "code"            "exons_table"     "intron_summary"  "introns"        
+     # [9] "introns_to_plot" "rdata"           "sample_table"   
+
+    # Remove unwanted R objects/variables
+    new_vec <- new_vec[! new_vec %in% c("exons_table",
+                                        "annotation_code",
+                                        "cluster_ids",
+                                        "code",
+                                        "o",
+                                        "df",
+                                        "prev_vec", 
+                                        "current_vec",
+                                        "rdata")]
+
+    # new_vec
+    # [1] "cluster_summary" "clusters"        "intron_summary"  "introns"        
+    # [5] "introns_to_plot" "sample_table"   
+
+    for (o in new_vec) {
+        cat('####', o, '\n\n')
+        df <- get(o)
+        if (is.data.frame(df)) {
+            subchunkify(paste0("vis_", o))
+            cat('\n\n')
+        } else {
+            print(knitr::kable(df))
+        }
+    }
+    rm(new_vec)
+}
+
+```
+
+
+## Sashimi plots {.tabset}
+
+```{r print_sashimi, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays sashimi plots
+# --------------------------------------------------------------------------------
+
+for (name in names(py$rdata_dic)) {
+    cat('###', name, '{.tabset}\n\n')
+    load(py$rdata_dic[[name]])
+    for (c in unique(cluster_ids)) {
+        cat('####', c, '\n\n')
+        p <- make_cluster_plot_ms(cluster_to_plot=c,
+                                  exons_table=exons_table,
+                                  meta=meta,
+                                  counts=counts,
+                                  cluster_ids=cluster_ids,
+                                  introns=introns,
+                                  snp_pos=NA) %>%
+            grid::grid.draw()
+        print(p)
+        cat('\n\n')
+    }
 }
 ```
+
+
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
