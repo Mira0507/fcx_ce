@@ -67,12 +67,15 @@ gtf <- "../../../input/thalamus_excitatory/genes.gtf.gz"
 
 # Path to output directory
 out_dir <- "ds"
-if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
 
 # Path to annotation code directory
 annocode_dir <- file.path(out_dir, "annotation")
-if (! dir.exists(annocode_dir)) { dir.create(annocode_dir, recursive=TRUE) }
-annocode_path <- paste0(annocode_dir, "/annotation")
+annocode_path <- paste0(annocode_dir, "/annotation") # DO NOT CHANGE THIS PATH!!
+
+# Create directories if missing
+for (p in c(out_dir, annocode_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
 
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
@@ -361,13 +364,45 @@ LeafCutter generates two tab-separated files: `cluster_significance.txt` and `ef
       this will have the same sign as the log effect size but in some cases the sign may change 
       as a result of larger changes for other introns in the cluster.
 
-```{r output_tables, results='asis'}
+Note that only intron clusters that pass filtering criteria are tested in the current analysis.
+
+```{python gtf2lc}
+
+# --------------------------------------------------------------------------------
+# This chunk creates lists of exons, introns, and splice sites using GTF
+# This step is required to annotate output intron clusters
+# Refer to the following reference:
+# https://davidaknowles.github.io/leafcutter/articles/Visualization.html#prerequisites-annotation-data
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+# Specify output files
+annotation_files =[
+    "all_exons.txt.gz",
+    "all_introns.bed.gz",
+    "fiveprime.bed.gz",
+    "threeprime.bed.gz"]
+
+# Create the output files if missing
+if os.listdir(r.annocode_dir).sort() != annotation_files.sort():
+    cmd = [
+        r.gtf2lc,
+        "-o",
+        r.annocode_path,
+        r.gtf
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+```
+
+```{r link_output_tables, result='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk provides links to result tables
 # --------------------------------------------------------------------------------
 
-# Create a list for result 
+# Create a list for paths to result tables
 path_list <- lapply(contrast_cols, function(c) {
     list(
         significance=paste0(out_dir, "/", c, "_cluster_significance.txt"),
@@ -384,19 +419,73 @@ path_df <- data.frame(link=unlist(path_list)) %>%
 knitr::kable(path_df)
 ```
 
+
 ## Exploration of result tables {.tabset}
 
-```{r display_tables, results='asis'}
+```{r print_result_tables, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk prints result tables
 # --------------------------------------------------------------------------------
 
-# Print result tables
-for (name in names(path_list)) {
-    # Retrieve result tables
-    lst <- path_list[[name]] %>%
-        map(read.table, header=TRUE, sep="\t")
+# Import saved result tables
+res_list <- lapply(path_list, function(l) {
+    lapply(l, function(p) read.table(p, header=TRUE, sep="\t"))
+})
+
+for (name in names(res_list)) {
+
+    # Prep data frames for genomic coordinates across introns and exons
+    intron_input <- res_list[[name]][['effectsize']] %>%
+        dplyr::select(intron) %>%
+        separate(intron, c('chr', 'start', 'end', 'cluster_id'), sep=":")
+    exon_input <- read.table(
+        file.path(annocode_dir, 'annotation_all_exons.txt.gz'),
+            sep="\t",
+            header=TRUE)
+
+    gene_df <- mclapply(sort(unique(intron_input$chr)), function(chr) {
+        # Subset each input by chromosome
+        intron_chr <- intron_input[intron_input$chr == chr,]
+        exon_chr <- exon_input[exon_input$chr == chr,]
+        
+        # Prep 3' matches
+        exon_chr$temp <- as.character(exon_chr$start)
+        intron_chr$temp <- as.character(intron_chr$end)
+        threeprime_matches <- inner_join(intron_chr, exon_chr, by="temp")
+
+        # Prep 5' matches
+        exon_chr$temp <- as.character(exon_chr$end)
+        intron_chr$temp <- as.character(intron_chr$start)
+        fiveprime_matches <- inner_join(intron_chr, exon_chr, by="temp")
+
+        # Consolidate both types of matches
+        all_matches <- rbind(threeprime_matches, fiveprime_matches)[, 
+            c('chr.x', 'cluster_id', 'gene_name')] %>%
+            unique()
+
+        # Return NULL if matching clusters are not found
+        if (nrow(all_matches) == 0) return(NULL)
+
+        # Clean the output data frame
+        all_matches <- all_matches %>%
+            mutate(clu=paste0(chr.x, ":", cluster_id)) %>%
+            dplyr::rename(chr=chr.x)
+        return(all_matches)
+        }) %>%
+        bind_rows()
+
+    # Aggregate gene names for clusters matching multiple genes
+    clu_df <- gene_df %>%
+        group_by(clu) %>%
+        summarize(genes=paste(gene_name, collapse=", ")) %>%
+        as.data.frame()
+
+    # Add gene names to the output significance table
+    res_list[[name]][['significance']] <- res_list[[name]][['significance']] %>%
+        left_join(clu_df, by=c('cluster'='clu'))
+
+    lst <- res_list[[name]]
     cat('###', name, '{.tabset}\n\n')
     cat('#### Significance table\n\n')
     df <- lst[['significance']]
@@ -404,7 +493,7 @@ for (name in names(path_list)) {
     cat('#### Effect size table\n\n')
     df <- lst[['effectsize']]
     subchunkify(paste0(name, "_eff"))
-}
+    }
 ```
 
 # Visualization
@@ -412,34 +501,6 @@ for (name in names(path_list)) {
 Visualization is conducted using
 [LeafViz](https://davidaknowles.github.io/leafcutter/articles/Visualization.html).
 
-```{python gtf2lc}
-
-# --------------------------------------------------------------------------------
-# This chunk creates lists of exons, introns, and splice sites using GTF
-# Refer to the following reference:
-# https://davidaknowles.github.io/leafcutter/articles/Visualization.html#prerequisites-annotation-data
-# --------------------------------------------------------------------------------
-
-# Specify output files
-annotation_files =[
-    "_all_exons.txt.gz", 
-    "_all_introns.bed.gz",
-    "_fiveprime.bed.gz",
-    "_threeprime.bed.gz"]
-annotation_files = [f"{r.annocode_path}/{f}" for f in annotation_files]
-
-# Create the output files if missing
-if 
-cmd = [
-    r.gtf2lc,
-    "-o",
-    r.annocode_path,
-    r.gtf
-]
-
-cmd = " ".join(cmd)
-subprocess.run(cmd, shell=True)
-```
 
 ```{python prep_visualization}
 
@@ -456,7 +517,8 @@ for c in r.contrast_cols:
         r.mtx_path,
         r.path_list[c]['significance'],
         r.path_list[c]['effectsize'],
-        r.annocode_dir
+        r.annocode_dir,
+        f"-o {r.out_dir}/{c}.RData"
     ]
     cmd = " ".join(cmd)
     subprocess.run(cmd, shell=True)
