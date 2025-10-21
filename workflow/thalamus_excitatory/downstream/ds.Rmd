@@ -508,7 +508,10 @@ Visualization is conducted using
 # This chunk prepares input files for leafviz
 # --------------------------------------------------------------------------------
 
+rdata_dic = {}
+
 for c in r.contrast_cols:
+    rdata_out = f"{r.out_dir}/{c}.RData"
     cmd = [
         r.lc_prepvis,
         "--meta_data_file",
@@ -517,11 +520,69 @@ for c in r.contrast_cols:
         r.mtx_path,
         r.path_list[c]['significance'],
         r.path_list[c]['effectsize'],
-        r.annocode_dir,
-        f"-o {r.out_dir}/{c}.RData"
+        r.annocode_path,
+        f"-o {rdata_out}"
     ]
     cmd = " ".join(cmd)
     subprocess.run(cmd, shell=True)
+    rdata_dic[c] = rdata_out
+
+```
+
+## Overview {.tabset}
+
+```{r open_rdata, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays overview of visualization
+# --------------------------------------------------------------------------------
+
+# Retrieve objects before loading LeafViz RData
+prev_vec <- ls()
+
+# Load saved RDatas
+for (c in names(py$rdata_dic)) { 
+    load(py$rdata_dic[[c]])
+    cat('\n\n###', c, '{.tabset}\n\n')
+
+    # Retrieve objects after loading LeafViz RData
+    current_vec <- ls()
+
+    # Filter tables of interest
+    new_vec <- setdiff(current_vec, prev_vec)
+
+    # new_vec
+     # [1] "annotation_code" "cluster_ids"     "cluster_summary" "clusters"       
+     # [5] "code"            "exons_table"     "intron_summary"  "introns"        
+     # [9] "introns_to_plot" "rdata"           "sample_table"   
+
+    # Remove unwanted R objects/variables
+    new_vec <- new_vec[! new_vec %in% c("exons_table",
+                                        "annotation_code",
+                                        "cluster_ids",
+                                        "code",
+                                        "o",
+                                        "df",
+                                        "prev_vec", 
+                                        "current_vec",
+                                        "rdata")]
+
+    # new_vec
+    # [1] "cluster_summary" "clusters"        "intron_summary"  "introns"        
+    # [5] "introns_to_plot" "sample_table"   
+
+    for (o in new_vec) {
+        cat('####', o, '\n\n')
+        df <- get(o)
+        if (is.data.frame(df)) {
+            subchunkify(paste0("vis_", o))
+            cat('\n\n')
+        } else {
+            print(knitr::kable(df))
+        }
+    }
+    rm(new_vec)
+}
 
 ```
 
