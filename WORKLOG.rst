@@ -892,3 +892,44 @@ fcx_ce
         - only R scripts are prepared without proceeding with further steps
           within each script
 
+
+2025-10-21
+----------
+
+@Mira0507
+
+- install leafviz
+    - install in R with the ``lcenv`` env activated
+      (``remotes::install_github("jackhump/leafviz")``)
+
+    - download leafviz docker image file
+        - docker hub: https://hub.docker.com/r/naotokubota/leafviz
+        - steps
+
+        .. code-block:: bash
+
+            # On an interactive node
+            $ module load apptainer
+            $ apptainer pull --force docker://naotokubota/leafviz:1.0
+            $ ls | grep sif
+            leafviz_1.0.sif
+
+    - notes
+        - none of the methods worked well for visualization
+        - decided to use visualization wrapper functions with modifications
+            - ``leafcutter/leafcutter/R/make_cluster_plot.R``
+            - ``leafcutter/leafcutter/R/make_gene_plot.R``
+
+- visualize DS results
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes
+        - add gene symbols to DS result tables
+        - prepped RData for visualization using Shiny
+          (https://davidaknowles.github.io/leafcutter/articles/Visualization.html)
+        - the ``make_cluster_plot`` function was modified as ``make_cluster_plot_ms``
+          and added to ``workflow/thalamus_excitatory/config/helpers.R``
+        - sashimi plots added to the script using the ``make_cluster_plot_ms`` 
+          function.
+
+
