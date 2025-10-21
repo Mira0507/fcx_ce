@@ -433,6 +433,8 @@ res_list <- lapply(path_list, function(l) {
     lapply(l, function(p) read.table(p, header=TRUE, sep="\t"))
 })
 
+exon_list <- list()
+
 for (name in names(res_list)) {
 
     # Prep data frames for genomic coordinates across introns and exons
@@ -443,6 +445,7 @@ for (name in names(res_list)) {
         file.path(annocode_dir, 'annotation_all_exons.txt.gz'),
             sep="\t",
             header=TRUE)
+    exon_list[[name]] <- exon_input
 
     gene_df <- mclapply(sort(unique(intron_input$chr)), function(chr) {
         # Subset each input by chromosome
@@ -537,6 +540,7 @@ for c in r.contrast_cols:
 # This chunk displays overview of visualization
 # --------------------------------------------------------------------------------
 
+
 # Retrieve objects before loading LeafViz RData
 prev_vec <- ls()
 
@@ -585,6 +589,36 @@ for (c in names(py$rdata_dic)) {
 }
 
 ```
+
+
+## Sashimi plots {.tabset}
+
+```{r print_sashimi, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays sashimi plots
+# --------------------------------------------------------------------------------
+
+for (name in names(py$rdata_dic)) {
+    cat('###', name, '{.tabset}\n\n')
+    load(py$rdata_dic[[name]])
+    for (c in unique(cluster_ids)) {
+        cat('####', c, '\n\n')
+        p <- make_cluster_plot_ms(cluster_to_plot=c,
+                                  exons_table=exons_table,
+                                  meta=meta,
+                                  counts=counts,
+                                  cluster_ids=cluster_ids,
+                                  introns=introns,
+                                  snp_pos=NA) %>%
+            grid::grid.draw()
+        print(p)
+        cat('\n\n')
+    }
+}
+```
+
+
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
