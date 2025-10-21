@@ -593,6 +593,10 @@ for (c in names(py$rdata_dic)) {
 
 ## Sashimi plots {.tabset}
 
+Sashimi plots are displayed along with the mean usage of splicing junctions. Information
+about individual introns in each intron cluster is provided in the ``introns`` table 
+below the *Overview* section.
+
 ```{r print_sashimi, results='asis'}
 
 # --------------------------------------------------------------------------------
@@ -610,9 +614,8 @@ for (name in names(py$rdata_dic)) {
                                   counts=counts,
                                   cluster_ids=cluster_ids,
                                   introns=introns,
-                                  snp_pos=NA) %>%
-            grid::grid.draw()
-        print(p)
+                                  snp_pos=NA)
+        print(grid::grid.draw(p))
         cat('\n\n')
     }
 }
