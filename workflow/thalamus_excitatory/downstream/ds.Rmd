@@ -57,12 +57,22 @@ mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts
 # Path to metadata table
 meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
 
-# Path to leafcutter wrapper script
-lc_wrapper <- "../../../leafcutter/scripts/leafcutter_ds.R"
+# Path to leafcutter wrapper scripts
+lc_path <- "../../../leafcutter"
+
+lc_wrapper <- file.path(lc_path, "scripts/leafcutter_ds.R")
+gtf2lc <- file.path(lc_path, "leafviz/gtf2leafcutter.pl")
+lc_prepvis <- file.path(lc_path, "leafviz/prepare_results.R")
+gtf <- "../../../input/thalamus_excitatory/genes.gtf.gz"
 
 # Path to output directory
 out_dir <- "ds"
 if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Path to annotation code directory
+annocode_dir <- file.path(out_dir, "annotation")
+if (! dir.exists(annocode_dir)) { dir.create(annocode_dir, recursive=TRUE) }
+annocode_path <- paste0(annocode_dir, "/annotation")
 
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
@@ -395,6 +405,62 @@ for (name in names(path_list)) {
     df <- lst[['effectsize']]
     subchunkify(paste0(name, "_eff"))
 }
+```
+
+# Visualization
+
+Visualization is conducted using
+[LeafViz](https://davidaknowles.github.io/leafcutter/articles/Visualization.html).
+
+```{python gtf2lc}
+
+# --------------------------------------------------------------------------------
+# This chunk creates lists of exons, introns, and splice sites using GTF
+# Refer to the following reference:
+# https://davidaknowles.github.io/leafcutter/articles/Visualization.html#prerequisites-annotation-data
+# --------------------------------------------------------------------------------
+
+# Specify output files
+annotation_files =[
+    "_all_exons.txt.gz", 
+    "_all_introns.bed.gz",
+    "_fiveprime.bed.gz",
+    "_threeprime.bed.gz"]
+annotation_files = [f"{r.annocode_path}/{f}" for f in annotation_files]
+
+# Create the output files if missing
+if 
+cmd = [
+    r.gtf2lc,
+    "-o",
+    r.annocode_path,
+    r.gtf
+]
+
+cmd = " ".join(cmd)
+subprocess.run(cmd, shell=True)
+```
+
+```{python prep_visualization}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares input files for leafviz
+# --------------------------------------------------------------------------------
+
+for c in r.contrast_cols:
+    cmd = [
+        r.lc_prepvis,
+        "--meta_data_file",
+        r.tb_list[c],
+        f"--code {c}",
+        r.mtx_path,
+        r.path_list[c]['significance'],
+        r.path_list[c]['effectsize'],
+        r.annocode_dir
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+
 ```
 
 ```{r session_info, collapse=FALSE}
