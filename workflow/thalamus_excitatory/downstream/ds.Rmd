@@ -379,21 +379,25 @@ Note that only intron clusters that pass filtering criteria are tested in the cu
 
 # Specify output files
 annotation_files =[
-    "all_exons.txt.gz",
-    "all_introns.bed.gz",
-    "fiveprime.bed.gz",
-    "threeprime.bed.gz"]
+    "annotation_all_exons.txt.gz",
+    "annotation_all_introns.bed.gz",
+    "annotation_fiveprime.bed.gz",
+    "annotation_threeprime.bed.gz"]
 
-# Create the output files if missing
-if os.listdir(r.annocode_dir).sort() != annotation_files.sort():
+# Create annotation files if missing
+anno_current = sorted(os.listdir(r.annocode_dir))
+anno_wanted = sorted(annotation_files)
+if anno_current != anno_wanted:
     cmd = [
         r.gtf2lc,
+
         "-o",
         r.annocode_path,
         r.gtf
     ]
     cmd = " ".join(cmd)
     subprocess.run(cmd, shell=True)
+
 ```
 
 ```{r link_output_tables, result='asis'}
@@ -420,7 +424,7 @@ knitr::kable(path_df)
 ```
 
 
-## Exploration of result tables {.tabset}
+## Statistics {.tabset}
 
 ```{r print_result_tables, results='asis'}
 
@@ -499,11 +503,22 @@ for (name in names(res_list)) {
     }
 ```
 
-# Visualization
+## Annotation and visualization {.tabset}
 
 Visualization is conducted using
 [LeafViz](https://davidaknowles.github.io/leafcutter/articles/Visualization.html).
 
+The sashimi plots are generated for each intron cluster and represent the following metrics:
+
+- *Values (e.g. 0.93)*: The mean number of splice junctions per condition. These values are
+  normalized as a fraction of the total counts; the sum of all values per condition equals 1.
+- *Lines*: Lines connecting two genomic coordinates represent splice junctions. The width of these 
+  lines represents the normalized mean number of splice junctions, and their colors denote the
+  annotation. Red lines represent annotated junctions, while pink lines represent unannotated junctions.
+- *Rectangles*: Annotated exons from the same gene are represented by rectangles of the same color.
+
+Details about individual intron clusters and clusters within each intron are provided
+in tables on the following tabs.
 
 ```{python prep_visualization}
 
@@ -531,8 +546,6 @@ for c in r.contrast_cols:
     rdata_dic[c] = rdata_out
 
 ```
-
-## Overview {.tabset}
 
 ```{r open_rdata, results='asis'}
 
@@ -575,6 +588,20 @@ for (c in names(py$rdata_dic)) {
     # [1] "cluster_summary" "clusters"        "intron_summary"  "introns"        
     # [5] "introns_to_plot" "sample_table"   
 
+    cat('#### sashimi plots {.tabset}\n\n')
+    for (c in unique(cluster_ids)) {
+        cat('#####', c, '\n\n')
+        p <- make_cluster_plot_ms(cluster_to_plot=c,
+                                  exons_table=exons_table,
+                                  meta=meta,
+                                  counts=counts,
+                                  cluster_ids=cluster_ids,
+                                  introns=introns,
+                                  snp_pos=NA)
+        print(grid::grid.draw(p))
+        cat('\n\n')
+    }
+
     for (o in new_vec) {
         cat('####', o, '\n\n')
         df <- get(o)
@@ -590,38 +617,7 @@ for (c in names(py$rdata_dic)) {
 
 ```
 
-
-## Sashimi plots {.tabset}
-
-Sashimi plots are displayed along with the mean usage of splicing junctions. Information
-about individual introns in each intron cluster is provided in the ``introns`` table 
-below the *Overview* section.
-
-```{r print_sashimi, results='asis'}
-
-# --------------------------------------------------------------------------------
-# This chunk displays sashimi plots
-# --------------------------------------------------------------------------------
-
-for (name in names(py$rdata_dic)) {
-    cat('###', name, '{.tabset}\n\n')
-    load(py$rdata_dic[[name]])
-    for (c in unique(cluster_ids)) {
-        cat('####', c, '\n\n')
-        p <- make_cluster_plot_ms(cluster_to_plot=c,
-                                  exons_table=exons_table,
-                                  meta=meta,
-                                  counts=counts,
-                                  cluster_ids=cluster_ids,
-                                  introns=introns,
-                                  snp_pos=NA)
-        print(grid::grid.draw(p))
-        cat('\n\n')
-    }
-}
-```
-
-
+# Session info
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
