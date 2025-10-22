@@ -933,3 +933,19 @@ fcx_ce
           function.
 
 
+
+2025-10-22
+----------
+
+@Mira0507
+
+- visualize DS results
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes
+        - documentation added to the visualization section
+        - bugfix: the ``if`` statement fixed to create annotation files
+          properly in the ``gtf2lc`` chunk
+        - a separate title added to the session info so it's displayed
+          with any tabs in the previous section
+
