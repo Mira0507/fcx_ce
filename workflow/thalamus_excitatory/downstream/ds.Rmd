@@ -180,7 +180,40 @@ DT::datatable(
 )
 ```
 
-# Sample similarity and QC
+# Quality Control
+
+## Count distribution {.tabset}
+
+The number of splice junction counts are inspected across the samples and conditions of interest.
+
+```{r count_distribution, results='asis'}
+
+# Prep input data frame for boxplots
+sample_counts <- data.frame(sample=colnames(counts),
+                            counts=colSums(counts)) %>%
+    left_join(meta_core %>% rownames_to_column('sample'),
+              by='sample') %>%
+    mutate(counts=counts + 0.1)
+
+# Break if missing values are found
+if (sum(is.na(sample_counts)) > 0) {
+    stop("Missing values introduced to the `sample_counts` data frame!")
+}
+
+# Plot the distribution of counts
+for (name in colnames(meta_core)) {
+    cat('###', name, '{.tabset}\n\n')
+    p <- ggplot(sample_counts,
+                aes_string(x=name, y='counts', fill=name)) +
+        geom_boxplot(color='black', width=0.5) +
+        theme_bw() +
+        ylab("Log10 (Splice Junction Counts)") +
+        theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
+              axis.title.x=element_blank())
+    print(p)
+    cat('\n\n')
+}
+```
 
 ## Clustered heatmap
 
