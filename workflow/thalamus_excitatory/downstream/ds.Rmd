@@ -337,7 +337,7 @@ and magnitude of the influence of the variables. The angle between arrows indica
 between variables: a small angle means a positive correlation, a 90-degree angle means no correlation, 
 and a large, obtuse angle suggests a negative correlation.
 
-```{r biplots, results='asis', fig.height=8, fig.width=8}
+```{r biplot_intron, results='asis', fig.height=8, fig.width=8}
 
 # --------------------------------------------------------------------------------
 # This chunk creates biplots
@@ -370,6 +370,14 @@ for (c in colnames(meta_core)) {
     print(p)
     cat('\n\n')
 }
+```
+
+
+```{r biplot_condition, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates biplots
+# --------------------------------------------------------------------------------
 
 cat('### condition loadings {.tabset}\n\n')
 
@@ -711,6 +719,8 @@ for c in r.contrast_cols:
 # Retrieve objects before loading LeafViz RData
 prev_vec <- ls()
 
+coord_list <- list()
+
 # Load saved RDatas
 for (c in names(py$rdata_dic)) { 
     load(py$rdata_dic[[c]])
@@ -727,6 +737,8 @@ for (c in names(py$rdata_dic)) {
      # [5] "code"            "exons_table"     "intron_summary"  "introns"        
      # [9] "introns_to_plot" "rdata"           "sample_table"   
 
+    coord_list[[c]] <- introns_to_plot
+
     # Remove unwanted R objects/variables
     new_vec <- new_vec[! new_vec %in% c("exons_table",
                                         "annotation_code",
@@ -735,6 +747,7 @@ for (c in names(py$rdata_dic)) {
                                         "o",
                                         "df",
                                         "prev_vec", 
+                                        "coord_list",
                                         "current_vec",
                                         "rdata")]
 
@@ -770,6 +783,39 @@ for (c in names(py$rdata_dic)) {
 }
 
 ```
+
+# Junction BED files
+
+The BED files generated here contain the intron clusters tested in the current differential analysis.
+They are prepared for data exploration using IGV. When loaded as an expanded track, all tested intron
+clusters are displayed with the following label: `<chromosome>:<start>:<end>:<intron_cluster>`. 
+
+
+```{r create_bed}
+
+df <- data.frame()
+
+for (name in names(coord_list)) {
+    # 
+    c_df <- coord_list[[name]] %>%
+        dplyr::select(-middle) %>%
+        mutate(clu=paste0(chr, ":", start, ":", end, ":", clu))
+    bed <- file.path(out_dir, paste0(name, '_introns.bed'))
+    write.table(c_df,
+                file=bed,
+                sep="\t",
+                col.names=FALSE,
+                row.names=FALSE,
+                quote=FALSE)
+    df <- rbind(df, data.frame(comparison=name, bed=bed))
+}
+
+df %>%
+    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
+    knitr::kable()
+
+```
+ 
 
 # Session info
 
