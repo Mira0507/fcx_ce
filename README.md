@@ -194,3 +194,6 @@ package in R. Refer to the following resources for more information about
 - [LeafCutter GitHub](https://github.com/davidaknowles/leafcutter)
 
 ### DS analysis
+
+- `workflow/thalamus_excitatory/downstream/ds.Rmd`: differential splicing analysis
+comparing *patient vs control* and *ExNeu2 vs ExNeu1*.
