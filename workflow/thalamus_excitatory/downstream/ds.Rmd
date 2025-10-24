@@ -784,7 +784,7 @@ for (c in names(py$rdata_dic)) {
 
 ```
 
-# Junction BED files
+# BED files
 
 The BED files generated here contain the intron clusters tested in the current differential analysis.
 They are prepared for data exploration using IGV. When loaded as an expanded track, all tested intron
