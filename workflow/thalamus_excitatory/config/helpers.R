@@ -171,7 +171,7 @@ make_cluster_plot_ms <- function (cluster_to_plot,
     for (fancyVar in 1:length(groups)) {
         intron_meta$counts <- summary_func(y[groups[fancyVar] == x, , drop = F])
         intron_meta$prop <- intron_meta$counts
-        group_sample_size <- sum(groups[fancyVar] == x)
+        group_sample_size <- meta[meta$group == groups[fancyVar],] %>% nrow()
         elist <- lapply(1:nrow(intron_meta), function(i) {
             if (i%%2 == 1) 
               return(NULL)

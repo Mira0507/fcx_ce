@@ -32,6 +32,9 @@ Refer to the following resources for technical details:
 library(tidyverse)
 library(optparse)
 library(ggplot2)
+library(ggfortify)
+library(ggrepel)
+library(factoextra)
 library(leafcutter)
 library(reticulate)
 library(parallel)
@@ -180,7 +183,61 @@ DT::datatable(
 )
 ```
 
-# Sample similarity and QC
+# Quality Control
+
+## Count distribution {.tabset}
+
+The number of splice junction counts are inspected across the samples and conditions of interest.
+
+```{r count_distribution, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk inspects the number of junctions across the samples and conditions
+# --------------------------------------------------------------------------------
+
+# Prep input data frame for boxplots
+sample_counts <- data.frame(sample=colnames(counts),
+                            counts=colSums(counts)) %>%
+    left_join(meta_core %>% rownames_to_column('sample'),
+              by='sample')
+
+# Break if missing values are found
+if (sum(is.na(sample_counts)) > 0) {
+    stop("Missing values introduced to the `sample_counts` data frame!")
+}
+
+# Plot the distribution of counts
+for (name in colnames(meta_core)) {
+    cat('###', name, '\n\n')
+    p <- ggplot(sample_counts,
+                aes_string(x=name, y='counts', fill=name)) +
+        geom_boxplot(color='black', width=0.5) +
+        theme_bw() +
+        ylab("Splice Junction Counts") +
+        theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
+              axis.title.x=element_blank())
+    print(p)
+    cat('\n\n')
+}
+
+
+cat('### intron_cluster\n\n')
+
+# Prep input data frame for boxplot
+intron_counts <- data.frame(intron=rownames(counts),
+                            counts=rowSums(counts))
+intron_counts[['intron']] <- factor(intron_counts[['intron']],
+                                    levels=rownames(intron_counts))
+
+ggplot(intron_counts, 
+       aes(x=intron, y=counts, fill=intron)) +
+    geom_boxplot(color='black', width=0.5) +
+    theme_bw() +
+    ylab("Splice Junction Counts") +
+    scale_y_log10() +
+    theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
+          axis.title.x=element_blank())
+```
 
 ## Clustered heatmap
 
@@ -234,7 +291,7 @@ for (subset in c('SampleID', names(factor_groups))) {
     # Run PCA
     cols_selected <- unique(c('samplename', 'celltype', subset))
     colData <- meta[, cols_selected]
-    pca <- prcomp(t(counts + 0.1),
+    pca <- prcomp(t(log2(counts + 0.1)),
                   center=TRUE,
                   scale=FALSE)
 
@@ -255,7 +312,11 @@ for (subset in c('SampleID', names(factor_groups))) {
     plot_df <- df[, c('samplename', paste0("PC", 1:2), cols_selected)]
 
     # Plot PCA
-    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset, shape='celltype')) +
+    p <- ggplot(plot_df,
+                aes_string(x='PC1',
+                           y='PC2',
+                           color=subset,
+                           shape='celltype')) +
         theme_bw() +
         geom_point(size=3, alpha=0.7) +
         xlab(axis_titles[1]) +
@@ -265,6 +326,107 @@ for (subset in c('SampleID', names(factor_groups))) {
     cat('\n\n')
 }
 
+```
+
+## Biplots {.tabset}
+
+A biplot overlays a score plot with a loading plot. A biplot often aims to visualize the contribution
+of variables (e.g. introns) to the principal components. Arrows represent variables that are associated with
+individual data points and consist of direction and length; these components indicate the direction
+and magnitude of the influence of the variables. The angle between arrows indicates the correlation
+between variables: a small angle means a positive correlation, a 90-degree angle means no correlation, 
+and a large, obtuse angle suggests a negative correlation.
+
+```{r biplot_intron, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates biplots
+# --------------------------------------------------------------------------------
+
+# Run PCA
+pca_input <- t(log2(counts + 0.1))
+pca <- prcomp(pca_input,
+              center=TRUE,
+              scale=FALSE)
+
+# Prep metadata
+meta_aligned <- meta_core[rownames(pca$x),]
+
+cat('### intron loadings {.tabset}\n\n')
+
+# Create biplots
+for (c in colnames(meta_core)) {
+    cat('####', c, '\n\n')
+    p <- fviz_pca_biplot(pca,
+                         geom.ind="point",
+                         geom.var=c("arrow", "text"),
+                         col.ind=meta_aligned[[c]],
+                         addEllipse=TRUE,
+                         labelsize=3,
+                         legend.title=c,
+                         col.var="darkred",
+                         repel=TRUE) +
+    theme_bw()
+    print(p)
+    cat('\n\n')
+}
+```
+
+
+```{r biplot_condition, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates biplots
+# --------------------------------------------------------------------------------
+
+cat('### condition loadings {.tabset}\n\n')
+
+# Prep input for biplots visualizing condition loadings
+temp_df <- counts %>% 
+    rownames_to_column('intron') %>%
+    gather('samplename', 'counts', -intron) %>%
+    left_join(meta_core %>% rownames_to_column('samplename'),
+              by='samplename')
+
+# Create biplots visualizing loadings on individual conditions
+for (name in colnames(temp_df)[! colnames(temp_df) %in% c('intron', 'counts')]) {
+
+    cat('####', name, '\n\n')
+    # Prep input data frame
+    pca_input <- temp_df %>%
+        group_by_(name, 'intron') %>%
+        summarize(counts=sum(counts)) %>%
+        unique() %>%
+        spread(name, 'counts') %>%
+        column_to_rownames('intron') %>%
+        mutate_all(function(x) x + 0.1) %>%
+        log2()
+
+    # Run PCA
+    pca <- prcomp(pca_input,
+                  center=TRUE,
+                  scale=FALSE)
+    # Prep metadata
+    meta_aligned <- data.frame(intron=rownames(pca$x)) %>%
+        separate(intron,
+                 c('chr', 'start', 'end', 'cluster'),
+                 sep=":",
+                 remove=FALSE) %>%
+        mutate(cluster=paste0(chr, ":", cluster))
+    rownames(meta_aligned) <- meta_aligned[['intron']]
+
+    # Create a biplot
+    p <- fviz_pca_biplot(pca,
+                         geom.ind="point",
+                         geom.var=c("arrow", "text"),
+                         col.ind=meta_aligned[['cluster']],
+                         labelsize=3,
+                         col.var="darkred",
+                         repel=TRUE) +
+        theme_bw()
+    print(p)
+    cat('\n\n')
+}
 ```
 
 # DS analysis
@@ -379,21 +541,25 @@ Note that only intron clusters that pass filtering criteria are tested in the cu
 
 # Specify output files
 annotation_files =[
-    "all_exons.txt.gz",
-    "all_introns.bed.gz",
-    "fiveprime.bed.gz",
-    "threeprime.bed.gz"]
+    "annotation_all_exons.txt.gz",
+    "annotation_all_introns.bed.gz",
+    "annotation_fiveprime.bed.gz",
+    "annotation_threeprime.bed.gz"]
 
-# Create the output files if missing
-if os.listdir(r.annocode_dir).sort() != annotation_files.sort():
+# Create annotation files if missing
+anno_current = sorted(os.listdir(r.annocode_dir))
+anno_wanted = sorted(annotation_files)
+if anno_current != anno_wanted:
     cmd = [
         r.gtf2lc,
+
         "-o",
         r.annocode_path,
         r.gtf
     ]
     cmd = " ".join(cmd)
     subprocess.run(cmd, shell=True)
+
 ```
 
 ```{r link_output_tables, result='asis'}
@@ -420,7 +586,7 @@ knitr::kable(path_df)
 ```
 
 
-## Exploration of result tables {.tabset}
+## Statistics {.tabset}
 
 ```{r print_result_tables, results='asis'}
 
@@ -499,11 +665,22 @@ for (name in names(res_list)) {
     }
 ```
 
-# Visualization
+## Annotation and visualization {.tabset}
 
 Visualization is conducted using
 [LeafViz](https://davidaknowles.github.io/leafcutter/articles/Visualization.html).
 
+The sashimi plots are generated for each intron cluster and represent the following metrics:
+
+- *Values (e.g. 0.93)*: The mean number of splice junctions per condition. These values are
+  normalized as a fraction of the total counts; the sum of all values per condition equals 1.
+- *Lines*: Lines connecting two genomic coordinates represent splice junctions. The width of these 
+  lines represents the normalized mean number of splice junctions, and their colors denote the
+  annotation. Red lines represent annotated junctions, while pink lines represent unannotated junctions.
+- *Rectangles*: Annotated exons from the same gene are represented by rectangles of the same color.
+
+Details about individual intron clusters and clusters within each intron are provided
+in tables on the following tabs.
 
 ```{python prep_visualization}
 
@@ -532,8 +709,6 @@ for c in r.contrast_cols:
 
 ```
 
-## Overview {.tabset}
-
 ```{r open_rdata, results='asis'}
 
 # --------------------------------------------------------------------------------
@@ -543,6 +718,8 @@ for c in r.contrast_cols:
 
 # Retrieve objects before loading LeafViz RData
 prev_vec <- ls()
+
+coord_list <- list()
 
 # Load saved RDatas
 for (c in names(py$rdata_dic)) { 
@@ -560,6 +737,8 @@ for (c in names(py$rdata_dic)) {
      # [5] "code"            "exons_table"     "intron_summary"  "introns"        
      # [9] "introns_to_plot" "rdata"           "sample_table"   
 
+    coord_list[[c]] <- introns_to_plot
+
     # Remove unwanted R objects/variables
     new_vec <- new_vec[! new_vec %in% c("exons_table",
                                         "annotation_code",
@@ -568,12 +747,27 @@ for (c in names(py$rdata_dic)) {
                                         "o",
                                         "df",
                                         "prev_vec", 
+                                        "coord_list",
                                         "current_vec",
                                         "rdata")]
 
     # new_vec
     # [1] "cluster_summary" "clusters"        "intron_summary"  "introns"        
     # [5] "introns_to_plot" "sample_table"   
+
+    cat('#### sashimi plots {.tabset}\n\n')
+    for (c in unique(cluster_ids)) {
+        cat('#####', c, '\n\n')
+        p <- make_cluster_plot_ms(cluster_to_plot=c,
+                                  exons_table=exons_table,
+                                  meta=meta,
+                                  counts=counts,
+                                  cluster_ids=cluster_ids,
+                                  introns=introns,
+                                  snp_pos=NA)
+        print(grid::grid.draw(p))
+        cat('\n\n')
+    }
 
     for (o in new_vec) {
         cat('####', o, '\n\n')
@@ -590,35 +784,40 @@ for (c in names(py$rdata_dic)) {
 
 ```
 
+# BED files
 
-## Sashimi plots {.tabset}
+The BED files generated here contain the intron clusters tested in the current differential analysis.
+They are prepared for data exploration using IGV. When loaded as an expanded track, all tested intron
+clusters are displayed with the following label: `<chromosome>:<start>:<end>:<intron_cluster>`. 
 
-```{r print_sashimi, results='asis'}
 
-# --------------------------------------------------------------------------------
-# This chunk displays sashimi plots
-# --------------------------------------------------------------------------------
+```{r create_bed}
 
-for (name in names(py$rdata_dic)) {
-    cat('###', name, '{.tabset}\n\n')
-    load(py$rdata_dic[[name]])
-    for (c in unique(cluster_ids)) {
-        cat('####', c, '\n\n')
-        p <- make_cluster_plot_ms(cluster_to_plot=c,
-                                  exons_table=exons_table,
-                                  meta=meta,
-                                  counts=counts,
-                                  cluster_ids=cluster_ids,
-                                  introns=introns,
-                                  snp_pos=NA) %>%
-            grid::grid.draw()
-        print(p)
-        cat('\n\n')
-    }
+df <- data.frame()
+
+for (name in names(coord_list)) {
+    # 
+    c_df <- coord_list[[name]] %>%
+        dplyr::select(-middle) %>%
+        mutate(clu=paste0(chr, ":", start, ":", end, ":", clu))
+    bed <- file.path(out_dir, paste0(name, '_introns.bed'))
+    write.table(c_df,
+                file=bed,
+                sep="\t",
+                col.names=FALSE,
+                row.names=FALSE,
+                quote=FALSE)
+    df <- rbind(df, data.frame(comparison=name, bed=bed))
 }
+
+df %>%
+    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
+    knitr::kable()
+
 ```
+ 
 
-
+# Session info
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
