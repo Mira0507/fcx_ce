@@ -32,6 +32,9 @@ Refer to the following resources for technical details:
 library(tidyverse)
 library(optparse)
 library(ggplot2)
+library(ggfortify)
+library(ggrepel)
+library(factoextra)
 library(leafcutter)
 library(reticulate)
 library(parallel)
@@ -188,12 +191,15 @@ The number of splice junction counts are inspected across the samples and condit
 
 ```{r count_distribution, results='asis'}
 
+# --------------------------------------------------------------------------------
+# This chunk inspects the number of junctions across the samples and conditions
+# --------------------------------------------------------------------------------
+
 # Prep input data frame for boxplots
 sample_counts <- data.frame(sample=colnames(counts),
                             counts=colSums(counts)) %>%
     left_join(meta_core %>% rownames_to_column('sample'),
-              by='sample') %>%
-    mutate(counts=counts + 0.1)
+              by='sample')
 
 # Break if missing values are found
 if (sum(is.na(sample_counts)) > 0) {
@@ -202,17 +208,35 @@ if (sum(is.na(sample_counts)) > 0) {
 
 # Plot the distribution of counts
 for (name in colnames(meta_core)) {
-    cat('###', name, '{.tabset}\n\n')
+    cat('###', name, '\n\n')
     p <- ggplot(sample_counts,
                 aes_string(x=name, y='counts', fill=name)) +
         geom_boxplot(color='black', width=0.5) +
         theme_bw() +
-        ylab("Log10 (Splice Junction Counts)") +
+        ylab("Splice Junction Counts") +
         theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
               axis.title.x=element_blank())
     print(p)
     cat('\n\n')
 }
+
+
+cat('### intron_cluster\n\n')
+
+# Prep input data frame for boxplot
+intron_counts <- data.frame(intron=rownames(counts),
+                            counts=rowSums(counts))
+intron_counts[['intron']] <- factor(intron_counts[['intron']],
+                                    levels=rownames(intron_counts))
+
+ggplot(intron_counts, 
+       aes(x=intron, y=counts, fill=intron)) +
+    geom_boxplot(color='black', width=0.5) +
+    theme_bw() +
+    ylab("Splice Junction Counts") +
+    scale_y_log10() +
+    theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
+          axis.title.x=element_blank())
 ```
 
 ## Clustered heatmap
@@ -267,7 +291,7 @@ for (subset in c('SampleID', names(factor_groups))) {
     # Run PCA
     cols_selected <- unique(c('samplename', 'celltype', subset))
     colData <- meta[, cols_selected]
-    pca <- prcomp(t(counts + 0.1),
+    pca <- prcomp(t(log2(counts + 0.1)),
                   center=TRUE,
                   scale=FALSE)
 
@@ -288,7 +312,11 @@ for (subset in c('SampleID', names(factor_groups))) {
     plot_df <- df[, c('samplename', paste0("PC", 1:2), cols_selected)]
 
     # Plot PCA
-    p <- ggplot(plot_df, aes_string(x='PC1', y='PC2', color=subset, shape='celltype')) +
+    p <- ggplot(plot_df,
+                aes_string(x='PC1',
+                           y='PC2',
+                           color=subset,
+                           shape='celltype')) +
         theme_bw() +
         geom_point(size=3, alpha=0.7) +
         xlab(axis_titles[1]) +
@@ -298,6 +326,99 @@ for (subset in c('SampleID', names(factor_groups))) {
     cat('\n\n')
 }
 
+```
+
+## Biplots {.tabset}
+
+A biplot overlays a score plot with a loading plot. A biplot often aims to visualize the contribution
+of variables (e.g. introns) to the principal components. Arrows represent variables that are associated with
+individual data points and consist of direction and length; these components indicate the direction
+and magnitude of the influence of the variables. The angle between arrows indicates the correlation
+between variables: a small angle means a positive correlation, a 90-degree angle means no correlation, 
+and a large, obtuse angle suggests a negative correlation.
+
+```{r biplots, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates biplots
+# --------------------------------------------------------------------------------
+
+# Run PCA
+pca_input <- t(log2(counts + 0.1))
+pca <- prcomp(pca_input,
+              center=TRUE,
+              scale=FALSE)
+
+# Prep metadata
+meta_aligned <- meta_core[rownames(pca$x),]
+
+cat('### intron loadings {.tabset}\n\n')
+
+# Create biplots
+for (c in colnames(meta_core)) {
+    cat('####', c, '\n\n')
+    p <- fviz_pca_biplot(pca,
+                         geom.ind="point",
+                         geom.var=c("arrow", "text"),
+                         col.ind=meta_aligned[[c]],
+                         addEllipse=TRUE,
+                         labelsize=3,
+                         legend.title=c,
+                         col.var="darkred",
+                         repel=TRUE) +
+    theme_bw()
+    print(p)
+    cat('\n\n')
+}
+
+cat('### condition loadings {.tabset}\n\n')
+
+# Prep input for biplots visualizing condition loadings
+temp_df <- counts %>% 
+    rownames_to_column('intron') %>%
+    gather('samplename', 'counts', -intron) %>%
+    left_join(meta_core %>% rownames_to_column('samplename'),
+              by='samplename')
+
+# Create biplots visualizing loadings on individual conditions
+for (name in colnames(temp_df)[! colnames(temp_df) %in% c('intron', 'counts')]) {
+
+    cat('####', name, '\n\n')
+    # Prep input data frame
+    pca_input <- temp_df %>%
+        group_by_(name, 'intron') %>%
+        summarize(counts=sum(counts)) %>%
+        unique() %>%
+        spread(name, 'counts') %>%
+        column_to_rownames('intron') %>%
+        mutate_all(function(x) x + 0.1) %>%
+        log2()
+
+    # Run PCA
+    pca <- prcomp(pca_input,
+                  center=TRUE,
+                  scale=FALSE)
+    # Prep metadata
+    meta_aligned <- data.frame(intron=rownames(pca$x)) %>%
+        separate(intron,
+                 c('chr', 'start', 'end', 'cluster'),
+                 sep=":",
+                 remove=FALSE) %>%
+        mutate(cluster=paste0(chr, ":", cluster))
+    rownames(meta_aligned) <- meta_aligned[['intron']]
+
+    # Create a biplot
+    p <- fviz_pca_biplot(pca,
+                         geom.ind="point",
+                         geom.var=c("arrow", "text"),
+                         col.ind=meta_aligned[['cluster']],
+                         labelsize=3,
+                         col.var="darkred",
+                         repel=TRUE) +
+        theme_bw()
+    print(p)
+    cat('\n\n')
+}
 ```
 
 # DS analysis
