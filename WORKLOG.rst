@@ -949,3 +949,32 @@ fcx_ce
         - a separate title added to the session info so it's displayed
           with any tabs in the previous section
 
+
+2025-10-23
+----------
+
+@Mira0507
+
+- install packages in ``lcenv``
+    - ``r-factoextra``
+    - ``r-ggrepel``
+
+- Update DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes
+        - added the distribution of junction counts
+        - added biplots
+
+
+2025-10-24
+----------
+
+@Mira0507
+
+- Update DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes
+        - created BED files containing genomic coordinates for introns
+          tested in DS analysis
