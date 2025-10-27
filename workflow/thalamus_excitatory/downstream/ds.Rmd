@@ -38,6 +38,7 @@ library(factoextra)
 library(leafcutter)
 library(reticulate)
 library(parallel)
+library(yaml)
 
 set.seed(1772)
 source('../config/helpers.R')
@@ -59,6 +60,9 @@ mtx_path <- "../results/junction_counts/thalamus_excitatory_perind_numers.counts
 
 # Path to metadata table
 meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Path to Snakemake config
+snakemake_config <- "../config/config.yaml"
 
 # Path to leafcutter wrapper scripts
 lc_path <- "../../../leafcutter"
@@ -709,12 +713,11 @@ for c in r.contrast_cols:
 
 ```
 
-```{r open_rdata, results='asis'}
+```{r visualization, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk displays overview of visualization
 # --------------------------------------------------------------------------------
-
 
 # Retrieve objects before loading LeafViz RData
 prev_vec <- ls()
@@ -756,9 +759,9 @@ for (c in names(py$rdata_dic)) {
     # [5] "introns_to_plot" "sample_table"   
 
     cat('#### sashimi plots {.tabset}\n\n')
-    for (c in unique(cluster_ids)) {
-        cat('#####', c, '\n\n')
-        p <- make_cluster_plot_ms(cluster_to_plot=c,
+    for (id in unique(cluster_ids)) {
+        cat('#####', id, '\n\n')
+        p <- make_cluster_plot_ms(cluster_to_plot=id,
                                   exons_table=exons_table,
                                   meta=meta,
                                   counts=counts,
@@ -784,14 +787,16 @@ for (c in names(py$rdata_dic)) {
 
 ```
 
-# BED files
+# BED files {.tabset}
+
+## Intron clusters
 
 The BED files generated here contain the intron clusters tested in the current differential analysis.
 They are prepared for data exploration using IGV. When loaded as an expanded track, all tested intron
 clusters are displayed with the following label: `<chromosome>:<start>:<end>:<intron_cluster>`. 
 
 
-```{r create_bed}
+```{r create_intron_bed}
 
 df <- data.frame()
 
@@ -814,6 +819,33 @@ df %>%
     mutate(bed=paste("[", bed, "](", bed, ")")) %>%
     knitr::kable()
 
+```
+
+## Exons
+
+Additionally, a bed file for exons for the current genes is generated so all IGV tracks are visualized
+in one place.
+
+```{r create_exon_bed}
+
+# Import genes of interest
+target_genes <- read_yaml(snakemake_config)[['genes']]
+
+# Filter the exons table by genes of interest
+exonbed_path <- file.path(out_dir, 'exons.bed')
+exons_table %>%
+    dplyr::filter(gene_name %in% target_genes) %>%
+    unique() %>%
+    dplyr::select(-strand) %>%
+    write.table(file=exonbed_path,
+                sep="\t",
+                col.names=FALSE,
+                row.names=FALSE,
+                quote=FALSE)
+
+data.frame(description="exons", bed=exonbed_path) %>%
+    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
+    knitr::kable()
 ```
  
 
