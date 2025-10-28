@@ -978,3 +978,35 @@ fcx_ce
     - notes
         - created BED files containing genomic coordinates for introns
           tested in DS analysis
+        - splice junctions in the BED files align well with genomic
+          coordinates saved in all IGV sessions
+
+- prep shipping package: ``../shipped/10272025``
+
+
+2025-10-27
+----------
+
+@Mira0507
+
+- conda env ``env`` updated
+    - ``gffutils`` installed without updating pre-installed packages
+    - ``$ gffutils-cli -h`` for documentation
+
+- Snakemake update
+    - conda env: ``env``
+    - script: ``workflow/thalamus_excitatory/Snakefile``
+
+- DS analysis update
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+    - notes: 
+        - Leafcutter-created sashimi plots didn't seem to align with
+          the default reference genome provided in IGV (Human GRCh38).
+          Therefore, a bed file for filtered exons was generated 
+          in this R script using the ``exons_table`` data
+          frame that was saved in 
+          ``workflow/thalamus_excitatory/downstream/ds/celltype.RData``.
+        - Having read the output bed file for filtered exons
+          (``workflow/thalamus_excitatory/downstream/ds/exons.bed``),
+          all genomic coordinates appeared to align well with each other.
