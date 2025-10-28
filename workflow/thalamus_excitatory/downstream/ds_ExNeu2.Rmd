@@ -32,9 +32,13 @@ Refer to the following resources for technical details:
 library(tidyverse)
 library(optparse)
 library(ggplot2)
+library(ggfortify)
+library(ggrepel)
+library(factoextra)
 library(leafcutter)
 library(reticulate)
 library(parallel)
+library(yaml)
 
 set.seed(1772)
 source('../config/helpers.R')
@@ -57,16 +61,33 @@ mtx_path <- "../results_ExNeu2/junction_counts/thalamus_excitatory_perind_numers
 # Path to metadata table
 meta_path <- "../../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
 
-# Path to leafcutter wrapper script
-lc_wrapper <- "../../../leafcutter/scripts/leafcutter_ds.R"
+# Path to Snakemake config
+snakemake_config <- "../config/config_ExNeu2.yaml"
+
+# Path to leafcutter wrapper scripts
+lc_path <- "../../../leafcutter"
+
+lc_wrapper <- file.path(lc_path, "scripts/leafcutter_ds.R")
+gtf2lc <- file.path(lc_path, "leafviz/gtf2leafcutter.pl")
+lc_prepvis <- file.path(lc_path, "leafviz/prepare_results.R")
+gtf <- "../../../input/thalamus_excitatory/genes.gtf.gz"
 
 # Path to output directory
 out_dir <- "ds_ExNeu2"
-if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Path to annotation code directory
+annocode_dir <- file.path(out_dir, "annotation")
+annocode_path <- paste0(annocode_dir, "/annotation") # DO NOT CHANGE THIS PATH!!
+
+# Create directories if missing
+for (p in c(out_dir, annocode_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
 
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
+    celltype=c('ExNeu1', 'ExNeu2'),
     study=c('Marsan', 'Biogen', 'Mathys'),
     study_specific_disease_specific=c('Control-Marsan',
                                       'Control-Biogen',
@@ -75,11 +96,17 @@ factor_groups <- list(
                                       'FTD-Biogen',
                                       'AD-Mathys'),
     study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Marsan_ExNeu2',
                                       'Control-Biogen_ExNeu1',
+                                      'Control-Biogen_ExNeu2',
                                       'Control-Mathys_ExNeu1',
+                                      'Control-Mathys_ExNeu2',
                                       'FTD-Marsan_ExNeu1',
+                                      'FTD-Marsan_ExNeu2',
                                       'FTD-Biogen_ExNeu1',
-                                      'AD-Mathys_ExNeu1')
+                                      'FTD-Biogen_ExNeu2',
+                                      'AD-Mathys_ExNeu1',
+                                      'AD-Mathys_ExNeu2')
 )
 
 # Specify metadata columns used for pairwise comparisons
@@ -148,7 +175,6 @@ if (any(is.na(meta_core))) {
         )) 
 }
 
-
 cat('## All samples\n\n')
 DT::datatable(meta[, c('samplename', 'SampleID', names(factor_groups))])
 
@@ -160,7 +186,61 @@ DT::datatable(
 )
 ```
 
-# Sample similarity and QC
+# Quality Control
+
+## Count distribution {.tabset}
+
+The number of splice junction counts are inspected across the samples and conditions of interest.
+
+```{r count_distribution, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk inspects the number of junctions across the samples and conditions
+# --------------------------------------------------------------------------------
+
+# Prep input data frame for boxplots
+sample_counts <- data.frame(sample=colnames(counts),
+                            counts=colSums(counts)) %>%
+    left_join(meta_core %>% rownames_to_column('sample'),
+              by='sample')
+
+# Break if missing values are found
+if (sum(is.na(sample_counts)) > 0) {
+    stop("Missing values introduced to the `sample_counts` data frame!")
+}
+
+# Plot the distribution of counts
+for (name in colnames(meta_core)) {
+    cat('###', name, '\n\n')
+    p <- ggplot(sample_counts,
+                aes_string(x=name, y='counts', fill=name)) +
+        geom_boxplot(color='black', width=0.5) +
+        theme_bw() +
+        ylab("Splice Junction Counts") +
+        theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
+              axis.title.x=element_blank())
+    print(p)
+    cat('\n\n')
+}
+
+
+cat('### intron_cluster\n\n')
+
+# Prep input data frame for boxplot
+intron_counts <- data.frame(intron=rownames(counts),
+                            counts=rowSums(counts))
+intron_counts[['intron']] <- factor(intron_counts[['intron']],
+                                    levels=rownames(intron_counts))
+
+ggplot(intron_counts, 
+       aes(x=intron, y=counts, fill=intron)) +
+    geom_boxplot(color='black', width=0.5) +
+    theme_bw() +
+    ylab("Splice Junction Counts") +
+    scale_y_log10() +
+    theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
+          axis.title.x=element_blank())
+```
 
 ## Clustered heatmap
 
@@ -195,10 +275,585 @@ pheatmap::pheatmap(
 )
 ```
 
+## PCA {.tabset}
+
+Another way of looking at sample clustering is principal components analysis (PCA). Each axis
+does not have units, rather, it represents the dimensions along which the samples vary the most. The amount 
+of variance explained by each principal component is indicated in the axes label.
+
+```{r run_pca, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk performs PCA
+# --------------------------------------------------------------------------------
+
+for (subset in c('SampleID', names(factor_groups))) {
+
+    cat('###', subset, '{.tabset}\n\n')
+
+    # Run PCA
+    cols_selected <- unique(c('samplename', 'celltype', subset))
+    colData <- meta[, cols_selected]
+    pca <- prcomp(t(log2(counts + 0.1)),
+                  center=TRUE,
+                  scale=FALSE)
+
+    # Calculate variance explained by PC
+    var_exp <- round(pca$sdev^2/sum(pca$sdev^2) * 100, 2)
+
+    # Prep input data frame for plotting
+    df <- pca$x[,1:2] %>%
+        as.data.frame() %>%
+        rownames_to_column('samplename') %>%
+        left_join(colData, by='samplename')
+
+    # Prep titles for axes
+    axis_titles <- map_chr(1:2,
+                           ~paste0("PC ", .x, " (", var_exp[.x], "%)"))
+
+    # Clean input data frame for plotting
+    plot_df <- df[, c('samplename', paste0("PC", 1:2), cols_selected)]
+
+    # Plot PCA
+    p <- ggplot(plot_df,
+                aes_string(x='PC1',
+                           y='PC2',
+                           color=subset,
+                           shape='celltype')) +
+        theme_bw() +
+        geom_point(size=3, alpha=0.7) +
+        xlab(axis_titles[1]) +
+        ylab(axis_titles[2])
+
+    subchunkify(paste0("PCA_", subset), input="plot", width=8, height=6)
+    cat('\n\n')
+}
+
+```
+
+## Biplots {.tabset}
+
+A biplot overlays a score plot with a loading plot. A biplot often aims to visualize the contribution
+of variables (e.g. introns) to the principal components. Arrows represent variables that are associated with
+individual data points and consist of direction and length; these components indicate the direction
+and magnitude of the influence of the variables. The angle between arrows indicates the correlation
+between variables: a small angle means a positive correlation, a 90-degree angle means no correlation, 
+and a large, obtuse angle suggests a negative correlation.
+
+```{r biplot_intron, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates biplots
+# --------------------------------------------------------------------------------
+
+# Run PCA
+pca_input <- t(log2(counts + 0.1))
+pca <- prcomp(pca_input,
+              center=TRUE,
+              scale=FALSE)
+
+# Prep metadata
+meta_aligned <- meta_core[rownames(pca$x),]
+
+cat('### intron loadings {.tabset}\n\n')
+
+# Create biplots
+for (c in colnames(meta_core)) {
+    cat('####', c, '\n\n')
+    p <- fviz_pca_biplot(pca,
+                         geom.ind="point",
+                         geom.var=c("arrow", "text"),
+                         col.ind=meta_aligned[[c]],
+                         addEllipse=TRUE,
+                         labelsize=3,
+                         legend.title=c,
+                         col.var="darkred",
+                         repel=TRUE) +
+    theme_bw()
+    print(p)
+    cat('\n\n')
+}
+```
 
 
+```{r biplot_condition, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates biplots
+# --------------------------------------------------------------------------------
+
+cat('### condition loadings {.tabset}\n\n')
+
+# Prep input for biplots visualizing condition loadings
+temp_df <- counts %>% 
+    rownames_to_column('intron') %>%
+    gather('samplename', 'counts', -intron) %>%
+    left_join(meta_core %>% rownames_to_column('samplename'),
+              by='samplename')
+
+# Create biplots visualizing loadings on individual conditions
+for (name in colnames(temp_df)[! colnames(temp_df) %in% c('intron', 'counts')]) {
+
+    cat('####', name, '\n\n')
+    # Prep input data frame
+    pca_input <- temp_df %>%
+        group_by_(name, 'intron') %>%
+        summarize(counts=sum(counts)) %>%
+        unique() %>%
+        spread(name, 'counts') %>%
+        column_to_rownames('intron') %>%
+        mutate_all(function(x) x + 0.1) %>%
+        log2()
+
+    if (1 %in% dim(pca_input)) {
+        cat('Input is 1-dimensional...')
+    } else {
+
+        # Run PCA
+        pca <- prcomp(pca_input,
+                      center=TRUE,
+                      scale=FALSE)
+        # Prep metadata
+        meta_aligned <- data.frame(intron=rownames(pca$x)) %>%
+            separate(intron,
+                     c('chr', 'start', 'end', 'cluster'),
+                     sep=":",
+                     remove=FALSE) %>%
+            mutate(cluster=paste0(chr, ":", cluster))
+        rownames(meta_aligned) <- meta_aligned[['intron']]
+
+        # Create a biplot
+        p <- fviz_pca_biplot(pca,
+                             geom.ind="point",
+                             geom.var=c("arrow", "text"),
+                             col.ind=meta_aligned[['cluster']],
+                             labelsize=3,
+                             col.var="darkred",
+                             repel=TRUE) +
+            theme_bw()
+        print(p)
+    }
+    cat('\n\n')
+}
+```
+
+# DS analysis
+
+DS analysis is conducted in a pairwise manner. We can specify an explanatory variable and 
+confounders/covariates. An explanatory variable is a non-artifact factor that we anticipate 
+is associated with changes in the number of splicing junctions.
+
+```{r save_group_tables, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk creates grouptables for DS analysis using leafcutter
+# --------------------------------------------------------------------------------
+
+tb_list <- list()
+
+cat("The current analysis accounted for the following variables:")
+
+for (c in contrast_cols) {
+    c_cols <- confounder_cols[[c]]
+    cat(paste0("- *Explanatory variable* = ",
+               c,
+               ",
+               *Confounders/covariates*: ", paste(c_cols, collapse=", "),
+               "\n"))
+    # Slice the metadata frame
+    df <- meta[, c('samplename', c, confounder_cols[[c]])]
+    # Reorder rows
+    df <- df[order(df[[c]]),]
+
+    # Save as a tab-separated file
+    # NOTE: 
+    # - Omit both row names and column names
+    # - Ensure the first column corresponds to samplenames that are column names of the count matrix
+    # - Ensure the second column corresponds to a pairwise contrast
+    # - Ensure that the third column is optional and corresponds to confounder
+    table_path <- paste0(out_dir, "/", c, '_groups.txt')
+    write.table(df,
+                table_path,
+                sep="\t",
+                quote=FALSE,
+                col.names=FALSE, 
+                row.names=FALSE)
+
+    tb_list[[c]] <- table_path
+}
+```
+
+```{python run_ds_analysis}
+
+# --------------------------------------------------------------------------------
+# This chunk runs DS analysis
+# --------------------------------------------------------------------------------
+
+for c in r.contrast_cols:
+    cmd = [
+        r.lc_wrapper,
+        "--num_threads 4",
+        r.mtx_path,
+        r.tb_list[c],
+        "&&",
+        "mv",
+        "leafcutter_ds_cluster_significance.txt",
+        f"{r.out_dir}/{c}_cluster_significance.txt",
+        "&&",
+        "mv",
+        "leafcutter_ds_effect_sizes.txt",
+        f"{r.out_dir}/{c}_effect_sizes.txt",
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+
+```
+
+## Links to result tables
+
+LeafCutter generates two tab-separated files: `cluster_significance.txt` and `effect_sizes.txt`.
+
+- `cluster_significance.txt`: This shows per cluster p-values for there being differential intron 
+  excision between the two groups tested with the following metrics:
+    - `status`: whether this cluster was a) successfully tested b) not tested for some reason 
+      (e.g. too many introns) c) there was an error during testing
+    - `loglr`: log likelihood ratio between the null model (no difference between the groups) 
+      and alternative (there is a difference)
+    - `df`: degrees of freedom, equal to the number of introns in the cluster minus one 
+      (assuming two groups)
+    - `p`: raw p-value under the asymptotic Chi-squared distribution.
+    - `cluster`: junction cluster ID
+    - `p.adjust`: false discovery rate (FDR) calculated using the Benjamini-Hochberg (BH) method.
+
+- `effect_sizes.txt`: This shows per intron effect sizes between the groups with the following metrics:
+    - `intron`: chromosome:intron_start:intron_end:cluster_id
+    - `logef`: log effect size fitted by LeafCutter
+    - `<condition1>`: fitted usage proportion in condition 1 (control group)
+    - `<condition2>`: fitted usage proportion in condition 2 (experimental group)
+    - `deltapsi`: the difference in usage proportion (condition 2 - condition 1). Note that in general 
+      this will have the same sign as the log effect size but in some cases the sign may change 
+      as a result of larger changes for other introns in the cluster.
+
+Note that only intron clusters that pass filtering criteria are tested in the current analysis.
+
+```{python gtf2lc}
+
+# --------------------------------------------------------------------------------
+# This chunk creates lists of exons, introns, and splice sites using GTF
+# This step is required to annotate output intron clusters
+# Refer to the following reference:
+# https://davidaknowles.github.io/leafcutter/articles/Visualization.html#prerequisites-annotation-data
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+# Specify output files
+annotation_files =[
+    "annotation_all_exons.txt.gz",
+    "annotation_all_introns.bed.gz",
+    "annotation_fiveprime.bed.gz",
+    "annotation_threeprime.bed.gz"]
+
+# Create annotation files if missing
+anno_current = sorted(os.listdir(r.annocode_dir))
+anno_wanted = sorted(annotation_files)
+if anno_current != anno_wanted:
+    cmd = [
+        r.gtf2lc,
+
+        "-o",
+        r.annocode_path,
+        r.gtf
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+
+```
+
+```{r link_output_tables, result='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk provides links to result tables
+# --------------------------------------------------------------------------------
+
+# Create a list for paths to result tables
+path_list <- lapply(contrast_cols, function(c) {
+    list(
+        significance=paste0(out_dir, "/", c, "_cluster_significance.txt"),
+        effectsize=paste0(out_dir, "/", c, "_effect_sizes.txt")
+    )
+}) %>%
+set_names(contrast_cols)
+
+# Prep links to result tables
+path_df <- data.frame(link=unlist(path_list)) %>%
+    rownames_to_column('category') %>%
+    separate(category, c('explanatory_variable', 'table')) %>%
+    mutate(link=paste("[", link, "](", link, ")"))
+knitr::kable(path_df)
+```
 
 
+## Statistics {.tabset}
+
+```{r print_result_tables, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk prints result tables
+# --------------------------------------------------------------------------------
+
+# Import saved result tables
+res_list <- lapply(path_list, function(l) {
+    lapply(l, function(p) read.table(p, header=TRUE, sep="\t"))
+})
+
+exon_list <- list()
+
+for (name in names(res_list)) {
+
+    # Prep data frames for genomic coordinates across introns and exons
+    intron_input <- res_list[[name]][['effectsize']] %>%
+        dplyr::select(intron) %>%
+        separate(intron, c('chr', 'start', 'end', 'cluster_id'), sep=":")
+    exon_input <- read.table(
+        file.path(annocode_dir, 'annotation_all_exons.txt.gz'),
+            sep="\t",
+            header=TRUE)
+    exon_list[[name]] <- exon_input
+
+    gene_df <- mclapply(sort(unique(intron_input$chr)), function(chr) {
+        # Subset each input by chromosome
+        intron_chr <- intron_input[intron_input$chr == chr,]
+        exon_chr <- exon_input[exon_input$chr == chr,]
+        
+        # Prep 3' matches
+        exon_chr$temp <- as.character(exon_chr$start)
+        intron_chr$temp <- as.character(intron_chr$end)
+        threeprime_matches <- inner_join(intron_chr, exon_chr, by="temp")
+
+        # Prep 5' matches
+        exon_chr$temp <- as.character(exon_chr$end)
+        intron_chr$temp <- as.character(intron_chr$start)
+        fiveprime_matches <- inner_join(intron_chr, exon_chr, by="temp")
+
+        # Consolidate both types of matches
+        all_matches <- rbind(threeprime_matches, fiveprime_matches)[, 
+            c('chr.x', 'cluster_id', 'gene_name')] %>%
+            unique()
+
+        # Return NULL if matching clusters are not found
+        if (nrow(all_matches) == 0) return(NULL)
+
+        # Clean the output data frame
+        all_matches <- all_matches %>%
+            mutate(clu=paste0(chr.x, ":", cluster_id)) %>%
+            dplyr::rename(chr=chr.x)
+        return(all_matches)
+        }) %>%
+        bind_rows()
+
+    # Aggregate gene names for clusters matching multiple genes
+    clu_df <- gene_df %>%
+        group_by(clu) %>%
+        summarize(genes=paste(gene_name, collapse=", ")) %>%
+        as.data.frame()
+
+    # Add gene names to the output significance table
+    res_list[[name]][['significance']] <- res_list[[name]][['significance']] %>%
+        left_join(clu_df, by=c('cluster'='clu'))
+
+    lst <- res_list[[name]]
+    cat('###', name, '{.tabset}\n\n')
+    cat('#### Significance table\n\n')
+    df <- lst[['significance']]
+    subchunkify(paste0(name, "_sig"))
+    cat('#### Effect size table\n\n')
+    df <- lst[['effectsize']]
+    subchunkify(paste0(name, "_eff"))
+    }
+```
+
+## Annotation and visualization {.tabset}
+
+Visualization is conducted using
+[LeafViz](https://davidaknowles.github.io/leafcutter/articles/Visualization.html).
+
+The sashimi plots are generated for each intron cluster and represent the following metrics:
+
+- *Values (e.g. 0.93)*: The mean number of splice junctions per condition. These values are
+  normalized as a fraction of the total counts; the sum of all values per condition equals 1.
+- *Lines*: Lines connecting two genomic coordinates represent splice junctions. The width of these 
+  lines represents the normalized mean number of splice junctions, and their colors denote the
+  annotation. Red lines represent annotated junctions, while pink lines represent unannotated junctions.
+- *Rectangles*: Annotated exons from the same gene are represented by rectangles of the same color.
+
+Details about individual intron clusters and clusters within each intron are provided
+in tables on the following tabs.
+
+```{python prep_visualization}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares input files for leafviz
+# --------------------------------------------------------------------------------
+
+rdata_dic = {}
+
+for c in r.contrast_cols:
+    rdata_out = f"{r.out_dir}/{c}.RData"
+    cmd = [
+        r.lc_prepvis,
+        "--meta_data_file",
+        r.tb_list[c],
+        f"--code {c}",
+        r.mtx_path,
+        r.path_list[c]['significance'],
+        r.path_list[c]['effectsize'],
+        r.annocode_path,
+        f"-o {rdata_out}"
+    ]
+    cmd = " ".join(cmd)
+    subprocess.run(cmd, shell=True)
+    rdata_dic[c] = rdata_out
+
+```
+
+```{r visualization, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays overview of visualization
+# --------------------------------------------------------------------------------
+
+# Retrieve objects before loading LeafViz RData
+prev_vec <- ls()
+
+coord_list <- list()
+
+# Load saved RDatas
+for (c in names(py$rdata_dic)) { 
+    load(py$rdata_dic[[c]])
+    cat('\n\n###', c, '{.tabset}\n\n')
+
+    # Retrieve objects after loading LeafViz RData
+    current_vec <- ls()
+
+    # Filter tables of interest
+    new_vec <- setdiff(current_vec, prev_vec)
+
+    # new_vec
+     # [1] "annotation_code" "cluster_ids"     "cluster_summary" "clusters"       
+     # [5] "code"            "exons_table"     "intron_summary"  "introns"        
+     # [9] "introns_to_plot" "rdata"           "sample_table"   
+
+    coord_list[[c]] <- introns_to_plot
+
+    # Remove unwanted R objects/variables
+    new_vec <- new_vec[! new_vec %in% c("exons_table",
+                                        "annotation_code",
+                                        "cluster_ids",
+                                        "code",
+                                        "o",
+                                        "df",
+                                        "prev_vec", 
+                                        "coord_list",
+                                        "current_vec",
+                                        "rdata")]
+
+    # new_vec
+    # [1] "cluster_summary" "clusters"        "intron_summary"  "introns"        
+    # [5] "introns_to_plot" "sample_table"   
+
+    cat('#### sashimi plots {.tabset}\n\n')
+    for (id in unique(cluster_ids)) {
+        cat('#####', id, '\n\n')
+        p <- make_cluster_plot_ms(cluster_to_plot=id,
+                                  exons_table=exons_table,
+                                  meta=meta,
+                                  counts=counts,
+                                  cluster_ids=cluster_ids,
+                                  introns=introns,
+                                  snp_pos=NA)
+        print(grid::grid.draw(p))
+        cat('\n\n')
+    }
+
+    for (o in new_vec) {
+        cat('####', o, '\n\n')
+        df <- get(o)
+        if (is.data.frame(df)) {
+            subchunkify(paste0("vis_", o))
+            cat('\n\n')
+        } else {
+            print(knitr::kable(df))
+        }
+    }
+    rm(new_vec)
+}
+
+```
+
+# BED files {.tabset}
+
+## Intron clusters
+
+The BED files generated here contain the intron clusters tested in the current differential analysis.
+They are prepared for data exploration using IGV. When loaded as an expanded track, all tested intron
+clusters are displayed with the following label: `<chromosome>:<start>:<end>:<intron_cluster>`. 
+
+
+```{r create_intron_bed}
+
+df <- data.frame()
+
+for (name in names(coord_list)) {
+    # 
+    c_df <- coord_list[[name]] %>%
+        dplyr::select(-middle) %>%
+        mutate(clu=paste0(chr, ":", start, ":", end, ":", clu))
+    bed <- file.path(out_dir, paste0(name, '_introns.bed'))
+    write.table(c_df,
+                file=bed,
+                sep="\t",
+                col.names=FALSE,
+                row.names=FALSE,
+                quote=FALSE)
+    df <- rbind(df, data.frame(comparison=name, bed=bed))
+}
+
+df %>%
+    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
+    knitr::kable()
+
+```
+
+## Exons
+
+Additionally, a bed file for exons for the current genes is generated so all IGV tracks are visualized
+in one place.
+
+```{r create_exon_bed}
+
+# Import genes of interest
+target_genes <- read_yaml(snakemake_config)[['genes']]
+
+# Filter the exons table by genes of interest
+exonbed_path <- file.path(out_dir, 'exons.bed')
+exons_table %>%
+    dplyr::filter(gene_name %in% target_genes) %>%
+    unique() %>%
+    dplyr::select(-strand) %>%
+    write.table(file=exonbed_path,
+                sep="\t",
+                col.names=FALSE,
+                row.names=FALSE,
+                quote=FALSE)
+
+data.frame(description="exons", bed=exonbed_path) %>%
+    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
+    knitr::kable()
+```
+ 
+
+# Session info
 
 ```{r session_info, collapse=FALSE}
 sessionInfo()
