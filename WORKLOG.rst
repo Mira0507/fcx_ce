@@ -1027,3 +1027,13 @@ fcx_ce
         - this analysis compares patient vs control within ExNeu2
         - this script is a modified version of 
           ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+
+
+2025-10-29
+----------
+
+@Mira0507
+
+- Minor bugfix to DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
