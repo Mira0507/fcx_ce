@@ -488,8 +488,13 @@ for (c in contrast_cols) {
 # --------------------------------------------------------------------------------
 # This chunk runs DS analysis
 # --------------------------------------------------------------------------------
+# Correct data type if necessary
+if not isinstance(r.contrast_cols, list):
+    py_contrast_cols = [r.contrast_cols]
+else:
+    py_contrast_cols = r.contrast_cols
 
-for c in r.contrast_cols:
+for c in py_contrast_cols:
     cmd = [
         r.lc_wrapper,
         "--num_threads 4",
@@ -698,7 +703,7 @@ in tables on the following tabs.
 
 rdata_dic = {}
 
-for c in r.contrast_cols:
+for c in py_contrast_cols:
     rdata_out = f"{r.out_dir}/{c}.RData"
     cmd = [
         r.lc_prepvis,
@@ -852,6 +857,7 @@ data.frame(description="exons", bed=exonbed_path) %>%
     knitr::kable()
 ```
  
+
 
 # Session info
 
