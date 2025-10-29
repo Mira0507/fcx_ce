@@ -1009,4 +1009,31 @@ fcx_ce
           ``workflow/thalamus_excitatory/downstream/ds/celltype.RData``.
         - Having read the output bed file for filtered exons
           (``workflow/thalamus_excitatory/downstream/ds/exons.bed``),
-          all genomic coordinates appeared to align well with each other.
+          all genomic coordinates appeared to align well with each other
+          except for noncanonical exons not included in the default 
+          reference genome provided in IGV.
+
+2025-10-28
+----------
+
+@Mira0507
+
+- conda env exported to ``env.archived.yaml``
+
+- DS analysis on ExNeu2
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds_ExNeu2.Rmd``
+    - notes
+        - this analysis compares patient vs control within ExNeu2
+        - this script is a modified version of 
+          ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+
+
+2025-10-29
+----------
+
+@Mira0507
+
+- Minor bugfix to DS analysis
+    - conda env: ``lcenv``
+    - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``

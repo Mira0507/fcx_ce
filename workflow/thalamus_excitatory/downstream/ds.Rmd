@@ -749,6 +749,7 @@ for (c in names(py$rdata_dic)) {
                                         "code",
                                         "o",
                                         "df",
+                                        "id",
                                         "prev_vec", 
                                         "coord_list",
                                         "current_vec",
