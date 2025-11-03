@@ -27,10 +27,9 @@ celltype_col: 'celltype'  # column for celltype (leave '' to skip this option)
 # Path to AnnData
 adata:
   ExNeu1: "../../input/thalamus_excitatory/ExNeu1_FOR_DEG.h5ad"
-  ExNeu2: "../../input/thalamus_excitatory/ExNeu2_FOR_DEG.h5ad"
 
 # Path to output directory
-outdir: "results"
+outdir: "results_ExNeu1_Biogen"
 
 # Path to bam directory
 bam_dir: '../../input/thalamus_excitatory/bam'
@@ -38,7 +37,6 @@ bam_dir: '../../input/thalamus_excitatory/bam'
 # Genes of interest
 genes:
   - 'STMN2'
-  - 'UNC13A'
 
 # Analysis name. This will be used for the file name of
 # the junction count matrix
