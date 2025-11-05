@@ -1037,3 +1037,21 @@ fcx_ce
 - Minor bugfix to DS analysis
     - conda env: ``lcenv``
     - script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+
+
+2025-11-03
+----------
+
+@Mira0507
+
+- prep for per-study analysis
+    - Input metadata subsetted by study manually
+        - ``input/thalamus_excitatory/combined_thalamus_metadata_Biogen.csv``
+        - ``input/thalamus_excitatory/combined_thalamus_metadata_Marsan.csv``
+        - ``input/thalamus_excitatory/combined_thalamus_metadata_Mathys.csv``
+    - Snakemake config added
+        - ``workflow/thalamus_excitatory/config/config_ExNeu1_Biogen.yaml``
+        - ``workflow/thalamus_excitatory/config/config_ExNeu1_Marsan.yaml``
+        - ``workflow/thalamus_excitatory/config/config_ExNeu1_Mathys.yaml``
+
+
