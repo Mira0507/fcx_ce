@@ -1,5 +1,5 @@
 # Path to sampletable
-sampletable: "../../input/thalamus_excitatory/combined_thalamus_Marsan.csv"
+sampletable: "../../input/thalamus_excitatory/combined_thalamus_metadata_Marsan.csv"
 
 # Path to fasta of reference genome
 # NOTE: Specify the reference fasta used when running `cellranger count`
