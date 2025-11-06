@@ -39,6 +39,7 @@ bam_dir: '../../input/thalamus_excitatory/bam'
 genes:
   - 'STMN2'
   - 'UNC13A'
+  - 'KCNQ2'
 
 # Analysis name. This will be used for the file name of
 # the junction count matrix
