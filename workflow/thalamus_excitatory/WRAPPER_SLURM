@@ -39,7 +39,7 @@ fi
     --jobname "s.{rulename}.{jobid}.sh" \
     -j 999 \
     --use-conda \
-    --configfile config/config_ExNeu2.yaml \
+    --configfile config/config.yaml \
     $PROFILE_CMD \
     "$@"
     ) > "Snakefile.log" 2>&1

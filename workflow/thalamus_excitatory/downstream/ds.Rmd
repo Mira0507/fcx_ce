@@ -849,7 +849,6 @@ data.frame(description="exons", bed=exonbed_path) %>%
     knitr::kable()
 ```
  
-
 # Session info
 
 ```{r session_info, collapse=FALSE}
