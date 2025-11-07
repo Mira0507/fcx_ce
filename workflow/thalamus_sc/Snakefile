@@ -27,9 +27,12 @@ barcode_file = f"{outdir}/barcodes.tsv"
 # - Ensure that the meta_df includes the three required columns
 #   specified in config['key_col'], config['index_col'], and config['bam_col']
 
+# Path to input bam directory
+bam_dir = config['bam_dir']
+
 # Prep sampletable
 sampletable = pd.read_csv(config['sampletable']).set_index(config['index_col'], drop=False)
-sampletable[config['bam_col']] = config['bam_dir'] + "/" + sampletable.index + '_possorted_genome_bam.bam'
+sampletable[config['bam_col']] = bam_dir + "/" + sampletable.index + '_possorted_genome_bam.bam'
 
 # Break if input bams don't align with sampletable
 missing_bams = [b for b in sampletable[config['bam_col']] if not os.path.isfile(b)]
@@ -91,9 +94,8 @@ def extract_headers_SQ(bam):
 # Function to select input bam files required for output 
 def select_bam(wildcards):
     filtered_df = meta_df[(meta_df['barcode_sc'] == wildcards.sc_barcode)]
-    samplename = filtered_df['SampleID'].unique()
-    return "{}/{}_possorted_genome_bam.bam".format(config['bam_dir'], samplename)
-
+    samplename = filtered_df['SampleID'].unique()[0]
+    return "{}/{}_possorted_genome_bam.bam".format(bam_dir, samplename)
 
 #################################### RULES ####################################
 
@@ -101,7 +103,7 @@ rule all:
     input:
         expand("{outdir}/sam/{sc_barcode}.sam",
                outdir=config['outdir'],
-               sc_barcode=list(set(meta_df['barcode_sc'])))
+               sc_barcode=list(set(meta_df['barcode_sc']))[:10])
 
 rule create_header:
     """
