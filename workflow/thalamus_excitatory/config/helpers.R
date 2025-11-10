@@ -106,7 +106,8 @@ make_cluster_plot_ms <- function (cluster_to_plot,
         }
     }
     new_theme_empty <- theme_bw(base_size = 15)
-    new_theme_empty$panel.background = element_rect(fill = "white", 
+    new_theme_empty$panel.background <- element_rect(
+        fill = "white", 
         colour = "white")
     new_theme_empty$line <- element_blank()
     new_theme_empty$rect <- element_blank()
