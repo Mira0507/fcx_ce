@@ -92,18 +92,19 @@ def extract_headers_SQ(bam):
     return headers
 
 # Function to select input bam files required for output 
-def select_bam(wildcards):
+def select_input_bam(wildcards):
     filtered_df = meta_df[(meta_df['barcode_sc'] == wildcards.sc_barcode)]
     samplename = filtered_df['SampleID'].unique()[0]
     return "{}/{}_possorted_genome_bam.bam".format(bam_dir, samplename)
+
 
 #################################### RULES ####################################
 
 rule all:
     input:
-        expand("{outdir}/sam/{sc_barcode}.sam",
+        expand("{outdir}/bam/cell/{sc_barcode}_sorted.bam",
                outdir=config['outdir'],
-               sc_barcode=list(set(meta_df['barcode_sc']))[:10])
+               sc_barcode=list(set(meta_df['barcode_sc']))[:3])
 
 rule create_header:
     """
@@ -129,15 +130,16 @@ rule create_header:
         else:
             shell('samtools view -H {input.bams[0]} | grep "^@SQ" > {output.sam}')
 
-rule prep_sam:
+rule prep_bam:
     """
-    This rule preps barcodes per barcode"
+    This rule preps sam and bam files for each barcode"
     """
     input:
         header = "{outdir}/header.sam",
-        bam = select_bam
+        bam = select_input_bam
     output:
-        sam = "{outdir}/sam/{sc_barcode}.sam"
+        bam = "{outdir}/bam/cell/{sc_barcode}_sorted.bam",
+        bai = "{outdir}/bam/cell/{sc_barcode}_sorted.bam.bai"
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
@@ -150,20 +152,28 @@ rule prep_sam:
         if not os.path.exists(input.bam):
             raise ValueError("Input bam file not found!")
         # Extract a cellranger barcode based on the sample-associated barcode
-        df = meta_df[(meta_df[config['barcode_sc']] == wildcards.sc_barcode)]
-        target_barcode = df.barcode
+        df = meta_df[(meta_df['barcode_sc'] == wildcards.sc_barcode)]
+        target_barcode = df['barcode'].iloc[0]
         # Prep a list for genes of interest
         gene_list = [f"GN:Z:{g.strip()}" for g in params.genes]
         # Join genes into a single string (w header)
         gene_joined = "|".join(gene_list)
-        # Specify a temporary sam file 
+        # Specify paths to sam files
         temp_sam = f"{wildcards.outdir}/{wildcards.sc_barcode}_temp.sam"
+        sam = f"{wildcards.outdir}/{wildcards.sc_barcode}.sam"
+        # Specify path to a temporary bam file 
+        temp_bam = f"{wildcards.outdir}/{wildcards.sc_barcode}_unsorted.bam"
         # Run samtools with or without module load samtools/1.19
         shell(
             """
-            cat {input.header} > {output.sam}
+            cat {input.header} > {sam}
             samtools view -@ {threads} {input.bam} | grep "{target_barcode}" > {temp_sam} || true
-            cat {temp_sam} | grep -E "{gene_joined}" >> {output.sam} || true
-            rm -f {temp_sam}
+            cat {temp_sam} | grep -E "{gene_joined}" >> {sam} || true
+            cat {sam} | samtools view -bS -@ {threads} > {temp_bam}
+            samtools sort -@ {threads} {temp_bam} -o {output.bam}
+            samtools index {output.bam}
+            rm -f {temp_sam} {sam} {temp_bam}
             """
             )
+
+
