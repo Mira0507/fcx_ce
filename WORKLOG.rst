@@ -1055,3 +1055,61 @@ fcx_ce
         - ``workflow/thalamus_excitatory/config/config_ExNeu1_Mathys.yaml``
 
 
+
+2025-11-05
+----------
+
+@Mira0507
+
+- rerun Snakemake with updated configuration
+    - conda env: ``env``
+    - updated script: ``workflow/thalamus_excitatory/config/config.yaml``
+
+    .. code-block:: yaml
+
+        # genes key updated to include KCNQ2
+        genes:
+          - 'STMN2'
+          - 'UNC13A'
+          - 'KCNQ2'
+
+
+2025-11-06
+----------
+
+@Mira0507
+
+- rerun downstream DS analysis including KCNQ2
+    - conda env: ``lcenv``
+    - updated script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+
+
+2025-11-07
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - working directory: ``workflow/thalamus_sc``
+    - files
+        - ``workflow/thalamus_sc/Snakefile``
+        - ``workflow/thalamus_sc/config/config.yaml``
+    - notes: update the ``prep_sam`` rule to generate sam files per barcode 
+      rather than sample
+
+
+2025-11-10
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes:
+        - added rule ``prep_bam`` where both the sam and bam files are 
+          generated
+        - deleted rule ``prep_sam``
