@@ -1114,6 +1114,7 @@ fcx_ce
           generated
         - added rule ``aggr_bams_group_celltype``
         - deleted rule ``prep_sam``
+        - started snakemake run in an interactive node to see if runs error-free
 
         .. code-block:: bash
 
@@ -1125,3 +1126,29 @@ fcx_ce
             create_header                   1
             prep_bam                    27719
             total                       27733
+
+
+2025-11-11
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes
+        - snakemake run started last night is running error-free
+          in interactive node
+        - the rest of the jobs will run through batch submission
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype       12
+            all                             1
+            prep_bam                    26333
+            total                       26346
+
