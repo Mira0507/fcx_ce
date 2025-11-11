@@ -110,9 +110,6 @@ def input_group_celltype_bams(wildcards):
 
 rule all:
     input:
-        expand("{outdir}/bam/cell/{sc_barcode}_sorted.bam",
-               outdir=config['outdir'],
-               sc_barcode=list(set(meta_df['barcode_sc']))),
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
                outdir=config['outdir'],
                group=list(set(meta_df[config['key_col']])),
