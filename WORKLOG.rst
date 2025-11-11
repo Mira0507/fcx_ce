@@ -1112,4 +1112,16 @@ fcx_ce
     - notes:
         - added rule ``prep_bam`` where both the sam and bam files are 
           generated
+        - added rule ``aggr_bams_group_celltype``
         - deleted rule ``prep_sam``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype       12
+            all                             1
+            create_header                   1
+            prep_bam                    27719
+            total                       27733
