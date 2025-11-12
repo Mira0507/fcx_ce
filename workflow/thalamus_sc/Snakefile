@@ -114,7 +114,9 @@ rule all:
                outdir=config['outdir'],
                group=list(set(meta_df[config['key_col']])),
                celltype=list(set(meta_df[config['celltype_col']]))),
-        expand("{outdir}/juncfiles.txt", outdir=config['outdir']),
+        expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
+               outdir=config['outdir'],
+               analysis=config['analysis'])
 
 rule create_header:
     """
@@ -258,4 +260,35 @@ rule prep_juncfiles:
         printf '%s\n' {input} > {output}
         """
 
+rule count_junctions:
+    """
+    This rule counts the number of junctions across the input 
+    samples or groups using leafcutter. This rule generates
+    the following output files:
 
+    - <sample>_regtools.junc.<analysis>.sorted.gz: per-sample junctions
+    - <analysis>_pooled: all junctions
+    - <analysis>_refined: clustered junctions
+    - <analysis>_sortedlibs: paths to all <sample>_regtools.junc.<analysis>.sorted.gz
+    - <analysis>_perind.counts.gz
+    - <analysis>_perind_numers.counts.gz: output count matrix for junction clusters
+
+    Call `zcat <analysis>_perind_numers.counts.gz` to print 
+    the output count matrix.
+    """
+    input: "{outdir}/juncfiles.txt"
+    output: "{outdir}/junction_counts/{analysis}_perind_numers.counts.gz"
+    resources:
+        mem_mb = 1024 * 100,
+        disk_mb = 1024 * 50,
+        runtime = 60
+    threads: 12
+    shell:
+        """
+        python leafcutter_cluster_regtools.py \
+           -j {input} \
+           -m 10 \
+           -p 0.0001 \
+           -r {wildcards.outdir}/junction_counts \
+           -o {wildcards.analysis}
+        """
