@@ -114,9 +114,7 @@ rule all:
                outdir=config['outdir'],
                group=list(set(meta_df[config['key_col']])),
                celltype=list(set(meta_df[config['celltype_col']]))),
-        expand("{outdir}/bed/cell/{sc_barcode}.junc",
-               outdir=config['outdir'],
-               sc_barcode=list(set(meta_df['barcode_sc']))),
+        expand("{outdir}/juncfiles.txt", outdir=config['outdir']),
 
 rule create_header:
     """
@@ -230,10 +228,34 @@ rule extract_junctions:
         mem_mb = 1024 * 10,
         disk_mb = 1024 * 5,
         runtime = 15
-    threads: 4
+    threads: 1
     shell:
         """
         if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
             touch {output.junc}
         fi
         """
+
+
+rule prep_juncfiles:
+    """
+    This rule prepares a text file storing paths to all input junction 
+    files (<sample>.junc) saved as a bed format. The output of this rule
+    is required to count the number of junctions using leafcutter.
+    """
+    input:
+        expand("{outdir}/bed/cell/{sc_barcode}.junc",
+               outdir=config['outdir'],
+               sc_barcode=list(set(meta_df['barcode_sc'])))
+    output:
+        "{outdir}/juncfiles.txt"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 10
+    shell:
+        """
+        printf '%s\n' {input} > {output}
+        """
+
+
