@@ -1152,3 +1152,44 @@ fcx_ce
             prep_bam                    26333
             total                       26346
 
+
+2025-11-12
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes
+        - single-cell bam files created by the ``prep_bam`` rule
+
+        .. code-block:: bash
+
+            $ ll workflow/thalamus_sc/results/bam/cell | grep bai | wc -l
+            27719
+
+        - a few samples encountered the 'Too many open files' error when running
+          the ``aggr_bams_group_celltype`` rule. added ``ulimit -n <number of cells>``
+          in the beginning of the ``shell`` directive.
+        - added a new rule ``extract_junctions``
+
+        .. code-block:: bash
+
+            $ ll workflow/thalamus_sc/results/bed/cell | grep junc | wc -l
+            27719
+
+        - added a new rule ``prep_juncfiles``
+
+        .. code-block:: bash
+
+            $ cat workflow/thalamus_sc/results/juncfiles.txt | wc -l
+            27719
+
+        - added a new rule ``count_junctions``
+
+        .. code-block:: bash
+
+            $ ls workflow/thalamus_sc/results/junction_counts | grep num
+            thalamus_sc_perind_numers.counts.gz
