@@ -113,7 +113,10 @@ rule all:
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
                outdir=config['outdir'],
                group=list(set(meta_df[config['key_col']])),
-               celltype=list(set(meta_df[config['celltype_col']])))
+               celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bed/cell/{sc_barcode}.junc",
+               outdir=config['outdir'],
+               sc_barcode=list(set(meta_df['barcode_sc']))),
 
 rule create_header:
     """
@@ -197,14 +200,40 @@ rule aggr_bams_group_celltype:
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 60
+        runtime = 30
     params:
-        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam"
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam",
+        ncells = len(meta_df)
     threads: 4
     shell:
         """
+        ulimit -n {params.ncells}
         samtools merge {params.temp_bam} {input.bam}
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
+        """
+
+rule extract_junctions:
+    """
+    This rule captures splicing junctions using regtools extract.
+    If a bam input file contains no reads, this rule will return
+    an ampty bed file. 
+    Note that the output bed file name has to end with `.junc`.
+    """
+    input:
+        bam = "{outdir}/bam/cell/{sc_barcode}_sorted.bam",
+        fasta = config['fasta']
+    output:
+        junc = "{outdir}/bed/cell/{sc_barcode}.junc"
+    resources:
+        mem_mb = 1024 * 10,
+        disk_mb = 1024 * 5,
+        runtime = 15
+    threads: 4
+    shell:
+        """
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
+            touch {output.junc}
+        fi
         """
