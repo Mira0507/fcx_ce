@@ -194,12 +194,12 @@ the samples and creates a header sam file. The output of this rule is
 - `prep_bam`: Extracts barcodes of interest from given `AnnData` objects 
 and creates sam and bam files containing filtered reads per barcode. The output of
 this rule is `<output_directory>/bam/cell/<barcode>_sorted.bam`.
-- `aggr_bams_group_celltype`: Merge single-cell bam files by group and celltype 
+- `aggr_bams_group_celltype`: Merges single-cell bam files by group and celltype 
 (e.g. disease, treatment, etc). The output of this rule is 
 `<output_directory>/bam/group/<group>_<celltype>_sorted.bam`.
 - `extract_junctions`: Captures splicing junctions from filtered bam files using
 [`regtools extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/).
-the output of this rule is `<output_directory>/bed/cell/<sample>_celltype.junc`,
+The output of this rule is `<output_directory>/bed/cell/<sample>_celltype.junc`,
 which is in the [bed12 format](https://genome.ucsc.edu/faq/faqformat.html#format1).
 - `prep_juncfiles`: Creates a text file for paths to all input junction 
 files. The output of this rule is `<output_directory>/juncfiles.txt`.
