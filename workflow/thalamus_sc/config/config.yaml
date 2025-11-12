@@ -43,4 +43,4 @@ genes:
 
 # Analysis name. This will be used for the file name of
 # the junction count matrix
-analysis: 'thalamus_excitatory'
+analysis: 'thalamus_sc'

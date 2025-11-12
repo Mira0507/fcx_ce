@@ -1055,3 +1055,141 @@ fcx_ce
         - ``workflow/thalamus_excitatory/config/config_ExNeu1_Mathys.yaml``
 
 
+
+2025-11-05
+----------
+
+@Mira0507
+
+- rerun Snakemake with updated configuration
+    - conda env: ``env``
+    - updated script: ``workflow/thalamus_excitatory/config/config.yaml``
+
+    .. code-block:: yaml
+
+        # genes key updated to include KCNQ2
+        genes:
+          - 'STMN2'
+          - 'UNC13A'
+          - 'KCNQ2'
+
+
+2025-11-06
+----------
+
+@Mira0507
+
+- rerun downstream DS analysis including KCNQ2
+    - conda env: ``lcenv``
+    - updated script: ``workflow/thalamus_excitatory/downstream/ds.Rmd``
+
+
+2025-11-07
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - working directory: ``workflow/thalamus_sc``
+    - files
+        - ``workflow/thalamus_sc/Snakefile``
+        - ``workflow/thalamus_sc/config/config.yaml``
+    - notes: update the ``prep_sam`` rule to generate sam files per barcode 
+      rather than sample
+
+
+2025-11-10
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes:
+        - added rule ``prep_bam`` where both the sam and bam files are 
+          generated
+        - added rule ``aggr_bams_group_celltype``
+        - deleted rule ``prep_sam``
+        - started snakemake run in an interactive node to see if runs error-free
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype       12
+            all                             1
+            create_header                   1
+            prep_bam                    27719
+            total                       27733
+
+
+2025-11-11
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes
+        - snakemake run started last night is running error-free
+          in interactive node
+        - the rest of the jobs will run through batch submission
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype       12
+            all                             1
+            prep_bam                    26333
+            total                       26346
+
+
+2025-11-12
+----------
+
+@Mira0507
+
+- update Snakemake to incorporate junction extraction and counting 
+  at the single-cell level
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes
+        - single-cell bam files created by the ``prep_bam`` rule
+
+        .. code-block:: bash
+
+            $ ll workflow/thalamus_sc/results/bam/cell | grep bai | wc -l
+            27719
+
+        - a few samples encountered the 'Too many open files' error when running
+          the ``aggr_bams_group_celltype`` rule. added ``ulimit -n <number of cells>``
+          in the beginning of the ``shell`` directive.
+        - added a new rule ``extract_junctions``
+
+        .. code-block:: bash
+
+            $ ll workflow/thalamus_sc/results/bed/cell | grep junc | wc -l
+            27719
+
+        - added a new rule ``prep_juncfiles``
+
+        .. code-block:: bash
+
+            $ cat workflow/thalamus_sc/results/juncfiles.txt | wc -l
+            27719
+
+        - added a new rule ``count_junctions``
+
+        .. code-block:: bash
+
+            $ ls workflow/thalamus_sc/results/junction_counts | grep num
+            thalamus_sc_perind_numers.counts.gz
