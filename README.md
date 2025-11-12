@@ -162,6 +162,8 @@ analysis: 'thalamus_excitatory'
 The current Snakemake pipeline is designed to return a count matrix for
 splicing junctions by implementing the following rules:
 
+### Pseudo-bulk mode (e.g. `workflow/thalamus_excitatory`)
+
 - `create_header`: Checks whether all headers (`@SQ`) are identical across
 the samples and creates a header sam file. The output of this rule is 
 `<output_directory>_header.sam`.
@@ -174,14 +176,36 @@ the header and filtered reads) by sample and celltype. The output of this rule i
 - `create_group_celltype_bam`: Creates bam files by consolidating sam files (for
 the header and filtered reads) by group and celltype (e.g. disease, treatment, etc).
 This output of this rule is `<output_directory>/bam/group/<group>_<celltype>_sorted.bam`.
+- `extract_junctions`: captures splicing junctions from filtered bam files using
+[`regtools extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/).
+the output of this rule is `<output_directory>/bed/sample/<sample>_celltype.junc`,
+which is in the [bed12 format](https://genome.ucsc.edu/faq/faqformat.html#format1).
+- `prep_juncfiles`: creates a text file consisting of paths to all input junction 
+files. the output of this rule is `<output_directory>/juncfiles.txt`.
+- `count_junctions`: counts the number of junctions across the input samples or 
+groups using leafcutter.
+
+
+### Single-cell mode (e.g. `workflow/thalamus_sc`)
+
+- `create_header`: Checks whether all headers (`@SQ`) are identical across
+the samples and creates a header sam file. The output of this rule is 
+`<output_directory>_header.sam`.
+- `prep_bam`: Extracts barcodes of interest from given `AnnData` objects 
+and creates sam and bam files containing filtered reads per barcode. The output of
+this rule is `<output_directory>/bam/cell/<barcode>_sorted.bam`.
+- `aggr_bams_group_celltype`: Merge single-cell bam files by group and celltype 
+(e.g. disease, treatment, etc). This output of this rule is 
+`<output_directory>/bam/group/<group>_<celltype>_sorted.bam`.
 - `extract_junctions`: Captures splicing junctions from filtered bam files using
 [`regtools extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/).
-The output of this rule is `<output_directory>/bed/sample/<sample>_celltype.junc`,
-which is in the [BED12 format](https://genome.ucsc.edu/FAQ/FAQformat.html#format1).
+the output of this rule is `<output_directory>/bed/sample/<sample>_celltype.junc`,
+which is in the [bed12 format](https://genome.ucsc.edu/faq/faqformat.html#format1).
 - `prep_juncfiles`: Creates a text file consisting of paths to all input junction 
-files. The output of this rule is `<output_directory>/juncfiles.txt`.
+files. the output of this rule is `<output_directory>/juncfiles.txt`.
 - `count_junctions`: Counts the number of junctions across the input samples or 
-groups using LeafCutter.
+groups using leafcutter. The output junction-by-barcode count matrix is saved 
+as `<output_directory>/junction_counts/<analysis_suffix>_perind_numbers.counts.gz`.
 
 ## Downstream analyses
 
