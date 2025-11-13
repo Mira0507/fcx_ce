@@ -6,4 +6,10 @@ r-dt
 r-plotly
 r-ggplot2
 r-reticulate
+r-nmf
+r-rsvd
+r-ggally
+r-future
 bioconductor-mast
+bioconductor-limma
+bioconductor-scater
