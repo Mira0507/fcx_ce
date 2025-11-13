@@ -27,22 +27,26 @@ Refer to the following resources for technical details:
 - [GitHub](https://github.com/RGLab/MAST/)
 
 ```{r libraries}
+# Libraries
+library(parallel)
 library(tidyverse)
 library(ggplot2)
 library(reticulate)
 library(parallel)
 library(yaml)
+library(reshape2)
+library(limma)
+library(NMF)
+library(MAST)
+library(RColorBrewer)
 
+# Additional options
 set.seed(1772)
 source('../config/helpers.R')
-```
 
-```{python ppackages}
-import anndata as ad
-import pandas as pd
-import numpy as nd
-import subprocess
-import os
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
 ```
 
 ```{r config}
@@ -99,11 +103,20 @@ factor_groups <- list(
 
 ```
 
+```{python ppackages}
+import anndata as ad
+import pandas as pd
+import numpy as nd
+import subprocess
+import os
+```
+
 
 # Loading input data {.tabset}
 
 The number of splicing junctions was counted based on cellranger-aligned reads and prepared as a 
-junction-by-barcode matrix.
+junction-by-barcode matrix. The matrices are added to the following `AnnData` object for future use.
+Refer to `adata.obsm["junctions"]` for counted junctions across the barcodes.
 
 ```{python import_adata}
 
@@ -126,18 +139,53 @@ for celltype in adata_dic.keys():
     target_cells = list(ann.obs.index)
     # Slice the junction count matrix based on the extracted barcodes
     counts_subset = counts[target_cells]
+
     # Ensure that cell barcodes match between the count matrix and AnnData
     try: 
-        target_cells == list(counts_subset.columns)
-    except ValueError:
-        print("Barcodes don't match between the two matrices!")
-    # Add the junction count matrix to AnnData
-    ann.obsm['junctions'] = counts_subset.T
+        # Add the junction count matrix to AnnData
+        ann.obsm['junctions'] = counts_subset.T
+    except TypeError:
+        print(f"Dimensions don't match between the two matrices for {celltype}!")
+
     # Specify the path to updated AnnData
     updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS.h5ad"
-    # Save 
+    # Save updated AnnData
     ann.write_h5ad(updated_path)
-    print(f"AnnData saved: {updated_path}")
+    print(f"AnnData saved for {celltype}: {updated_path}")
+
+    # Replace the input AnnData with updated obj
+    adata_dic[celltype] = ann
+
+```
+
+```{r prep_sca}
+
+# --------------------------------------------------------------------------------
+# This chunk builds an SCA obj. Refer to https://rglab.github.io/MAST/reference/FromMatrix.html
+# --------------------------------------------------------------------------------
+
+# Extract metadata for all input cells
+adata_meta <- map(py$adata_dic,
+                  ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
+    bind_rows()
+rownames(adata_meta) <- adata_meta[['barcode']]
+
+# Ensure that the number of barcodes match between the matrix and metadata
+if (nrow(adata_meta) != ncol(py$counts)) {
+    stop("The number of barcodes is wrong!")
+} else {
+    # Reorder rows of the metadata 
+    adata_meta <- adata_meta[colnames(py$counts), ]
+}
+
+# Prep feature table
+feature_meta <- data.frame(junction=rownames(py$counts))
+
+# Build an sca obj
+sca <- FromMatrix(as.matrix(py$counts),
+                  cData=adata_meta,
+                  fData=feature_meta,
+                  check_sanity=FALSE)
 
 ```
 
