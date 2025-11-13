@@ -161,7 +161,9 @@ for celltype in adata_dic.keys():
 ```{r prep_sca}
 
 # --------------------------------------------------------------------------------
-# This chunk builds an SCA obj. Refer to https://rglab.github.io/MAST/reference/FromMatrix.html
+# This chunk builds an SCA obj. Refer to the following instructions:
+# - https://rglab.github.io/MAST/reference/FromMatrix.html
+# - https://rglab.github.io/MAST/articles/MAST-interoperability.html
 # --------------------------------------------------------------------------------
 
 # Extract metadata for all input cells
@@ -181,11 +183,15 @@ if (nrow(adata_meta) != ncol(py$counts)) {
 # Prep feature table
 feature_meta <- data.frame(junction=rownames(py$counts))
 
-# Build an sca obj
+# Build an sca obj using raw counts
 sca <- FromMatrix(as.matrix(py$counts),
                   cData=adata_meta,
                   fData=feature_meta,
                   check_sanity=FALSE)
+
+# Clean assay slots to include both raw counts (counts) and log2 + 1 (et)
+assays(sca)$counts <- assay(sca)
+assays(sca)$et <- log2(as.matrix(py$counts) + 1)
 
 ```
 
