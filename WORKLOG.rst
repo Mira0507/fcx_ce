@@ -1210,3 +1210,23 @@ fcx_ce
         bioconductor-mast
 
     - exported to ``menv.archived.yaml``
+
+
+2025-11-13
+----------
+
+
+@Mira0507
+
+- update ``menv`` conda env: ``r-reticulate`` installed
+
+- start DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - updated AnnData to include splice junction matrices 
+          and save as and ``h5ad`` file
+        - creating SCA obj in progress based on the following references
+            - https://rglab.github.io/MAST/articles/MAST-interoperability.html
+            - https://rglab.github.io/MAST/reference/FromMatrix.html
+
