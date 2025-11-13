@@ -1,0 +1,8 @@
+python
+anndata
+r-base
+r-tidyverse
+r-dt
+r-plotly
+r-ggplot2
+bioconductor-mast
