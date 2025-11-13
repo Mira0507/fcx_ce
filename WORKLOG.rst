@@ -1193,3 +1193,20 @@ fcx_ce
 
             $ ls workflow/thalamus_sc/results/junction_counts | grep num
             thalamus_sc_perind_numers.counts.gz
+
+- create a new conda env ``menv`` for MAST
+    - recipe: ``menv_requirements.txt``
+
+    .. code-block:: bash
+
+        $ cat menv_requirements.txt
+        python
+        anndata
+        r-base
+        r-tidyverse
+        r-dt
+        r-plotly
+        r-ggplot2
+        bioconductor-mast
+
+    - exported to ``menv.archived.yaml``
