@@ -172,6 +172,7 @@ dependencies:
   - r-googlesheets4=1.1.2
   - r-gtable=0.3.6
   - r-haven=2.5.5
+  - r-here=1.0.2
   - r-hexbin=1.28.5
   - r-highr=0.11
   - r-hms=1.1.4
@@ -203,6 +204,7 @@ dependencies:
   - r-pkgconfig=2.0.3
   - r-plotly=4.11.0
   - r-plyr=1.8.9
+  - r-png=0.1_8
   - r-prettyunits=1.2.0
   - r-processx=3.8.6
   - r-progress=1.2.3
@@ -214,14 +216,17 @@ dependencies:
   - r-rappdirs=0.3.3
   - r-rcolorbrewer=1.1_3
   - r-rcpp=1.1.0
+  - r-rcpptoml=0.2.3
   - r-readr=2.1.5
   - r-readxl=1.4.5
   - r-rematch=2.0.0
   - r-rematch2=2.1.2
   - r-reprex=2.1.1
   - r-reshape2=1.4.5
+  - r-reticulate=1.44.0
   - r-rlang=1.1.6
   - r-rmarkdown=2.30
+  - r-rprojroot=2.1.1
   - r-rstudioapi=0.17.1
   - r-rvest=1.0.5
   - r-s7=0.2.0

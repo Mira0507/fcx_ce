@@ -5,4 +5,5 @@ r-tidyverse
 r-dt
 r-plotly
 r-ggplot2
+r-reticulate
 bioconductor-mast
