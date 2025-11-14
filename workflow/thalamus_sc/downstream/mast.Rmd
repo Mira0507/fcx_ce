@@ -39,6 +39,7 @@ library(limma)
 library(NMF)
 library(MAST)
 library(RColorBrewer)
+library(scater)
 
 # Additional options
 set.seed(1772)
@@ -114,7 +115,7 @@ import os
 
 # Loading input data {.tabset}
 
-The number of splicing junctions was counted based on cellranger-aligned reads and prepared as a 
+The number of splicing junctions was counted based on cellranger-aligned reads and compiled into a 
 junction-by-barcode matrix.
 
 
@@ -204,9 +205,10 @@ Refer to the following data added to the `AnnData` objects:
 
 - `AnnData.obsm["junctions_raw"]`: raw junction counts
 - `AnnData.obsm["junctions_log2"]`: log2-transformed raw junction counts with a pseudocount of 1
-- `AnnData.obsm["junctions_log2TPM"]`: log2 + 1 transcripts per million (TPM)
+- `AnnData.obsm["junctions_log2TPM"]`: log2-transformed transcripts per million (TPM) 
+  with a pseudocount of 1
 
-Updated `AnnData` objects saved:
+Updated `AnnData` objects are saved as:
 
 ```{r outfile_info}
 
@@ -216,7 +218,8 @@ for (name in names(adata_paths)) {
 
 ```
 
-Input matrices are prepared as *log2 + 1 transcripts per million (TPM)* in the `SCA` object as shown below:
+Input matrices are prepared as *log2-transformed TPM values (with a pseudocount of 1)* 
+in the `SCA` object, as shown below:
 
 ```{r prep_sca}
 
@@ -265,6 +268,22 @@ assays(sca)$et <- l2t_mat
 
 print(sca)
 ```
+
+# Quality Control (QC) {.tabset}
+
+```{r scater_qc, results='asis'}
+
+sca <- addPerCellQC(sca)
+
+cat('## Detection')
+plotColData(sca, y="detected", x="total")
+
+
+cat('## PCA')
+sca <- runPCA(sca, ncomponents=5, exprs_values='et')
+plotReducedDim(sca, dimred='PCA', colour_by='general_disease')
+```
+
 
 # Session info
 
