@@ -115,8 +115,8 @@ import os
 # Loading input data {.tabset}
 
 The number of splicing junctions was counted based on cellranger-aligned reads and prepared as a 
-junction-by-barcode matrix. The matrices are added to the following `AnnData` object for future use.
-The following 
+junction-by-barcode matrix.
+
 
 ```{python import_adata}
 
@@ -131,14 +131,6 @@ adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.it
 
 # Import junction matrix
 counts = pd.read_csv(r.mtx_path, sep=" ")
-
-celltype = 'ExNeu1'
-# Retrieve an AnnData corresponding to the celltype
-ann = adata_dic[celltype]
-# Extract cell barcodes
-target_cells = list(ann.obs.index)
-# Slice the junction count matrix based on the extracted barcodes
-counts_subset = counts[target_cells]
 
 # Prep a function calculating junction length in Kb
 def size_kb(coord):
@@ -192,12 +184,39 @@ for celltype in adata_dic.keys():
     updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS.h5ad"
     # Save updated AnnData
     ann.write_h5ad(updated_path)
-    print(f"AnnData saved for {celltype}: {updated_path}")
 
     # Replace the input AnnData with updated obj
     adata_dic[celltype] = ann
 
 ```
+
+Input AnnData objects for each celltype:
+
+```{r infile_info}
+
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", adata_paths[[name]]))
+}
+
+```
+
+Refer to the following data added to the `AnnData` objects:
+
+- `AnnData.obsm["junctions_raw"]`: raw junction counts
+- `AnnData.obsm["junctions_log2"]`: log2-transformed raw junction counts with a pseudocount of 1
+- `AnnData.obsm["junctions_log2TPM"]`: log2 + 1 transcripts per million (TPM)
+
+Updated `AnnData` objects saved:
+
+```{r outfile_info}
+
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", out_dir, "/", name, "_JUNCTIONS.h5ad"))
+}
+
+```
+
+Input matrices are prepared as *log2 + 1 transcripts per million (TPM)* in the `SCA` object as shown below:
 
 ```{r prep_sca}
 
@@ -206,7 +225,7 @@ for celltype in adata_dic.keys():
 # - https://rglab.github.io/MAST/reference/FromMatrix.html
 # - https://rglab.github.io/MAST/articles/MAST-interoperability.html
 # --------------------------------------------------------------------------------
-stop()
+
 # Extract metadata for all input cells
 adata_meta <- map(py$adata_dic,
                   ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
@@ -232,8 +251,19 @@ sca <- FromMatrix(as.matrix(py$counts),
 
 # Clean assay slots to include both raw counts (counts) and log2 + 1 (et)
 assays(sca)$counts <- assay(sca)
-assays(sca)$et <- log2(as.matrix(py$counts) + 1)
 
+# Extract log2TPM-transformed counts from AnnData objects
+l2t_mat <- map(py$adata_dic, ~.x$obsm[['junctions_log2TPM']]) %>%
+    bind_rows() %>%
+    t()
+
+# Clean orders for row/column
+l2t_mat <- l2t_mat[rownames(py$counts), colnames(py$counts)]
+
+# Add the log2TPM matrix to SCA obj
+assays(sca)$et <- l2t_mat
+
+print(sca)
 ```
 
 # Session info
