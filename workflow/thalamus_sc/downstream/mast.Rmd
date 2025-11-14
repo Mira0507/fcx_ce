@@ -106,7 +106,7 @@ factor_groups <- list(
 ```{python ppackages}
 import anndata as ad
 import pandas as pd
-import numpy as nd
+import numpy as np
 import subprocess
 import os
 ```
@@ -116,7 +116,7 @@ import os
 
 The number of splicing junctions was counted based on cellranger-aligned reads and prepared as a 
 junction-by-barcode matrix. The matrices are added to the following `AnnData` object for future use.
-Refer to `adata.obsm["junctions"]` for counted junctions across the barcodes.
+The following 
 
 ```{python import_adata}
 
@@ -132,6 +132,25 @@ adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.it
 # Import junction matrix
 counts = pd.read_csv(r.mtx_path, sep=" ")
 
+celltype = 'ExNeu1'
+# Retrieve an AnnData corresponding to the celltype
+ann = adata_dic[celltype]
+# Extract cell barcodes
+target_cells = list(ann.obs.index)
+# Slice the junction count matrix based on the extracted barcodes
+counts_subset = counts[target_cells]
+
+# Prep a function calculating junction length in Kb
+def size_kb(coord):
+    # Split the input coordinate. Assume the following format: 
+    # "chr8:79611214:79616822:clu_1_+"
+    parts = coord.split(":")
+    start = int(parts[1])
+    end = int(parts[2])
+    # Calculate between the start and end sites in Kb
+    distance = abs(end - start) / 1000
+    return distance
+
 for celltype in adata_dic.keys():
     # Retrieve an AnnData corresponding to the celltype
     ann = adata_dic[celltype]
@@ -139,13 +158,29 @@ for celltype in adata_dic.keys():
     target_cells = list(ann.obs.index)
     # Slice the junction count matrix based on the extracted barcodes
     counts_subset = counts[target_cells]
-
     # Ensure that cell barcodes match between the count matrix and AnnData
     try: 
-        # Add the junction count matrix to AnnData
-        ann.obsm['junctions'] = counts_subset.T
+        # Add the raw junction count matrix to AnnData
+        # NOTE: This requires barcode-by-junction as input
+        ann.obsm['junctions_raw'] = counts_subset.T
+        # Add log2-transformed junction matrix to AnnData
+        ann.obsm['junctions_log2'] = np.log2(counts_subset.T + 1)
     except TypeError:
         print(f"Dimensions don't match between the two matrices for {celltype}!")
+
+    # Calculate the size of junctions
+    length_list = [size_kb(c) for c in counts_subset.index]
+    # Divide the raw counts by junction size
+    # NOTE: RPK = Reads per Kb
+    counts_rpk = counts_subset.div(length_list, axis=0)
+    # Calculate barcode-wise RPK
+    per_barcode_sum = counts_rpk.sum(axis=0)
+    # Convert into log2TPM scale with a pseudocount of 1
+    log2tpm = np.log2(counts_rpk.div(per_barcode_sum, axis=1) * 1e6 + 1)
+    # Replace missing values with 1
+    log2tpm = log2tpm.fillna(1)
+    # Add log2TPM junctions to AnnData
+    ann.obsm['junctions_log2TPM'] = log2tpm.T
 
     # Specify the path to updated AnnData
     updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS.h5ad"
@@ -158,7 +193,7 @@ for celltype in adata_dic.keys():
 
 ```
 
-```{r prep_sca}
+```{r prep_sca, eval=FALSE}
 
 # --------------------------------------------------------------------------------
 # This chunk builds an SCA obj. Refer to the following instructions:
