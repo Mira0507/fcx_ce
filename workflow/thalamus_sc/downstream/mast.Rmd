@@ -168,15 +168,21 @@ for celltype in adata_dic.keys():
     except TypeError:
         print(f"Dimensions don't match between the two matrices for {celltype}!")
 
+    # Calculate TPM
+    # 1. Divide the read counts by the length of each gene in kilobases. This gives you reads 
+    # per kilobase (RPK).
+    # 2. Count up all the RPK values in a sample and divide this number by 1,000,000. This is 
+    # your “per million” scaling factor.
+    # 3. Divide the RPK values by the “per million” scaling factor. This gives you TPM.
+
     # Calculate the size of junctions
     length_list = [size_kb(c) for c in counts_subset.index]
-    # Divide the raw counts by junction size
-    # NOTE: RPK = Reads per Kb
+    # Divide the raw counts by junction size, returning RPK
     counts_rpk = counts_subset.div(length_list, axis=0)
-    # Calculate barcode-wise RPK
-    per_barcode_sum = counts_rpk.sum(axis=0)
+    # Calculate barcode-wise per million scaling factor
+    per_barcode_million = counts_rpk.sum(axis=0) / 1_000_000
     # Convert into log2TPM scale with a pseudocount of 1
-    log2tpm = np.log2(counts_rpk.div(per_barcode_sum, axis=1) * 1e6 + 1)
+    log2tpm = np.log2(counts_rpk.div(per_barcode_million, axis=1) + 1)
     # Replace missing values with 1
     log2tpm = log2tpm.fillna(1)
     # Add log2TPM junctions to AnnData
@@ -193,14 +199,14 @@ for celltype in adata_dic.keys():
 
 ```
 
-```{r prep_sca, eval=FALSE}
+```{r prep_sca}
 
 # --------------------------------------------------------------------------------
 # This chunk builds an SCA obj. Refer to the following instructions:
 # - https://rglab.github.io/MAST/reference/FromMatrix.html
 # - https://rglab.github.io/MAST/articles/MAST-interoperability.html
 # --------------------------------------------------------------------------------
-
+stop()
 # Extract metadata for all input cells
 adata_meta <- map(py$adata_dic,
                   ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
