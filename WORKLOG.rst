@@ -1226,7 +1226,27 @@ fcx_ce
     - notes
         - updated AnnData to include splice junction matrices 
           and save as and ``h5ad`` file
-        - creating SCA obj in progress based on the following references
+
+
+2025-11-14
+----------
+
+@Mira0507
+
+- start DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - applied log2 transformation and log2 + 1 TPM
+        - added those transformed junction counts to AnnData with the following
+          keys:
+            - ``AnnData.obsm['junction_raw']``: raw counts
+            - ``AnnData.obsm['junction_log2']``: log2(raw counts + 1)
+            - ``AnnData.obsm['junction_log2TPM']``: log2(TPM + 1)
+        - saved the updated AnnData objects in ``workflow/thalamus_sc/downstream/mast``
+        - created SCA obj based on the following references
             - https://rglab.github.io/MAST/articles/MAST-interoperability.html
             - https://rglab.github.io/MAST/reference/FromMatrix.html
+        - QC in progress
+
 
