@@ -1250,3 +1250,15 @@ fcx_ce
         - QC in progress
 
 
+
+2025-11-17
+----------
+
+@Mira0507
+
+- work on DS analysis using <ST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - pre-filter cells with non-zero junctions
+        - added heamaps on all and celltype-specifically subsetted cells
