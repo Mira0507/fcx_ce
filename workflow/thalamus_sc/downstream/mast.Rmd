@@ -1,5 +1,5 @@
 ---
-title: "Differential splicing analysis"
+title: "Differential splicing analysis using MAST"
 author: "Mira Sohn"
 output:
     html_document:
@@ -40,9 +40,10 @@ library(NMF)
 library(MAST)
 library(RColorBrewer)
 library(scater)
+library(plotly)
 
 # Additional options
-set.seed(1772)
+set.seed(2570)
 source('../config/helpers.R')
 
 # Specify the number of available cores
@@ -80,7 +81,7 @@ for (p in c(out_dir)) {
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
-    celltype=c('ExNeu1', 'ExNeu2'),
+    cell_type=c('ExNeu1', 'ExNeu2'),
     study=c('Marsan', 'Biogen', 'Mathys'),
     study_specific_disease_specific=c('Control-Marsan',
                                       'Control-Biogen',
@@ -175,9 +176,10 @@ for celltype in adata_dic.keys():
     # Calculate barcode-wise per million scaling factor
     per_barcode_million = counts_rpk.sum(axis=0) / 1_000_000
     # Convert into log2TPM scale with a pseudocount of 1
-    log2tpm = np.log2(counts_rpk.div(per_barcode_million, axis=1) + 1)
-    # Replace missing values with 1
-    log2tpm = log2tpm.fillna(1)
+    tpm = counts_rpk.div(per_barcode_million, axis=1)
+    log2tpm = np.log2(tpm + 1)
+    # Replace missing values (NaN) with 1
+    log2tpm = log2tpm.fillna(0)
     # Add log2TPM junctions to AnnData
     ann.obsm['junctions_log2TPM'] = log2tpm.T
 
@@ -227,13 +229,24 @@ in the `SCA` object, as shown below:
 # This chunk builds an SCA obj. Refer to the following instructions:
 # - https://rglab.github.io/MAST/reference/FromMatrix.html
 # - https://rglab.github.io/MAST/articles/MAST-interoperability.html
+# This chunk requires manual intervention to some extent.
 # --------------------------------------------------------------------------------
 
 # Extract metadata for all input cells
 adata_meta <- map(py$adata_dic,
                   ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
-    bind_rows()
+    bind_rows() %>%
+    mutate(study_disease_specific_celltype=paste0(study_specific_disease_specific,
+                                                  "_",
+                                                  cell_type))
+
 rownames(adata_meta) <- adata_meta[['barcode']]
+
+# Refactor columns of interest
+for (name in names(factor_groups)) {
+    adata_meta[[name]] <- factor(adata_meta[[name]],
+                                 levels=factor_groups[[name]])
+}
 
 # Ensure that the number of barcodes match between the matrix and metadata
 if (nrow(adata_meta) != ncol(py$counts)) {
@@ -246,15 +259,6 @@ if (nrow(adata_meta) != ncol(py$counts)) {
 # Prep feature table
 feature_meta <- data.frame(junction=rownames(py$counts))
 
-# Build an sca obj using raw counts
-sca <- FromMatrix(as.matrix(py$counts),
-                  cData=adata_meta,
-                  fData=feature_meta,
-                  check_sanity=FALSE)
-
-# Clean assay slots to include both raw counts (counts) and log2 + 1 (et)
-assays(sca)$counts <- assay(sca)
-
 # Extract log2TPM-transformed counts from AnnData objects
 l2t_mat <- map(py$adata_dic, ~.x$obsm[['junctions_log2TPM']]) %>%
     bind_rows() %>%
@@ -263,27 +267,65 @@ l2t_mat <- map(py$adata_dic, ~.x$obsm[['junctions_log2TPM']]) %>%
 # Clean orders for row/column
 l2t_mat <- l2t_mat[rownames(py$counts), colnames(py$counts)]
 
-# Add the log2TPM matrix to SCA obj
-assays(sca)$et <- l2t_mat
+# Build an sca obj using log2TPM-transformed counts
+sca <- FromMatrix(l2t_mat,
+                  cData=adata_meta,
+                  fData=feature_meta,
+                  check_sanity=FALSE)
+
+# Add raw counts to the sca obj
+assays(sca)$counts <- py$counts
 
 print(sca)
+
+# How to access to raw or transformed counts
+# - Transformed counts: `assay(sca)` or `assays(sca)$et`
+# - Raw counts: `assays(sca)$counts`
 ```
 
-# Quality Control (QC) {.tabset}
+# Quality Control (QC)
 
-```{r scater_qc, results='asis'}
+## Heatmap
 
-sca <- addPerCellQC(sca)
+```{r qc_heatmap, results='asis', fig.height=12, fig.width=12, eval=FALSE}
 
-cat('## Detection')
-plotColData(sca, y="detected", x="total")
-
-
-cat('## PCA')
-sca <- runPCA(sca, ncomponents=5, exprs_values='et')
-plotReducedDim(sca, dimred='PCA', colour_by='general_disease')
+aheatmap(assay(sca),
+         labRow='',
+         annCol=as.data.frame(colData(sca)[, names(factor_groups)]))
 ```
 
+## PCA {.tabset}
+
+```{r qc_pca, results='asis', fig.height=10, fig.width=10}
+
+# --------------------------------------------------------------------------------
+# This chunk performs PCA on the profiling of splice junctions
+# --------------------------------------------------------------------------------
+
+# Set up a function running PCA
+plotPCA <- function(sca_obj, condition){
+    # Run RPCA
+    projection <- rsvd::rpca(t(assay(sca_obj)), retx=TRUE, k=4)$x
+    colnames(projection)=c("PC1", "PC2", "PC3", "PC4")
+    # Prep input data frame for plotting
+    pca <- data.frame(projection,
+                      as.data.frame(colData(sca_obj))[, condition])
+    colnames(pca) <- c(colnames(projection), condition)
+    # Print the PCA plot
+    print(GGally::ggpairs(pca, columns=c('PC1', 'PC2', 'PC3', condition),
+                  mapping=aes(color=condition), upper=list(continuous='blank'))
+    )
+    invisible(pca)
+}
+
+# Plot PCA
+for (name in names(factor_groups)) {
+    cat("###", name, "\n\n")
+    plotPCA(sca, name)
+    cat('\n\n')
+}
+
+```
 
 # Session info
 
