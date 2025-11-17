@@ -221,7 +221,9 @@ for (name in names(adata_paths)) {
 ```
 
 Input matrices are prepared as *log2-transformed TPM values (with a pseudocount of 1)* 
-in the `SCA` object, as shown below:
+in the `SCA` object. The following table shows the number of barcodes for all cells (`all`) or
+celltype-specific subsets (`ExNeu1` and `ExNeu2`). The `N_barcodes` column represents the number of 
+barcodes in each object.
 
 ```{r prep_sca}
 
@@ -276,7 +278,21 @@ sca <- FromMatrix(l2t_mat,
 # Add raw counts to the sca obj
 assays(sca)$counts <- py$counts
 
-print(sca)
+# Create a list storing objects for all and celltype-specific barcodes
+sca_list <- list(all=sca)
+for (cell_x in factor_groups[['cell_type']]) {
+    barcode_x <- adata_meta[adata_meta[['cell_type']] == cell_x,] %>%
+        rownames()
+    sca_x <- sca[, barcode_x]
+    sca_list[[cell_x]] <- sca_x
+}
+
+# Print the number of barcodes for each obj
+df <- data.frame(cells=names(sca_list),
+                 N_barcodes=sapply(sca_list, function(o) ncol(o))) %>%
+    remove_rownames()
+
+knitr::kable(df)
 
 # How to access to raw or transformed counts
 # - Transformed counts: `assay(sca)` or `assays(sca)$et`
@@ -285,18 +301,79 @@ print(sca)
 
 # Quality Control (QC)
 
-## Heatmap
+## Pre-filtering barcodes
 
-```{r qc_heatmap, results='asis', fig.height=12, fig.width=12, eval=FALSE}
+Cells are removed if none of the junctions are detected. The number of remaining barcodes after filtering
+is shown in the `N_remaining` column.
 
-aheatmap(assay(sca),
-         labRow='',
-         annCol=as.data.frame(colData(sca)[, names(factor_groups)]))
+```{r prefiltering, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk removes barcodes with zero junction counts.
+# --------------------------------------------------------------------------------
+
+for (name in names(sca_list)) {
+
+    # TRUE for non-zero and FALSE for zero-counted cells
+    o <- sca_list[[name]]
+    nonzero_barcodes <- assay(o) %>%
+        apply(2, function(x) sum(x) > 0)
+
+    # Remove zero-counted cells from the obj
+    o_filt <- o[, nonzero_barcodes]
+
+    # Print the number of cells after and after filtering
+    df[df$cells == name, 'N_remaining'] <- ncol(o_filt)
+}
+
+knitr::kable(df)
+```
+
+## Heatmap {.tabset}
+
+Cell-to-cell similarity is explored using a heatmap generated from non-zero cells, with *Euclidean distance* 
+represented by the color scale.
+
+
+```{r qc_heatmap, results='asis', fig.height=12, fig.width=12, cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk creates cell-to-cell similarity heatmap
+# --------------------------------------------------------------------------------
+
+for (name in names(sca_list)) {
+    cat('###', name, '\n\n')
+    # Retrieve obj
+    o <- sca_list[[name]]
+    # Retrieve log2TPM matrix
+    distmat <- assay(o)
+
+    # Prep a distance matrix
+    sampleDistsMatrix <- as.matrix(dist(t(distmat)))
+    if (!identical(rownames(sampleDistsMatrix), colnames(distmat))) {
+        rownames(sampleDistsMatrix) <- colnames(distmat)
+    }
+
+    # Set color to be displayed
+    colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
+
+    # Print heatmap
+    print(pheatmap(
+        sampleDistsMatrix,
+        scale='none',
+        color=colors,
+        annotation_cols=colData(o)[, names(factor_groups)],
+        show_rownames=TRUE,
+        show_colnames=FALSE
+    )
+    )
+    cat('\n\n')
+}
 ```
 
 ## PCA {.tabset}
 
-```{r qc_pca, results='asis', fig.height=10, fig.width=10}
+```{r qc_pca, results='asis', fig.height=10, fig.width=10, eval=FALSE}
 
 # --------------------------------------------------------------------------------
 # This chunk performs PCA on the profiling of splice junctions
@@ -321,7 +398,7 @@ plotPCA <- function(sca_obj, condition){
 # Plot PCA
 for (name in names(factor_groups)) {
     cat("###", name, "\n\n")
-    plotPCA(sca, name)
+    plotPCA(sca_filt, name)
     cat('\n\n')
 }
 
