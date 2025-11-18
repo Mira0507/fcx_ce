@@ -118,8 +118,14 @@ import os
 
 # Loading input data {.tabset}
 
-The number of splicing junctions was counted based on cellranger-aligned reads and compiled into a 
-junction-by-barcode matrix.
+The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
+genes:
+
+```{r genes_tested}
+print(read_yaml(snakemake_config)[['genes']])
+```
+
+These counts were compiled into a junction-by-barcode matrix for differential testing.
 
 
 ```{python import_adata}
@@ -377,6 +383,8 @@ for (name in names(sca_list)) {
 
 ## UMAP {.tabset}
 
+Junction profiling is explored across the cells on UMAP.
+
 ```{r prep_umap}
 
 # --------------------------------------------------------------------------------
@@ -420,42 +428,32 @@ for subset in r.count_list.keys():
     umap_dic[subset] = umap_coord
 ```
 
-
-
-
-```{r qc_pca, results='asis', fig.height=10, fig.width=10, cache=TRUE}
+```{r present_umap, results='asis', fig.height=6, fig.width=6}
 
 # --------------------------------------------------------------------------------
-# This chunk performs PCA on the profiling of splice junctions
+# This chunk plots UMAP
 # --------------------------------------------------------------------------------
-stop()
-# Set up a function running PCA
-plotPCA <- function(sca_obj, condition){
-    # Run RPCA
-    projection <- rsvd::rpca(t(assay(sca_obj)), retx=TRUE, k=4)$x
-    colnames(projection)=c("PC1", "PC2", "PC3", "PC4")
-    # Prep input data frame for plotting
-    pca <- data.frame(projection,
-                      as.data.frame(colData(sca_obj))[, condition])
-    colnames(pca) <- c(colnames(projection), condition)
-    # Print the PCA plot
-    print(GGally::ggpairs(pca, columns=c('PC1', 'PC2', 'PC3'),
-                  mapping=aes(color=condition), upper=list(continuous='blank'))
-    )
-    invisible(pca)
-}
 
-# Plot PCA
-for (subset in names(sca_list)) {
-    cat("###", subset, "{.tabset}\n\n")
+# Consolidate metadata and UMAP coordinates in the same data frame
+umap_list <- lapply(py$umap_dic,
+                    function(df) as.data.frame(df) %>% set_names(c("UMAP1", "UMAP2"))) %>%
+    map2(count_list, ~cbind(.y[['meta']], .x))
+
+# Plot
+for (subset in names(umap_list)) {
+    cat('###', subset, '{.tabset}\n\n')
     for (name in names(factor_groups)) {
-        cat("####", name, "\n\n")
-        plotPCA(sca_list[[subset]], name)
+        cat('####', name, '\n\n')
+        df <- umap_list[[subset]][, c(name, "UMAP1", "UMAP2", "barcode")]
+        p <- ggplot(df, aes_string(x='UMAP1', y='UMAP2', color=name)) +
+            geom_point(alpha=0.7) +
+            theme_bw()
+        print(p)
         cat('\n\n')
     }
 }
-
 ```
+
 
 # Session info
 
