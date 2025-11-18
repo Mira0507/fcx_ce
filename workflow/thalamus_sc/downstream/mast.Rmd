@@ -45,6 +45,7 @@ library(plotly)
 # Additional options
 set.seed(2570)
 source('../config/helpers.R')
+use_condaenv("../../../menv")
 
 # Specify the number of available cores
 n_cores <- future::availableCores()
@@ -107,6 +108,7 @@ factor_groups <- list(
 
 ```{python ppackages}
 import anndata as ad
+import scanpy as sc
 import pandas as pd
 import numpy as np
 import subprocess
@@ -373,14 +375,60 @@ for (name in names(sca_list)) {
 }
 ```
 
-## PCA {.tabset}
+## UMAP {.tabset}
+
+```{r prep_umap}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares log2TPM count matrices and metadata for each subset
+# --------------------------------------------------------------------------------
+
+count_list <- lapply(sca_list,
+                     function(o) list(mat=as.data.frame(assay(o)),
+                                      meta=as.data.frame(colData(o))))
+```
+
+```{python umap}
+
+# --------------------------------------------------------------------------------
+# This chunk runs UMAP and prepares UMAP coordinates
+# --------------------------------------------------------------------------------
+
+umap_dic = {}
+
+for subset in r.count_list.keys():
+    # Retrieve input for AnnData
+    obj_x = r.count_list[subset]
+    mat_x = obj_x['mat']
+    meta_x = obj_x['meta']
+
+    # Create an AnnData obj
+    adata_x = ad.AnnData(X=mat_x.T, obs=meta_x)
+
+    # Run PCA
+    sc.tl.pca(adata_x)
+
+    # Find neighbors
+    sc.pp.neighbors(adata_x)
+
+    # Run UMAP
+    sc.tl.umap(adata_x)
+
+    # Retrieve UMAP coordinates (2D)
+    umap_coord = adata_x.obsm['X_umap']
+
+    umap_dic[subset] = umap_coord
+```
+
+
+
 
 ```{r qc_pca, results='asis', fig.height=10, fig.width=10, cache=TRUE}
 
 # --------------------------------------------------------------------------------
 # This chunk performs PCA on the profiling of splice junctions
 # --------------------------------------------------------------------------------
-
+stop()
 # Set up a function running PCA
 plotPCA <- function(sca_obj, condition){
     # Run RPCA
@@ -391,7 +439,7 @@ plotPCA <- function(sca_obj, condition){
                       as.data.frame(colData(sca_obj))[, condition])
     colnames(pca) <- c(colnames(projection), condition)
     # Print the PCA plot
-    print(GGally::ggpairs(pca, columns=c('PC1', 'PC2', 'PC3', condition),
+    print(GGally::ggpairs(pca, columns=c('PC1', 'PC2', 'PC3'),
                   mapping=aes(color=condition), upper=list(continuous='blank'))
     )
     invisible(pca)
