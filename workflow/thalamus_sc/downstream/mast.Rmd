@@ -324,6 +324,9 @@ for (name in names(sca_list)) {
 
     # Print the number of cells after and after filtering
     df[df$cells == name, 'N_remaining'] <- ncol(o_filt)
+
+    # Update the objects in the `sca_list`
+    sca_list[[name]] <- o_filt
 }
 
 knitr::kable(df)
@@ -332,8 +335,8 @@ knitr::kable(df)
 ## Heatmap {.tabset}
 
 Cell-to-cell similarity is explored using a heatmap generated from non-zero cells, with *Euclidean distance* 
-represented by the color scale.
-
+represented by the color scale. Darker blue indicates less distance (i.e., greater similarity)
+in splice junction profiling.
 
 ```{r qc_heatmap, results='asis', fig.height=12, fig.width=12, cache=TRUE}
 
@@ -342,29 +345,28 @@ represented by the color scale.
 # --------------------------------------------------------------------------------
 
 for (name in names(sca_list)) {
-    cat('###', name, '\n\n')
+    cat('###', name, '{.tabset}\n\n')
     # Retrieve obj
     o <- sca_list[[name]]
     # Retrieve log2TPM matrix
-    distmat <- assay(o)
-
-    # Prep a distance matrix
-    sampleDistsMatrix <- as.matrix(dist(t(distmat)))
-    if (!identical(rownames(sampleDistsMatrix), colnames(distmat))) {
-        rownames(sampleDistsMatrix) <- colnames(distmat)
-    }
+    sampleDistsMatrix <- as.matrix(dist(t(assay(o))))
 
     # Set color to be displayed
     colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
 
+    # Prep metadata for heatmap
+    heatmap_meta <- as.data.frame(colData(o)[, names(factor_groups)])
+
     # Print heatmap
-    print(pheatmap(
+    print(pheatmap::pheatmap(
         sampleDistsMatrix,
         scale='none',
         color=colors,
-        annotation_cols=colData(o)[, names(factor_groups)],
-        show_rownames=TRUE,
-        show_colnames=FALSE
+        annotation_col=heatmap_meta,
+        show_rownames=FALSE,
+        show_colnames=FALSE,
+        cluster_cols=TRUE,
+        border_color=NA
     )
     )
     cat('\n\n')
@@ -373,7 +375,7 @@ for (name in names(sca_list)) {
 
 ## PCA {.tabset}
 
-```{r qc_pca, results='asis', fig.height=10, fig.width=10, eval=FALSE}
+```{r qc_pca, results='asis', fig.height=10, fig.width=10, cache=TRUE}
 
 # --------------------------------------------------------------------------------
 # This chunk performs PCA on the profiling of splice junctions
@@ -396,10 +398,13 @@ plotPCA <- function(sca_obj, condition){
 }
 
 # Plot PCA
-for (name in names(factor_groups)) {
-    cat("###", name, "\n\n")
-    plotPCA(sca_filt, name)
-    cat('\n\n')
+for (subset in names(sca_list)) {
+    cat("###", subset, "{.tabset}\n\n")
+    for (name in names(factor_groups)) {
+        cat("####", name, "\n\n")
+        plotPCA(sca_list[[subset]], name)
+        cat('\n\n')
+    }
 }
 
 ```
