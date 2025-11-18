@@ -138,6 +138,7 @@ These counts were compiled into a junction-by-barcode matrix for differential te
 
 # Import AnnData objects
 adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.items()}
+adata_filtered = {}
 
 # Import junction matrix
 counts = pd.read_csv(r.mtx_path, sep=" ")
@@ -158,17 +159,17 @@ for celltype in adata_dic.keys():
     ann = adata_dic[celltype]
     # Extract cell barcodes
     target_cells = list(ann.obs.index)
-    # Slice the junction count matrix based on the extracted barcodes
+    # Slice the junction count matrix based on the extracted barcodes that expresses
+    # any of the junctions
     counts_subset = counts[target_cells]
-    # Ensure that cell barcodes match between the count matrix and AnnData
-    try: 
-        # Add the raw junction count matrix to AnnData
-        # NOTE: This requires barcode-by-junction as input
-        ann.obsm['junctions_raw'] = counts_subset.T
-        # Add log2-transformed junction matrix to AnnData
-        ann.obsm['junctions_log2'] = np.log2(counts_subset.T + 1)
-    except TypeError:
-        print(f"Dimensions don't match between the two matrices for {celltype}!")
+    nonzero_cells = counts_subset.sum(axis=0) > 0
+    counts_subset = counts_subset.loc[:, nonzero_cells]
+    # Create a new AnnData obj
+    ann_new = ad.AnnData(X=counts_subset.T, obs=ann.obs.loc[counts_subset.columns, :])
+    ann_new.layers['counts'] = ann_new.X
+    # Add log2-transformed values to the AnnData
+    ann_new.layers['counts'] = ann_new.X
+    ann_new.layers['log2'] = np.log2(ann_new.X + 1)
 
     # Calculate TPM
     # 1. Divide the read counts by the length of each gene in kilobases. This gives you reads 
@@ -188,8 +189,8 @@ for celltype in adata_dic.keys():
     log2tpm = np.log2(tpm + 1)
     # Replace missing values (NaN) with 1
     log2tpm = log2tpm.fillna(0)
-    # Add log2TPM junctions to AnnData
-    ann.obsm['junctions_log2TPM'] = log2tpm.T
+    # Add log2TPM-transformed values to the AnnData
+    ann_new.layers['log2TPM'] = log2tpm.T
 
     # Specify the path to updated AnnData
     updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS.h5ad"
@@ -197,7 +198,8 @@ for celltype in adata_dic.keys():
     ann.write_h5ad(updated_path)
 
     # Replace the input AnnData with updated obj
-    adata_dic[celltype] = ann
+    adata_filtered[celltype] = ann_new
+
 
 ```
 
@@ -213,12 +215,12 @@ for (name in names(adata_paths)) {
 
 Refer to the following data added to the `AnnData` objects:
 
-- `AnnData.obsm["junctions_raw"]`: raw junction counts
-- `AnnData.obsm["junctions_log2"]`: log2-transformed raw junction counts with a pseudocount of 1
-- `AnnData.obsm["junctions_log2TPM"]`: log2-transformed transcripts per million (TPM) 
+- `AnnData.layers["counts"]`: raw junction counts
+- `AnnData.layers["log2"]`: log2-transformed raw junction counts with a pseudocount of 1
+- `AnnData.layers["log2TPM"]`: log2-transformed transcripts per million (TPM) 
   with a pseudocount of 1
 
-Updated `AnnData` objects are saved as:
+Created `AnnData` objects are saved as:
 
 ```{r outfile_info}
 
@@ -228,10 +230,9 @@ for (name in names(adata_paths)) {
 
 ```
 
-Input matrices are prepared as *log2-transformed TPM values (with a pseudocount of 1)* 
-in the `SCA` object. The following table shows the number of barcodes for all cells (`all`) or
+The following table shows the number of barcodes for all cells (`all`) or
 celltype-specific subsets (`ExNeu1` and `ExNeu2`). The `N_barcodes` column represents the number of 
-barcodes in each object.
+barcodes that were initially loaded.
 
 ```{r prep_sca}
 
@@ -243,7 +244,7 @@ barcodes in each object.
 # --------------------------------------------------------------------------------
 
 # Extract metadata for all input cells
-adata_meta <- map(py$adata_dic,
+adata_meta <- map(py$adata_filtered,
                   ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
     bind_rows() %>%
     mutate(study_disease_specific_celltype=paste0(study_specific_disease_specific,
@@ -258,24 +259,19 @@ for (name in names(factor_groups)) {
                                  levels=factor_groups[[name]])
 }
 
-# Ensure that the number of barcodes match between the matrix and metadata
-if (nrow(adata_meta) != ncol(py$counts)) {
-    stop("The number of barcodes is wrong!")
-} else {
-    # Reorder rows of the metadata 
-    adata_meta <- adata_meta[colnames(py$counts), ]
-}
-
 # Prep feature table
 feature_meta <- data.frame(junction=rownames(py$counts))
 
 # Extract log2TPM-transformed counts from AnnData objects
-l2t_mat <- map(py$adata_dic, ~.x$obsm[['junctions_log2TPM']]) %>%
+l2t_mat <- lapply(py$adata_filtered, function(o) {
+    # Extract and clean the log2TPM count matrix
+    mat <- o$layers[['log2TPM']] %>%
+        as.data.frame()
+    rownames(mat) <- rownames(o$obs)
+    colnames(mat) <- o$var %>% rownames()
+    return(mat) }) %>%
     bind_rows() %>%
     t()
-
-# Clean orders for row/column
-l2t_mat <- l2t_mat[rownames(py$counts), colnames(py$counts)]
 
 # Build an sca obj using log2TPM-transformed counts
 sca <- FromMatrix(l2t_mat,
@@ -284,7 +280,7 @@ sca <- FromMatrix(l2t_mat,
                   check_sanity=FALSE)
 
 # Add raw counts to the sca obj
-assays(sca)$counts <- py$counts
+assays(sca)$counts <- py$counts[, colnames(l2t_mat)]
 
 # Create a list storing objects for all and celltype-specific barcodes
 sca_list <- list(all=sca)
@@ -296,8 +292,9 @@ for (cell_x in factor_groups[['cell_type']]) {
 }
 
 # Print the number of barcodes for each obj
+n_barcodes <- sapply(py$adata_dic, function(o) o$shape[[1]])
 df <- data.frame(cells=names(sca_list),
-                 N_barcodes=sapply(sca_list, function(o) ncol(o))) %>%
+                 N_barcodes=c(sum(n_barcodes), n_barcodes)) %>%
     remove_rownames()
 
 knitr::kable(df)
@@ -306,6 +303,10 @@ knitr::kable(df)
 # - Transformed counts: `assay(sca)` or `assays(sca)$et`
 # - Raw counts: `assays(sca)$counts`
 ```
+
+Input matrices are prepared as *raw* (e.g. `assays(SCA)$counts`) 
+and *log2-transformed TPM values (with a pseudocount of 1)* (e.g. `assays(SCA)$et`)
+in the `SCA` object. 
 
 # Quality Control (QC)
 
@@ -317,25 +318,11 @@ is shown in the `N_remaining` column.
 ```{r prefiltering, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk removes barcodes with zero junction counts.
+# This chunk displays the number of barcodes before and after filtering zero-count
+# cells
 # --------------------------------------------------------------------------------
 
-for (name in names(sca_list)) {
-
-    # TRUE for non-zero and FALSE for zero-counted cells
-    o <- sca_list[[name]]
-    nonzero_barcodes <- assay(o) %>%
-        apply(2, function(x) sum(x) > 0)
-
-    # Remove zero-counted cells from the obj
-    o_filt <- o[, nonzero_barcodes]
-
-    # Print the number of cells after and after filtering
-    df[df$cells == name, 'N_remaining'] <- ncol(o_filt)
-
-    # Update the objects in the `sca_list`
-    sca_list[[name]] <- o_filt
-}
+df[['N_remaining']] <- sapply(sca_list, ncol)
 
 knitr::kable(df)
 ```
@@ -383,7 +370,8 @@ for (name in names(sca_list)) {
 
 ## UMAP {.tabset}
 
-Junction profiling is explored across the cells on UMAP.
+Junction profiling is explored across cells on UMAP. Each dot represents a single cell, 
+along with color codes corresponding to different conditions.
 
 ```{r prep_umap}
 
