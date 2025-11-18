@@ -1,5 +1,8 @@
 python
 anndata
+scanpy
+python-igraph
+leidenalg
 r-base
 r-tidyverse
 r-dt
