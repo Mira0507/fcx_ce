@@ -14,3 +14,5 @@ leafcutter/
 results*/
 *.sif
 *ds_ExNeu2/
+*cache/
+*_files/
