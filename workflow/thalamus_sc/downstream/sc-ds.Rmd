@@ -50,6 +50,8 @@ use_condaenv("../../../menv")
 # Specify the number of available cores
 n_cores <- future::availableCores()
 options(mc.cores=n_cores)
+
+pd <- import("pandas")
 ```
 
 ```{r config}
@@ -104,9 +106,10 @@ factor_groups <- list(
                                       'AD-Mathys_ExNeu2')
 )
 
-# Specify a column to subset barcodes
+# Specify column names to subset barcodes
 # NOTE: Set to NULL if unnecessary
 subset_col <- list(study_celltype=c('study', 'cell_type'))
+sample_col <- 'sample'
 
 ```
 
@@ -232,8 +235,9 @@ for (name in names(adata_paths)) {
 Note that the `*_JUNCTIONS_ADDED.h5ad` file includes both the transcript and junction counts, while
 the `*_JUNCTIONS_ONLY.h5ad` contains only junction counts. 
 
-The following table shows the number of barcodes for each study- and celltype-specific subset.
-The `N_barcodes` column represents the number of barcodes that were initially loaded.
+The following table shows the number of samples and barcodes for each study- and celltype-specific subset.
+The `N_samples` and `N_barcodes` columns represent the number of samples and barcodes 
+that were initially loaded, respectively.
 
 ```{r n_barcodes, results='asis'}
 
@@ -241,8 +245,17 @@ The `N_barcodes` column represents the number of barcodes that were initially lo
 # This chunk displays the number of input barcodes for each subset
 # --------------------------------------------------------------------------------
 
-# Print the number of barcodes for each obj
+# Function to extract the number of samples from a list of AnnData obj
+count_n_samples <- function(obj_dic) {
+    sapply(obj_dic, function(obj) obj$obs[[sample_col]]) %>%
+        unlist() %>%
+        unique() %>%
+        length()
+}
+
+# Print the number of samples and barcodes for each obj
 n_df <- data.frame(subset="all",
+                   N_samples=count_n_samples(py$adata_dic),
                    N_barcodes=sapply(py$adata_dic, function(o) nrow(o$obs)) %>% sum
 )
 
@@ -251,7 +264,9 @@ for (o in py$adata_dic) {
     n_list <- split(df, df[[names(subset_col)[1]]]) %>%
         lapply(nrow)
     n_df <- rbind(n_df,
-                  data.frame(subset=names(n_list), N_barcodes=unlist(n_list)))
+                  data.frame(subset=names(n_list), 
+                             N_samples=count_n_samples(list(o)),
+                             N_barcodes=unlist(n_list)))
 }
 n_df <- n_df %>% remove_rownames()
 
@@ -272,7 +287,7 @@ all_meta <- lapply(py$adata_dic, function(o) o$obs %>% as.data.frame()) %>%
 all_meta <- all_meta[colnames(py$counts),]
 ```
 
-```{r prep_subset_obj}
+```{python prep_subset_obj}
 
 # --------------------------------------------------------------------------------
 # This chunk is used to manually subset AnnData objects
@@ -280,13 +295,29 @@ all_meta <- all_meta[colnames(py$counts),]
 
 # reticulate::repl_python()
 
-subadata_dic = {'all': ad.AnnData(X=counts.T, obs=r.all_meta)}
+# Function to normalize and reducing dimensions on an AnnData obj
+def preprocess_adata(obj):
+    # Normalize counts
+    obj.layers['counts'] = obj.X.copy()
+    sc.pp.log1p(obj)
+    obj.layers['lognorm'] = obj.X.copy()
+    # Run PCA
+    sc.tl.pca(obj)
+    # Find neighbors
+    sc.pp.neighbors(obj)
+    # Run UMAP
+    sc.tl.umap(obj)
+
+    return obj
+
+# Initialize a new dictionary for subsetted AnnData
+subadata_dic = {'all': preprocess_adata(ad.AnnData(X=counts.T, obs=r.all_meta))}
 
 subset_col = list(r.subset_col.keys())[0]
 
-for subset in r.n_df['subset'][1:]:
+for subs in r.n_df['subset'][1:]:
     # Retrieve metadata for the subset
-    obs_x = r.all_meta[r.all_meta[subset_col] == subset]
+    obs_x = r.all_meta[r.all_meta[subset_col] == subs]
 
     # Prep the subsetted count matrix
     mat_x = counts[obs_x.index]
@@ -294,45 +325,82 @@ for subset in r.n_df['subset'][1:]:
     # Create an AnnData obj
     adata_x = ad.AnnData(X=mat_x.T, obs=obs_x)
 
-    # Normalize counts
-    adata_x.layers['counts'] = adata_x.X.copy()
-    sc.pp.log1p(adata_x)
-    adata_x.layers['lognorm'] = adata_x.X.copy()
-
-    # Run PCA
-    sc.tl.pca(adata_x)
-
-    # Find neighbors
-    sc.pp.neighbors(adata_x)
-
-    # Run UMAP
-    sc.tl.umap(adata_x)
-
-    subadata_dic[subset] = adata_x
+    # Add log-normalized and dim-reduced AnnData to the dictionary
+    subadata_dic[subs] = preprocess_adata(adata_x)
 
 ```
 
+```{r aggr_counts}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares a list of matrices with columns for barcodes or samples
+# --------------------------------------------------------------------------------
+
+# Create 
+sc_list <- list()
+sp_list <- list()
+
+for (name in names(py$subadata_dic)) {
+    # Retrieve an AnnData obj
+    o <- py$subadata_dic[[name]]
+
+    # Prep matrices for raw and normalized junction counts per barcode
+    mat_list <- list(raw=o$layers[['counts']], norm=o$layers[['lognorm']]) %>%
+        lapply(t) %>%
+        lapply(function(m) {
+            colnames(m) <- rownames(o$obs)
+            rownames(m) <-o$var_names$values
+            return(m)
+        })
+    sc_list[[name]] <- mat_list
+
+    # Collapse the single cell matrix to the following dimension: junction-by-sample
+    mat <- mat_list[['raw']] %>%
+        as.data.frame() %>%
+        rownames_to_column('junction') %>%
+        pivot_longer(!junction, names_to='barcodes', values_to='junction_counts') %>%
+        left_join(o$obs %>% rownames_to_column('barcodes'), by="barcodes") %>%
+        as.data.frame() %>%
+        dplyr::select(junction, barcodes, junction_counts, sample_col) %>%
+        group_by(across(all_of(c('junction', sample_col)))) %>%
+        summarize(counts=sum(junction_counts)) %>%
+        spread(sample, counts) %>%
+        column_to_rownames('junction')
+
+    # Break if missing values have been introduced to the collapsed matrix
+    if (any(is.na(mat))) { paste0(name, ": Missing values introdueced!") }
+
+    sp_list[[name]] <- mat
+}
+
+```
 
 # Quality Control (QC)
 
-## Number of barcodes
+## Number of barcodes with and without junction detection
 
-The number barcodes is counted based on whether junctions are detected.
-is shown in the `N_remaining` column. The percentage of remaining cells relative to input
-(`N_remaining / N_barcodes x 100`) is shown in the `percentage` column.
+The number of barcodes is counted based on whether junctions were detected in each cell. Refer to 
+the following columns for the overview:
 
-```{r prefiltering, results='asis'}
+- `N_barcodes`: all input barcodes
+- `N_barcodes_junctions`: barcodes in which any junctions were detected
+- `percentage`: `N_barcodes_junctions / N_barcodes x 100`, representing the proportion
+  of barcodes with junction detection
+
+```{r n_barcodes_junctions, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk displays the number of barcodes before and after filtering zero-count
-# cells
+# This chunk displays the number of barcodes with and without junction detection
 # --------------------------------------------------------------------------------
-stop()
-data.frame(subset=names(sca_list), N_barcodes=sapply(sca_list, ncol)) %>%
-    right_join(n_df, by="subset") %>%
-    mutate(percentage=N_remaining/N_barcodes * 100,
-           percentage=round(percentage, 2)) %>%
-    knitr::kable()
+
+n_df <- n_df %>%
+    dplyr::select(-N_samples) %>%
+    mutate(N_barcodes_junctions=sapply(py$subadata_dic,
+                                       function(o) sum(rowSums(o$X) > 0)),
+           percentage=N_barcodes_junctions/N_barcodes * 100,
+           percentage=round(percentage, 2))
+
+knitr::kable(n_df)
 ```
 
 
