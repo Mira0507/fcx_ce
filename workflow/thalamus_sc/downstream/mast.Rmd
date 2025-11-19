@@ -104,6 +104,10 @@ factor_groups <- list(
                                       'AD-Mathys_ExNeu2')
 )
 
+# Specify a column to subset barcodes
+# NOTE: Set to NULL if unnecessary
+subset_col <- list(study_celltype=c('study', 'cell_type'))
+
 ```
 
 ```{python ppackages}
@@ -157,6 +161,16 @@ def size_kb(coord):
 for celltype in adata_dic.keys():
     # Retrieve an AnnData corresponding to the celltype
     ann = adata_dic[celltype]
+    # Extract metadata
+    obs = ann.obs
+    # Add new columns required to subset barcodes if necessary
+    if r.subset_col is not None:
+        for key, value in r.subset_col.items():
+            obs[key] = obs[value].astype(str).agg("_".join, axis=1)
+    # Replace the input metadata with updated one
+    ann.obs = obs
+    # Update the input AnnData
+    adata_dic[celltype] = ann
     # Extract cell barcodes
     target_cells = list(ann.obs.index)
     # Slice the junction count matrix based on the extracted barcodes that expresses
@@ -164,8 +178,11 @@ for celltype in adata_dic.keys():
     counts_subset = counts[target_cells]
     nonzero_cells = counts_subset.sum(axis=0) > 0
     counts_subset = counts_subset.loc[:, nonzero_cells]
+    # Subset metadata
+    obs_subset = obs.loc[counts_subset.columns, :]
+
     # Create a new AnnData obj
-    ann_new = ad.AnnData(X=counts_subset.T, obs=ann.obs.loc[counts_subset.columns, :])
+    ann_new = ad.AnnData(X=counts_subset.T, obs=obs_subset)
     ann_new.layers['counts'] = ann_new.X
     # Add log2-transformed values to the AnnData
     ann_new.layers['counts'] = ann_new.X
@@ -195,7 +212,7 @@ for celltype in adata_dic.keys():
     # Specify the path to updated AnnData
     updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS.h5ad"
     # Save updated AnnData
-    ann.write_h5ad(updated_path)
+    ann_new.write_h5ad(updated_path)
 
     # Replace the input AnnData with updated obj
     adata_filtered[celltype] = ann_new
@@ -230,9 +247,21 @@ for (name in names(adata_paths)) {
 
 ```
 
-The following table shows the number of barcodes for all cells (`all`) or
-celltype-specific subsets (`ExNeu1` and `ExNeu2`). The `N_barcodes` column represents the number of 
-barcodes that were initially loaded.
+The following table shows the number of barcodes for each study- and celltype-specific subset.
+The `N_barcodes` column represents the number of barcodes that were initially loaded.
+
+```{r n_barcodes, results='asis'}
+# Print the number of barcodes for each obj
+n_df <- lapply(py$adata_dic, function(o) {
+    df <- as.data.frame(o$obs)
+    n_list <- split(df, df[[names(subset_col)[1]]]) %>%
+        lapply(nrow)
+    data.frame(subset=names(n_list), N_barcodes=unlist(n_list)) }) %>%
+    bind_rows() %>%
+    remove_rownames()
+
+knitr::kable(n_df)
+```
 
 ```{r prep_sca}
 
@@ -242,7 +271,7 @@ barcodes that were initially loaded.
 # - https://rglab.github.io/MAST/articles/MAST-interoperability.html
 # This chunk requires manual intervention to some extent.
 # --------------------------------------------------------------------------------
-
+stop()
 # Extract metadata for all input cells
 adata_meta <- map(py$adata_filtered,
                   ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
@@ -258,6 +287,10 @@ for (name in names(factor_groups)) {
     adata_meta[[name]] <- factor(adata_meta[[name]],
                                  levels=factor_groups[[name]])
 }
+
+
+# Split the metadata by study and celltype
+adata_meta_list <- split(adata_meta, adata_meta[[names(subset_col)[1]]])
 
 # Prep feature table
 feature_meta <- data.frame(junction=rownames(py$counts))
@@ -291,13 +324,7 @@ for (cell_x in factor_groups[['cell_type']]) {
     sca_list[[cell_x]] <- sca_x
 }
 
-# Print the number of barcodes for each obj
-n_barcodes <- sapply(py$adata_dic, function(o) o$shape[[1]])
-df <- data.frame(cells=names(sca_list),
-                 N_barcodes=c(sum(n_barcodes), n_barcodes)) %>%
-    remove_rownames()
 
-knitr::kable(df)
 
 # How to access to raw or transformed counts
 # - Transformed counts: `assay(sca)` or `assays(sca)$et`
@@ -470,20 +497,19 @@ for (subset in names(sca_list)) {
                left_join(o_meta, by='barcode'))
 
     # Create boxplots
-    for (countype in names(mat_list)) {
-        cat('####', countype, '{.tabset}\n\n')
+    for (counttype in names(mat_list)) {
+        plot_df <- mat_list[[counttype]]
+        cat('####', counttype, '{.tabset}\n\n')
         for (condition in names(factor_groups)) {
             cat('#####', condition, '\n\n')
-            df <- mat_list[[countype]][, c('barcode', 'counts', condition)]
-            p <- ggplot(df, aes_string(x=condition,
-                                       y='counts',
-                                       fill=condition)) +
+            p <- ggplot(plot_df,
+                        aes_string(x=condition, y='counts', fill=condition)) +
                 theme_bw() +
                 geom_boxplot(color='black', width=0.5) +
                 ylab("Splice Junction Counts") +
                 theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),
                       axis.title.x=element_blank())
-            p <- if (countype == "raw") {
+            p <- if (counttype == "raw") {
                 p + scale_y_log10()
             }
             print(p)
