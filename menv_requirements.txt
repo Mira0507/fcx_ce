@@ -16,3 +16,4 @@ r-future
 bioconductor-mast
 bioconductor-limma
 bioconductor-scater
+bioconductor-deseq2
