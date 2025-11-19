@@ -1256,9 +1256,31 @@ fcx_ce
 
 @Mira0507
 
-- work on DS analysis using <ST
+- work on DS analysis using MAST
     - conda env: ``env``
     - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
     - notes
-        - pre-filter cells with non-zero junctions
+        - pre-filtered cells with non-zero junctions
         - added heamaps on all and celltype-specifically subsetted cells
+
+- install ``scanpy`` in ``menv``
+
+
+2025-11-18
+----------
+
+@Mira0507
+
+- work on DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - pre-filtering non-zero count cells performed BEFORE log2TPM
+          transformation
+        - ``AnnData`` objects were re-created using filtered matrices
+        - barcodes were re-subsetted by study and celltype
+        - added UMAP on splice junction counts in a log2TPM 
+          using scanpy with default arguments.
+        - plotted the distribution of raw and log2TPM counts
+
+
