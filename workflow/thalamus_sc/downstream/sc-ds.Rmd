@@ -1,0 +1,347 @@
+---
+title: "Differential splicing analysis using MAST"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct differential splicing (DS) analysis
+using [MAST](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-015-0844-5).
+
+Refer to the following resources for technical details:
+
+- [Documentation](https://rglab.github.io/MAST/index.html)
+- [GitHub](https://github.com/RGLab/MAST/)
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(reticulate)
+library(parallel)
+library(yaml)
+library(reshape2)
+library(limma)
+library(NMF)
+library(MAST)
+library(RColorBrewer)
+library(scater)
+library(plotly)
+
+# Additional options
+set.seed(2570)
+source('../config/helpers.R')
+use_condaenv("../../../menv")
+
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrix
+mtx_path <- "../results/junction_counts/thalamus_sc_perind_numers.counts.gz"
+
+# Path to metadata table
+meta_path <- "../results/barcodes.tsv"
+
+# Path to Snakemake config
+snakemake_config <- "../config/config.yaml"
+
+# Paths to AnnData
+adata_paths <- read_yaml(snakemake_config)[['adata']] %>%
+    map(~paste0("../", .x))
+
+# Path to output directory
+out_dir <- "sc-ds"
+
+# Create directories if missing
+for (p in c(out_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    cell_type=c('ExNeu1', 'ExNeu2'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c('Control-Marsan',
+                                      'Control-Biogen',
+                                      'Control-Mathys',
+                                      'FTD-Marsan',
+                                      'FTD-Biogen',
+                                      'AD-Mathys'),
+    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Marsan_ExNeu2',
+                                      'Control-Biogen_ExNeu1',
+                                      'Control-Biogen_ExNeu2',
+                                      'Control-Mathys_ExNeu1',
+                                      'Control-Mathys_ExNeu2',
+                                      'FTD-Marsan_ExNeu1',
+                                      'FTD-Marsan_ExNeu2',
+                                      'FTD-Biogen_ExNeu1',
+                                      'FTD-Biogen_ExNeu2',
+                                      'AD-Mathys_ExNeu1',
+                                      'AD-Mathys_ExNeu2')
+)
+
+# Specify a column to subset barcodes
+# NOTE: Set to NULL if unnecessary
+subset_col <- list(study_celltype=c('study', 'cell_type'))
+
+```
+
+```{python ppackages}
+import anndata as ad
+import scanpy as sc
+import pandas as pd
+import numpy as np
+import subprocess
+import os
+```
+
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
+genes:
+
+```{r genes_tested}
+print(read_yaml(snakemake_config)[['genes']])
+```
+
+These counts were compiled into a junction-by-barcode matrix for differential testing.
+
+
+```{python import_adata}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input data and add the junction matrix to AnnData
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+# Import AnnData objects
+adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.items()}
+adata_filtered = {}
+
+# Import junction matrix
+counts = pd.read_csv(r.mtx_path, sep=" ")
+
+for celltype in adata_dic.keys():
+
+    # Retrieve an AnnData corresponding to the celltype
+    ann = adata_dic[celltype]
+    # Extract metadata
+    obs = ann.obs
+
+    # Add new columns required to subset barcodes if necessary
+    if r.subset_col is not None:
+        for key, value in r.subset_col.items():
+            obs[key] = obs[value].astype(str).agg("_".join, axis=1)
+
+    # Replace the input metadata with updated one
+    ann.obs = obs
+    # Add raw and log1p-transformed junction counts to the AnnData
+    ann.obsm['junction_raw'] = counts[obs.index].T
+    ann.obsm['junction_lognorm'] = np.log1p(counts[obs.index].T)
+    # Update the input AnnData
+    adata_dic[celltype] = ann
+
+    # Extract cell barcodes
+    target_cells = list(ann.obs.index)
+    # Slice the junction count matrix based on the extracted barcodes
+    counts_subset = counts[target_cells]
+    # Subset metadata
+    obs_subset = obs.loc[counts_subset.columns, :]
+
+    # Create a new AnnData obj
+    ann_new = ad.AnnData(X=counts_subset.T, obs=obs_subset)
+    ann_new.layers['counts'] = ann_new.X.copy()
+    # Add log1p-transformed values to the AnnData
+    sc.pp.log1p(ann_new)
+    ann_new.layers['lognorm'] = ann_new.X.copy()
+
+    # Specify paths to updated/created AnnData
+    updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS_ADDED.h5ad"
+    new_path = f"{r.out_dir}/{celltype}_JUNCTIONS_ONLY.h5ad"
+    # Save updated/created AnnData
+    ann.write_h5ad(updated_path)
+    ann_new.write_h5ad(new_path)
+
+    # Replace the input AnnData with updated obj
+    adata_filtered[celltype] = ann_new
+
+```
+
+Input AnnData objects for each celltype:
+
+```{r infile_info}
+
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", adata_paths[[name]]))
+}
+
+```
+
+These input objects have been updated to include the following data:
+
+- `AnnData.obsm["junction_raw"]`: raw junction counts
+- `AnnData.obsm["junctions_lognorm"]`: log-normalized junction counts (log1p transformation)
+
+Refer to the following file paths for the updated `AnnData` objects:
+
+```{r outann_info1}
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", out_dir, "/", name, "_JUNCTIONS_ADDED.h5ad"))
+}
+```
+
+In the meantime, new `AnnData` objects have been saved as listed below:
+
+- `AnnData.layers["counts"]`: raw junction counts
+- `AnnData.layers["lognorm"]`: log-normalized junction counts (log1p transformation)
+
+The newly created `AnnData` objects are saved at:
+
+```{r outann_info2}
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", out_dir, "/", name, "_JUNCTIONS_ONLY.h5ad"))
+}
+```
+
+Note that the `*_JUNCTIONS_ADDED.h5ad` file includes both the transcript and junction counts, while
+the `*_JUNCTIONS_ONLY.h5ad` contains only junction counts. 
+
+The following table shows the number of barcodes for each study- and celltype-specific subset.
+The `N_barcodes` column represents the number of barcodes that were initially loaded.
+
+```{r n_barcodes, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays the number of input barcodes for each subset
+# --------------------------------------------------------------------------------
+
+# Print the number of barcodes for each obj
+n_df <- data.frame(subset="all",
+                   N_barcodes=sapply(py$adata_dic, function(o) nrow(o$obs)) %>% sum
+)
+
+for (o in py$adata_dic) {
+    df <- as.data.frame(o$obs)
+    n_list <- split(df, df[[names(subset_col)[1]]]) %>%
+        lapply(nrow)
+    n_df <- rbind(n_df,
+                  data.frame(subset=names(n_list), N_barcodes=unlist(n_list)))
+}
+n_df <- n_df %>% remove_rownames()
+
+knitr::kable(n_df)
+```
+
+```{r prep_count_list}
+
+# --------------------------------------------------------------------------------
+# This chunk concatenates metadata across datasets
+# --------------------------------------------------------------------------------
+
+# Concatenate metadata for all barcodes
+all_meta <- lapply(py$adata_dic, function(o) o$obs %>% as.data.frame()) %>%
+    bind_rows()
+
+# Reorder rows to align with the count matrix
+all_meta <- all_meta[colnames(py$counts),]
+```
+
+```{r prep_subset_obj}
+
+# --------------------------------------------------------------------------------
+# This chunk is used to manually subset AnnData objects
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+subadata_dic = {'all': ad.AnnData(X=counts.T, obs=r.all_meta)}
+
+subset_col = list(r.subset_col.keys())[0]
+
+for subset in r.n_df['subset'][1:]:
+    # Retrieve metadata for the subset
+    obs_x = r.all_meta[r.all_meta[subset_col] == subset]
+
+    # Prep the subsetted count matrix
+    mat_x = counts[obs_x.index]
+
+    # Create an AnnData obj
+    adata_x = ad.AnnData(X=mat_x.T, obs=obs_x)
+
+    # Normalize counts
+    adata_x.layers['counts'] = adata_x.X.copy()
+    sc.pp.log1p(adata_x)
+    adata_x.layers['lognorm'] = adata_x.X.copy()
+
+    # Run PCA
+    sc.tl.pca(adata_x)
+
+    # Find neighbors
+    sc.pp.neighbors(adata_x)
+
+    # Run UMAP
+    sc.tl.umap(adata_x)
+
+    subadata_dic[subset] = adata_x
+
+```
+
+
+# Quality Control (QC)
+
+## Number of barcodes
+
+The number barcodes is counted based on whether junctions are detected.
+is shown in the `N_remaining` column. The percentage of remaining cells relative to input
+(`N_remaining / N_barcodes x 100`) is shown in the `percentage` column.
+
+```{r prefiltering, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays the number of barcodes before and after filtering zero-count
+# cells
+# --------------------------------------------------------------------------------
+stop()
+data.frame(subset=names(sca_list), N_barcodes=sapply(sca_list, ncol)) %>%
+    right_join(n_df, by="subset") %>%
+    mutate(percentage=N_remaining/N_barcodes * 100,
+           percentage=round(percentage, 2)) %>%
+    knitr::kable()
+```
+
+
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+
