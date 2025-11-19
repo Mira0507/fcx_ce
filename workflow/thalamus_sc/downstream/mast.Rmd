@@ -271,7 +271,7 @@ knitr::kable(n_df)
 # - https://rglab.github.io/MAST/articles/MAST-interoperability.html
 # This chunk requires manual intervention to some extent.
 # --------------------------------------------------------------------------------
-stop()
+
 # Extract metadata for all input cells
 adata_meta <- map(py$adata_filtered,
                   ~.x[['obs']] %>% rownames_to_column('barcode')) %>%
@@ -287,7 +287,6 @@ for (name in names(factor_groups)) {
     adata_meta[[name]] <- factor(adata_meta[[name]],
                                  levels=factor_groups[[name]])
 }
-
 
 # Split the metadata by study and celltype
 adata_meta_list <- split(adata_meta, adata_meta[[names(subset_col)[1]]])
@@ -315,13 +314,13 @@ sca <- FromMatrix(l2t_mat,
 # Add raw counts to the sca obj
 assays(sca)$counts <- py$counts[, colnames(l2t_mat)]
 
-# Create a list storing objects for all and celltype-specific barcodes
+# Create a list storing objects for subsets
 sca_list <- list(all=sca)
-for (cell_x in factor_groups[['cell_type']]) {
-    barcode_x <- adata_meta[adata_meta[['cell_type']] == cell_x,] %>%
+for (subset in n_df[['subset']]) {
+    barcode_x <- adata_meta[adata_meta[[names(subset_col)[1]]] == subset,] %>%
         rownames()
     sca_x <- sca[, barcode_x]
-    sca_list[[cell_x]] <- sca_x
+    sca_list[[subset]] <- sca_x
 }
 
 
@@ -340,7 +339,8 @@ in the `SingleCellAssay(SCA)` object.
 ## Pre-filtering barcodes
 
 Cells are removed if none of the junctions are detected. The number of remaining barcodes after filtering
-is shown in the `N_remaining` column.
+is shown in the `N_remaining` column. The percentage of remaining cells relative to input
+(`N_remaining / N_barcodes x 100`) is shown in the `percentage` column.
 
 ```{r prefiltering, results='asis'}
 
@@ -349,9 +349,11 @@ is shown in the `N_remaining` column.
 # cells
 # --------------------------------------------------------------------------------
 
-df[['N_remaining']] <- sapply(sca_list, ncol)
-
-knitr::kable(df)
+data.frame(subset=names(sca_list), N_remaining=sapply(sca_list, ncol)) %>%
+    right_join(n_df, by="subset") %>%
+    mutate(percentage=N_remaining/N_barcodes * 100,
+           percentage=round(percentage, 2)) %>%
+    knitr::kable()
 ```
 
 ## Heatmap {.tabset}
@@ -395,10 +397,10 @@ for (name in names(sca_list)) {
 }
 ```
 
-## UMAP {.tabset}
+## Dimensionality reduction {.tabset}
 
-Junction profiling is explored across cells on UMAP. Each dot represents a single cell, 
-along with color codes corresponding to different conditions.
+Junction profiling is explored across cells in reduced dimensions such as PCA and UMAP. Each dot 
+represents a single cell, along with color codes corresponding to different conditions.
 
 ```{r prep_umap}
 
@@ -411,13 +413,14 @@ count_list <- lapply(sca_list,
                                       meta=as.data.frame(colData(o))))
 ```
 
-```{python umap}
+```{python dimred}
 
 # --------------------------------------------------------------------------------
-# This chunk runs UMAP and prepares UMAP coordinates
+# This chunk runs dimensionality reduction
 # --------------------------------------------------------------------------------
 
 umap_dic = {}
+pca_dic = {}
 
 for subset in r.count_list.keys():
     # Retrieve input for AnnData
@@ -437,34 +440,43 @@ for subset in r.count_list.keys():
     # Run UMAP
     sc.tl.umap(adata_x)
 
-    # Retrieve UMAP coordinates (2D)
-    umap_coord = adata_x.obsm['X_umap']
-
-    umap_dic[subset] = umap_coord
+    # Retrieve PCA and UMAP coordinates (2D)
+    umap_dic[subset] = adata_x.obsm['X_umap']
+    pca_dic[subset] = adata_x.obsm['X_pca']
 ```
 
-```{r present_umap, results='asis', fig.height=6, fig.width=6}
+```{r present_dimred, results='asis', fig.height=6, fig.width=6}
 
 # --------------------------------------------------------------------------------
 # This chunk plots UMAP
 # --------------------------------------------------------------------------------
-
-# Consolidate metadata and UMAP coordinates in the same data frame
-umap_list <- lapply(py$umap_dic,
-                    function(df) as.data.frame(df) %>% set_names(c("UMAP1", "UMAP2"))) %>%
+stop()
+# Consolidate metadata and coordinates in reduced dimensions across the subsets
+coord_list <- map2(py$pca_dic,
+                   py$umap_dic,
+                   ~cbind(.x[, 1:2], .y[, 1:2]) %>%
+                       as.data.frame %>%
+                       set_names(c('PC1', 'PC2', 'UMAP1', 'UMAP2'))) %>%
     map2(count_list, ~cbind(.y[['meta']], .x))
 
-# Plot
-for (subset in names(umap_list)) {
+for (subset in names(coord_list)) {
     cat('###', subset, '{.tabset}\n\n')
     for (name in names(factor_groups)) {
-        cat('####', name, '\n\n')
-        df <- umap_list[[subset]][, c(name, "UMAP1", "UMAP2", "barcode")]
-        p <- ggplot(df, aes_string(x='UMAP1', y='UMAP2', color=name)) +
-            geom_point(alpha=0.7) +
-            theme_bw()
-        print(p)
-        cat('\n\n')
+        cat('####', name, '{.tabset}\n\n')
+        for (dimred in c('PCA', 'UMAP')) {
+            cat('#####', dimred, '\n\n')
+            # Specify column names for the X and Y axes
+            axes <- ifelse(dimred == "PCA", "PC", "UMAP") %>%
+                paste0(1:2)
+            # Prep input data frame for plotting
+            df <- coord_list[[subset]][, c(name, axes, "barcode")]
+            # Plot
+            p <- ggplot(df, aes_string(x=axes[1], y=axes[2], color=name)) +
+                geom_point(alpha=0.7) +
+                theme_bw()
+            print(p)
+            cat('\n\n')
+        }
     }
 }
 ```
@@ -523,7 +535,7 @@ for (subset in names(sca_list)) {
 
 # Differential testing 
 
-```{r calculate_cdr}
+```{r calculate_cdr, eval=FALSE}
 
 for (subset in names(sca_list)) {
     o <- sca_list[[subset]]
