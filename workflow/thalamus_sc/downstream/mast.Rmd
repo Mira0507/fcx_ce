@@ -399,7 +399,7 @@ for (name in names(sca_list)) {
 
 ## Dimensionality reduction {.tabset}
 
-Junction profiling is explored across cells in reduced dimensions such as PCA and UMAP. Each dot 
+Junction profiling is explored across cells in reduced dimensions such as UMAP. Each dot 
 represents a single cell, along with color codes corresponding to different conditions.
 
 ```{r prep_umap}
@@ -450,7 +450,7 @@ for subset in r.count_list.keys():
 # --------------------------------------------------------------------------------
 # This chunk plots UMAP
 # --------------------------------------------------------------------------------
-stop()
+
 # Consolidate metadata and coordinates in reduced dimensions across the subsets
 coord_list <- map2(py$pca_dic,
                    py$umap_dic,
@@ -463,7 +463,8 @@ for (subset in names(coord_list)) {
     cat('###', subset, '{.tabset}\n\n')
     for (name in names(factor_groups)) {
         cat('####', name, '{.tabset}\n\n')
-        for (dimred in c('PCA', 'UMAP')) {
+        # for (dimred in c('PCA', 'UMAP')) {
+        for (dimred in c('UMAP')) {
             cat('#####', dimred, '\n\n')
             # Specify column names for the X and Y axes
             axes <- ifelse(dimred == "PCA", "PC", "UMAP") %>%
