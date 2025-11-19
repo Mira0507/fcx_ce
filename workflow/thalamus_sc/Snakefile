@@ -91,6 +91,13 @@ def input_group_celltype_bams(wildcards):
     bcd = list(set(filtered_df['barcode_sc']))
     return [f"{wildcards.outdir}/bam/cell/{b}_sorted.bam" for b in bcd]
 
+def input_sample_celltype_bams(wildcards):
+    filtered_df = meta_df[
+        (meta_df[config['celltype_col']] == wildcards.celltype) &
+        (meta_df[config['index_col']] == wildcards.sample)]
+    bcd = list(set(filtered_df['barcode_sc']))
+    return [f"{wildcards.outdir}/bam/cell/{b}_sorted.bam" for b in bcd]
+
 
 #################################### RULES ####################################
 
@@ -99,6 +106,10 @@ rule all:
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
                outdir=config['outdir'],
                group=list(set(meta_df[config['key_col']])),
+               celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+               outdir=config['outdir'],
+               sample=list(set(meta_df[config['index_col']])),
                celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
                outdir=config['outdir'],
@@ -189,6 +200,32 @@ rule aggr_bams_group_celltype:
         runtime = 30
     params:
         temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam",
+        ncells = len(meta_df)
+    threads: 4
+    shell:
+        """
+        ulimit -n {params.ncells}
+        samtools merge {params.temp_bam} {input.bam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        rm {params.temp_bam}
+        """
+
+rule aggr_bams_sample_celltype:
+    """
+    This rule aggregates bam files per sample per celltype
+    """
+    input:
+        bam = input_sample_celltype_bams
+    output:
+        bam = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+        bai = "{outdir}/bam/sample/{sample}_{celltype}_sorted.bam.bai",
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    params:
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/sample/{wildcards.sample}_{wildcards.celltype}_unsorted.bam",
         ncells = len(meta_df)
     threads: 4
     shell:
