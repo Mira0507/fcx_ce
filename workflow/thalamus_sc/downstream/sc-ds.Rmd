@@ -19,12 +19,12 @@ knitr::opts_chunk$set(warning=FALSE,
 Last run: `r date()`
 
 This workflow is designed to conduct differential splicing (DS) analysis
-using [MAST](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-015-0844-5).
+using [DESeq2](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8).
 
 Refer to the following resources for technical details:
 
-- [Documentation](https://rglab.github.io/MAST/index.html)
-- [GitHub](https://github.com/RGLab/MAST/)
+- [Documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+- [GitHub](https://github.com/thelovelab/DESeq2)
 
 ```{r libraries}
 # Libraries
@@ -387,10 +387,17 @@ for (name in names(py$subadata_dic)) {
         pivot_longer(!junction, names_to='barcodes', values_to='junction_counts') %>%
         left_join(o$obs %>% rownames_to_column('barcodes'), by="barcodes") %>%
         as.data.frame() %>%
-        dplyr::select(junction, barcodes, junction_counts, sample_col) %>%
-        group_by(across(all_of(c('junction', sample_col)))) %>%
+        unite(col="SampleID_celltype",
+              sample_col,
+              celltype_col,
+              sep="_",
+              remove=FALSE) %>%
+        dplyr::select(junction, barcodes,
+                      junction_counts,
+                      SampleID_celltype) %>%
+        group_by(junction, SampleID_celltype) %>%
         summarize(counts=sum(junction_counts)) %>%
-        spread(sample_col, counts) %>%
+        spread(SampleID_celltype, counts) %>%
         column_to_rownames('junction')
 
     # Break if missing values have been introduced to the collapsed matrix
@@ -403,7 +410,7 @@ for (name in names(py$subadata_dic)) {
 
 # Quality Control (QC)
 
-## Number of barcodes with and without junction detection
+## Proportion of cells with junctions
 
 The number of barcodes is counted based on whether junctions were detected in each cell. Refer to 
 the following columns for the overview:
@@ -441,7 +448,7 @@ with *Euclidean distance* represented by the color scale. Darker blue indicates 
 # This chunk creates cell-to-cell similarity heatmap
 # --------------------------------------------------------------------------------
 
-for (name in names(sc_list)) {
+for (name in names(sp_list)) {
     cat('###', name, '{.tabset}\n\n')
     # Retrieve log2(count + 1) matrix
     dmat <- as.matrix(dist(t(log2(sp_list[[name]] + 1))))
@@ -450,12 +457,17 @@ for (name in names(sc_list)) {
     colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
 
     # Prep metadata for heatmap
-    heatmap_meta <- as.data.frame(py$subadata_dic[[name]][['obs']])
+    heatmap_meta <- as.data.frame(py$subadata_dic[[name]][['obs']]) %>%
+        unite(col="SampleID_celltype",
+              sample_col,
+              celltype_col,
+              sep="_",
+              remove=FALSE) 
     condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(heatmap_meta)]
-    heatmap_meta <- heatmap_meta[, c(sample_col, condition_cols)] %>%
+    heatmap_meta <- heatmap_meta[, c(sample_col, condition_cols, 'SampleID_celltype')] %>%
         remove_rownames() %>%
         unique()
-    rownames(heatmap_meta) <- heatmap_meta[[sample_col]]
+    rownames(heatmap_meta) <- heatmap_meta[['SampleID_celltype']]
 
     # Print heatmap
     print(pheatmap::pheatmap(
