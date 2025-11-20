@@ -1284,3 +1284,46 @@ fcx_ce
         - plotted the distribution of raw and log2TPM counts
 
 
+
+2025-11-19
+----------
+
+@Mira0507
+
+- update snakemake pipeline
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes
+        - add rule ``aggr_bams_sample_celltype`` and run
+
+        .. code-block:: bash
+
+            Job stats:
+            job                          count
+            -------------------------  -------
+            aggr_bams_sample_celltype      186
+            all                              1
+            total                          187
+
+
+- DESeq2 installed in ``menv`` through conda
+
+- DS analysis using MAST on hold
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+
+- DS analysis using DESeq2 set up
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd``
+    - notes
+        - raw and log1p-transformed junction count matrices 
+          added to the input ``AnnData`` objects updated with raw and log1p-normalized
+          and saved
+          (e.g. ``ExNeu1_JUNCTIONS_ADDED.h5ad``)
+        - new ``AnnData`` objects created with junction count matrices and saved
+          (e.g. ``ExNeu1_JUNCTIONS_ONLY.h5ad``)
+        - QC in progress
+            - the proportion of cells with nonzero junction counts calculated 
+              across the subsets
+            - per-sample-per-celltype heatmaps created across the subsets
+
