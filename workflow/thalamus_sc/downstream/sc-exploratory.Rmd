@@ -433,6 +433,17 @@ Cell-to-cell similarity in junction profiling is explored using a heatmap genera
 with *Euclidean distance* represented by the color scale. Darker blue indicates less distance 
 (i.e., greater similarity) in splice junction profiling.
 
+```{r function_for_plotting}
+
+# Function cleaning metadata based on available columns
+clean_metadata <- function(data_frame) {
+    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(data_frame)]
+    data_frame <- data_frame[, condition_cols]
+    return(list(df=data_frame, cols=condition_cols))
+}
+
+```
+
 ```{r qc_heatmap, results='asis', fig.height=12, fig.width=12}
 
 # --------------------------------------------------------------------------------
@@ -459,8 +470,7 @@ for (name in names(sp_list)) {
               celltype_col,
               sep="_",
               remove=FALSE) 
-    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(heatmap_meta)]
-    heatmap_meta <- heatmap_meta[colnames(scmat), condition_cols]
+    heatmap_meta <- clean_metadata(heatmap_meta)[['df']]
 
     # Print heatmap
     print(pheatmap::pheatmap(
@@ -497,9 +507,8 @@ for (name in names(sp_list)) {
     # Remove zero-count barcodes and apply log2-transformation
     scmat <- t(log2(as.matrix(scmat[, colSums(scmat) > 0] + 1)))
     # Prep metadata
-    m_df <- as.data.frame(py$subadata_dic[[name]][['obs']])
-    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(m_df)]
-    m_df <- m_df[, condition_cols] %>%
+    meta_data <- clean_metadata(as.data.frame(py$subadata_dic[[name]][['obs']]))
+    m_df <- meta_data[['df']] %>%
         rownames_to_column('barcode')
     # Run PCA
     pca <- prcomp(scmat, center=TRUE, scale=FALSE)
@@ -517,6 +526,7 @@ for (name in names(sp_list)) {
     )
 
     # Plot PCA
+    condition_cols <- meta_data[['cols']]
     for (c in condition_cols) {
         cat('####', c, '\n\n')
         p <- ggplot(df,
@@ -556,14 +566,13 @@ for (name in names(py$subadata_dic)) {
         as.data.frame() %>%
         set_names(c('UMAP1', 'UMAP2'))
     # Prep metadata
-    m_df <- as.data.frame(o[['obs']])
-    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(m_df)]
-    m_df <- m_df[, condition_cols]
+    meta_data <- clean_metadata(as.data.frame(o[['obs']]))
+    m_df <- meta_data[['df']]
     # Add metadata columns to the UMAP coordinates
     df <- cbind(df, m_df) %>%
         rownames_to_column('barcode')
 
-
+    condition_cols <- meta_data[['cols']]
     for (c in condition_cols) {
         cat('####', c, '\n\n')
         p <- ggplot(df,
@@ -577,9 +586,49 @@ for (name in names(py$subadata_dic)) {
         print(p)
         cat('\n\n')
     }
-
 }
 ```
+
+## Junction count distribution {.tabset}
+
+Junction counts are explored per cell across the conditions. 
+
+
+```{r junction_count_distribution, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays the number of junction counts per cell across the conditions
+# --------------------------------------------------------------------------------
+
+for (name in names(sc_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Extract normalized junction count matrix
+    mat <- sc_list[[name]][['norm']]
+    counts_df <- data.frame(barcodes=colnames(mat),
+                            counts=colSums(mat)) %>%
+        remove_rownames()
+    # Prep metadata
+    meta_data <- clean_metadata(as.data.frame(py$subadata_dic[[name]][['obs']]))
+    m_df <- meta_data[['df']] %>%
+        rownames_to_column('barcodes')
+    condition_cols <- meta_data[['cols']]
+    # Add metadata columns to the count data frame
+    counts_df <- counts_df %>%
+        left_join(m_df, by="barcodes")
+    for (c in condition_cols) {
+        cat('\n\n####', c, '\n\n')
+        p <- ggplot(counts_df, aes_string(x=c, y='counts', fill=c)) +
+            geom_boxplot(color='black', width=0.5) +
+            theme_bw() +
+            ylab('Normalized junction counts') +
+            scale_y_log10()
+        print(p)
+        cat('\n\n')
+    }
+}
+
+```
+
 # Saving pseudobulk count matrices
 
 Pseudobulk junction count matrices are saved in the following location:
