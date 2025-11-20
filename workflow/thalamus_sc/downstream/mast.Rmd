@@ -185,7 +185,6 @@ for celltype in adata_dic.keys():
     ann_new = ad.AnnData(X=counts_subset.T, obs=obs_subset)
     ann_new.layers['counts'] = ann_new.X
     # Add log2-transformed values to the AnnData
-    ann_new.layers['counts'] = ann_new.X
     ann_new.layers['log2'] = np.log2(ann_new.X + 1)
 
     # Calculate TPM
