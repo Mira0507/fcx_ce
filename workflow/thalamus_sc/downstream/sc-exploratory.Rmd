@@ -61,6 +61,9 @@ mtx_path <- "../results/junction_counts/thalamus_sc_perind_numers.counts.gz"
 # Path to metadata table
 meta_path <- "../results/barcodes.tsv"
 
+# Path to GTF
+gtf <- "../../../input/thalamus_excitatory/genes.gtf.gz"
+
 # Path to Snakemake config
 snakemake_config <- "../config/config.yaml"
 
@@ -591,7 +594,8 @@ for (name in names(py$subadata_dic)) {
 
 ## Junction count distribution {.tabset}
 
-Junction counts are explored per cell across the conditions. 
+Junction counts are explored per cell across the conditions. These junctions include both annotated
+and cryptic types.
 
 
 ```{r junction_count_distribution, results='asis'}
@@ -599,6 +603,7 @@ Junction counts are explored per cell across the conditions.
 # --------------------------------------------------------------------------------
 # This chunk displays the number of junction counts per cell across the conditions
 # --------------------------------------------------------------------------------
+
 
 for (name in names(sc_list)) {
     cat('###', name, '{.tabset}\n\n')
@@ -620,12 +625,24 @@ for (name in names(sc_list)) {
         p <- ggplot(counts_df, aes_string(x=c, y='counts', fill=c)) +
             geom_boxplot(color='black', width=0.5) +
             theme_bw() +
-            ylab('Normalized junction counts') +
-            scale_y_log10()
+            ylab('Normalized junction counts per cell') +
+            scale_y_log10() +
+            theme(axis.title.x=element_blank(),
+                  axis.text.x=element_text(angle=90, vjust=0.5, hjust=1))
         print(p)
         cat('\n\n')
     }
 }
+
+```
+
+# Annotating junctions
+
+```{r junction_annotation}
+
+# --------------------------------------------------------------------------------
+# This chunk annotates junctions
+# --------------------------------------------------------------------------------
 
 ```
 
