@@ -140,7 +140,6 @@ These counts were compiled into a junction-by-barcode matrix for differential te
 
 # Import AnnData objects
 adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.items()}
-adata_filtered = {}
 
 # Import junction matrix and metadata
 counts = pd.read_csv(r.mtx_path, sep=" ")
@@ -185,9 +184,6 @@ for celltype in adata_dic.keys():
     # Save updated/created AnnData
     ann.write_h5ad(updated_path)
     ann_new.write_h5ad(new_path)
-
-    # Replace the input AnnData with updated obj
-    adata_filtered[celltype] = ann_new
 
 ```
 
@@ -488,7 +484,7 @@ Another way of looking at sample clustering is principal components analysis (PC
 not have units, rather, it represents the dimensions along which the samples vary the most. 
 The amount of variance explained by each principal component is indicated in the axes label.
 
-```{r pca, results='asis', eval=FALSE}
+```{r pca, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk creates PCA plots across the  cells
@@ -500,11 +496,90 @@ for (name in names(sp_list)) {
     scmat <- sc_list[[name]][['raw']]
     # Remove zero-count barcodes and apply log2-transformation
     scmat <- t(log2(as.matrix(scmat[, colSums(scmat) > 0] + 1)))
+    # Prep metadata
+    m_df <- as.data.frame(py$subadata_dic[[name]][['obs']])
+    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(m_df)]
+    m_df <- m_df[, condition_cols] %>%
+        rownames_to_column('barcode')
     # Run PCA
     pca <- prcomp(scmat, center=TRUE, scale=FALSE)
+    # Calculate variance explained by each PC
+    var_exp <- round(pca$sdev^2/sum(pca$sdev^2) * 100, 2)
+    # Prep input dataframe for plotting
+    df <- pca$x[,1:2] %>%
+        as.data.frame() %>%
+        rownames_to_column('barcode') %>%
+        left_join(m_df, by='barcode')
+    # Prep titles for axes
+    axis_titles <- map_chr(
+        1:2,
+        ~paste0("PC ", .x, " (", var_exp[.x], "%)")
+    )
+
+    # Plot PCA
+    for (c in condition_cols) {
+        cat('####', c, '\n\n')
+        p <- ggplot(df,
+                    aes_string(x='PC1',
+                               y='PC2',
+                               color=c,
+                               shape=celltype_col)) +
+            geom_point(alpha=0.7, size=3) +
+            theme_bw() +
+            xlab(axis_titles[1]) +
+            ylab(axis_titles[2])
+
+        print(p)
+        cat('\n\n')
+    }
+}
 
 ```
 
+## UMAP {.tabset}
+
+Junction profiling is explored across cells on UMAP. Each dot represents a single cell,
+along with color codes corresponding to different conditions.
+
+
+```{r umap_coord, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk plots UMAP embedding
+# --------------------------------------------------------------------------------
+
+for (name in names(py$subadata_dic)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Extract UMAP coordinates
+    o <- py$subadata_dic[[name]]
+    df <- o[['obsm']][['X_umap']][, 1:2] %>%
+        as.data.frame() %>%
+        set_names(c('UMAP1', 'UMAP2'))
+    # Prep metadata
+    m_df <- as.data.frame(o[['obs']])
+    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(m_df)]
+    m_df <- m_df[, condition_cols]
+    # Add metadata columns to the UMAP coordinates
+    df <- cbind(df, m_df) %>%
+        rownames_to_column('barcode')
+
+
+    for (c in condition_cols) {
+        cat('####', c, '\n\n')
+        p <- ggplot(df,
+                    aes_string(x='UMAP1',
+                               y='UMAP2',
+                               color=c,
+                               shape=celltype_col)) +
+            geom_point(alpha=0.7, size=2) +
+            theme_bw()
+
+        print(p)
+        cat('\n\n')
+    }
+
+}
+```
 # Saving pseudobulk count matrices
 
 Pseudobulk junction count matrices are saved in the following location:
@@ -519,9 +594,7 @@ rds <- list(sc=sc_list, bulk=sp_list)
 rds_path <- file.path(out_dir, "aggr_matrices.rds")
 saveRDS(rds, rds_path)
 
-print(paste0("Path: ", rds_path))
-print(paste0("Structure: "))
-map(rds, summary)
+print(rds_path)
 ```
 
 # Session info
