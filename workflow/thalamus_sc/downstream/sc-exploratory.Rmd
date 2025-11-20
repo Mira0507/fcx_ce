@@ -433,7 +433,7 @@ knitr::kable(n_df)
 
 ## Heatmap {.tabset}
 
-Sample-to-sample similarity is explored using a heatmap generated from non-zero cells, 
+Cell-to-cell similarity in junction profiling is explored using a heatmap generated from non-zero cells, 
 with *Euclidean distance* represented by the color scale. Darker blue indicates less distance 
 (i.e., greater similarity) in splice junction profiling.
 
@@ -445,8 +445,13 @@ with *Euclidean distance* represented by the color scale. Darker blue indicates 
 
 for (name in names(sp_list)) {
     cat('###', name, '{.tabset}\n\n')
-    # Retrieve log2(count + 1) matrix
-    dmat <- as.matrix(dist(t(log2(sp_list[[name]] + 1))))
+    # Retrieve the raw count matrix
+    scmat <- sc_list[[name]][['raw']]
+    # Remove zero-count barcodes
+    scmat <- scmat[, colSums(scmat) > 0]
+    # Transform to a distance matrix after applying log2 transformation
+    # with a pseudocount of 1
+    scmat <- as.matrix(dist(t(log2(scmat + 1))))
 
     # Set color to be displayed
     colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
@@ -459,17 +464,14 @@ for (name in names(sp_list)) {
               sep="_",
               remove=FALSE) 
     condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(heatmap_meta)]
-    heatmap_meta <- heatmap_meta[, c(sample_col, condition_cols, 'SampleID_celltype')] %>%
-        remove_rownames() %>%
-        unique()
-    rownames(heatmap_meta) <- heatmap_meta[['SampleID_celltype']]
+    heatmap_meta <- heatmap_meta[colnames(scmat), condition_cols]
 
     # Print heatmap
     print(pheatmap::pheatmap(
-        dmat,
+        scmat,
         scale='none',
         color=colors,
-        annotation_col=heatmap_meta[colnames(dmat), condition_cols],
+        annotation_col=heatmap_meta,
         show_rownames=FALSE,
         show_colnames=FALSE,
         cluster_cols=TRUE,
@@ -487,12 +489,39 @@ not have units, rather, it represents the dimensions along which the samples var
 The amount of variance explained by each principal component is indicated in the axes label.
 
 ```{r pca, results='asis', eval=FALSE}
-stop()
+
+# --------------------------------------------------------------------------------
+# This chunk creates PCA plots across the  cells
+# --------------------------------------------------------------------------------
+
 for (name in names(sp_list)) {
     cat('###', name, '{.tabset}\n\n')
-    # Retrieve log2(count + 1) matrix
-    dmat <- as.matrix((log2(sp_list[[name]] + 1)))
+    # Retrieve the raw count matrix
+    scmat <- sc_list[[name]][['raw']]
+    # Remove zero-count barcodes and apply log2-transformation
+    scmat <- t(log2(as.matrix(scmat[, colSums(scmat) > 0] + 1)))
+    # Run PCA
+    pca <- prcomp(scmat, center=TRUE, scale=FALSE)
 
+```
+
+# Saving pseudobulk count matrices
+
+Pseudobulk junction count matrices are saved in the following location:
+
+```{r save_aggr_matrices}
+
+# --------------------------------------------------------------------------------
+# This chunk saves single-cell and pseudobulk count matrices for further analysis
+# --------------------------------------------------------------------------------
+
+rds <- list(sc=sc_list, bulk=sp_list)
+rds_path <- file.path(out_dir, "aggr_matrices.rds")
+saveRDS(rds, rds_path)
+
+print(paste0("Path: ", rds_path))
+print(paste0("Structure: "))
+map(rds, summary)
 ```
 
 # Session info
