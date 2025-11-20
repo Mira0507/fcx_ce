@@ -1,5 +1,5 @@
 ---
-title: "Differential splicing analysis using DESeq2"
+title: "Single cell differential splicing (DS) analysis"
 author: "Mira Sohn"
 output:
     html_document:
@@ -74,7 +74,7 @@ adata_paths <- read_yaml(snakemake_config)[['adata']] %>%
     map(~paste0("../", .x))
 
 # Path to output directory
-out_dir <- "sc-ds"
+out_dir <- "sc-exploratory"
 
 # Create directories if missing
 for (p in c(out_dir)) {
@@ -438,7 +438,7 @@ knitr::kable(n_df)
 
 ## Heatmap {.tabset}
 
-Cell-to-cell or sample-to-sample similarity is explored using a heatmap generated from non-zero cells, 
+Sample-to-sample similarity is explored using a heatmap generated from non-zero cells, 
 with *Euclidean distance* represented by the color scale. Darker blue indicates less distance 
 (i.e., greater similarity) in splice junction profiling.
 
@@ -485,7 +485,20 @@ for (name in names(sp_list)) {
 }
 ```
 
+## PCA {.tabset}
 
+Another way of looking at sample clustering is principal components analysis (PCA). Each axis does 
+not have units, rather, it represents the dimensions along which the samples vary the most. 
+The amount of variance explained by each principal component is indicated in the axes label.
+
+```{r pca, results='asis', eval=FALSE}
+stop()
+for (name in names(sp_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve log2(count + 1) matrix
+    dmat <- as.matrix((log2(sp_list[[name]] + 1)))
+
+```
 
 # Session info
 
