@@ -1312,7 +1312,7 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
 
-- DS analysis using DESeq2 set up
+- DS analysis using DESeq2
     - conda env: ``menv``
     - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd``
     - notes
@@ -1327,3 +1327,16 @@ fcx_ce
               across the subsets
             - per-sample-per-celltype heatmaps created across the subsets
 
+
+2025-11-20
+----------
+
+@Mira0507
+
+- DS analysis using DESeq2
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd``
+      renamed to ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - QC added: single-cell heatmap, PCA, UMAP, and junction count distribution
+        - junction annotation in progress
