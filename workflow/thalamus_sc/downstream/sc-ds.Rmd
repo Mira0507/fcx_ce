@@ -1,5 +1,5 @@
 ---
-title: "Differential splicing analysis using MAST"
+title: "Differential splicing analysis using DESeq2"
 author: "Mira Sohn"
 output:
     html_document:
@@ -109,8 +109,8 @@ factor_groups <- list(
 # Specify column names to subset barcodes
 # NOTE: Set to NULL if unnecessary
 subset_col <- list(study_celltype=c('study', 'cell_type'))
-sample_col <- 'sample'
-
+sample_col <- 'SampleID'
+celltype_col <- 'cell_type'
 ```
 
 ```{python ppackages}
@@ -147,14 +147,14 @@ These counts were compiled into a junction-by-barcode matrix for differential te
 adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.items()}
 adata_filtered = {}
 
-# Import junction matrix
+# Import junction matrix and metadata
 counts = pd.read_csv(r.mtx_path, sep=" ")
 
 for celltype in adata_dic.keys():
 
     # Retrieve an AnnData corresponding to the celltype
     ann = adata_dic[celltype]
-    # Extract metadata
+    # Extract obj metadata
     obs = ann.obs
 
     # Add new columns required to subset barcodes if necessary
@@ -253,12 +253,30 @@ count_n_samples <- function(obj_dic) {
         length()
 }
 
-# Print the number of samples and barcodes for each obj
+# Prep an data frame exploring the number of samples and barcodes for all cells
 n_df <- data.frame(subset="all",
                    N_samples=count_n_samples(py$adata_dic),
                    N_barcodes=sapply(py$adata_dic, function(o) nrow(o$obs)) %>% sum
 )
 
+# Add rows for each cell type in all datasets
+df <- lapply(py$adata_dic, function(o) as.data.frame(o$obs)) %>%
+    bind_rows()
+ncells <- split(df, df[[celltype_col]]) %>% 
+    sapply(nrow)
+nsamples <- split(df, df[[celltype_col]]) %>%
+    map_dbl(~.x[, c(celltype_col, sample_col)] %>%
+        unique() %>%
+        nrow())
+
+n_df <- rbind(n_df,
+              data.frame(subset=paste0("all_", names(ncells)),
+                         N_samples=nsamples,
+                         N_barcodes=ncells) %>%
+              remove_rownames()
+)
+
+# Add rows for dataset-specific celltypes
 for (o in py$adata_dic) {
     df <- as.data.frame(o$obs)
     n_list <- split(df, df[[names(subset_col)[1]]]) %>%
@@ -314,19 +332,26 @@ def preprocess_adata(obj):
 subadata_dic = {'all': preprocess_adata(ad.AnnData(X=counts.T, obs=r.all_meta))}
 
 subset_col = list(r.subset_col.keys())[0]
+celltype_col = r.celltype_col
 
 for subs in r.n_df['subset'][1:]:
-    # Retrieve metadata for the subset
-    obs_x = r.all_meta[r.all_meta[subset_col] == subs]
+    # Specify key column
+    if "all" in subs:
+        key_col = celltype_col
+        target = subs.split("_")[1]
+    else:
+        key_col = subset_col
+        target = subs
 
+    # Retrieve metadata for the subset
+    obs_x = r.all_meta[r.all_meta[key_col] == target]
     # Prep the subsetted count matrix
     mat_x = counts[obs_x.index]
-
     # Create an AnnData obj
     adata_x = ad.AnnData(X=mat_x.T, obs=obs_x)
-
     # Add log-normalized and dim-reduced AnnData to the dictionary
     subadata_dic[subs] = preprocess_adata(adata_x)
+
 
 ```
 
@@ -341,6 +366,7 @@ sc_list <- list()
 sp_list <- list()
 
 for (name in names(py$subadata_dic)) {
+
     # Retrieve an AnnData obj
     o <- py$subadata_dic[[name]]
 
@@ -364,7 +390,7 @@ for (name in names(py$subadata_dic)) {
         dplyr::select(junction, barcodes, junction_counts, sample_col) %>%
         group_by(across(all_of(c('junction', sample_col)))) %>%
         summarize(counts=sum(junction_counts)) %>%
-        spread(sample, counts) %>%
+        spread(sample_col, counts) %>%
         column_to_rownames('junction')
 
     # Break if missing values have been introduced to the collapsed matrix
@@ -401,6 +427,50 @@ n_df <- n_df %>%
            percentage=round(percentage, 2))
 
 knitr::kable(n_df)
+```
+
+## Heatmap {.tabset}
+
+Cell-to-cell or sample-to-sample similarity is explored using a heatmap generated from non-zero cells, 
+with *Euclidean distance* represented by the color scale. Darker blue indicates less distance 
+(i.e., greater similarity) in splice junction profiling.
+
+```{r qc_heatmap, results='asis', fig.height=12, fig.width=12}
+
+# --------------------------------------------------------------------------------
+# This chunk creates cell-to-cell similarity heatmap
+# --------------------------------------------------------------------------------
+
+for (name in names(sc_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve log2(count + 1) matrix
+    dmat <- as.matrix(dist(t(log2(sp_list[[name]] + 1))))
+
+    # Set color to be displayed
+    colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
+
+    # Prep metadata for heatmap
+    heatmap_meta <- as.data.frame(py$subadata_dic[[name]][['obs']])
+    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(heatmap_meta)]
+    heatmap_meta <- heatmap_meta[, c(sample_col, condition_cols)] %>%
+        remove_rownames() %>%
+        unique()
+    rownames(heatmap_meta) <- heatmap_meta[[sample_col]]
+
+    # Print heatmap
+    print(pheatmap::pheatmap(
+        dmat,
+        scale='none',
+        color=colors,
+        annotation_col=heatmap_meta[colnames(dmat), condition_cols],
+        show_rownames=FALSE,
+        show_colnames=FALSE,
+        cluster_cols=TRUE,
+        border_color=NA
+    )
+    )
+    cat('\n\n')
+}
 ```
 
 
