@@ -29,13 +29,10 @@ library(ggplot2)
 library(reticulate)
 library(parallel)
 library(yaml)
-library(reshape2)
-library(limma)
-library(NMF)
-library(MAST)
 library(RColorBrewer)
-library(scater)
 library(plotly)
+library(rtracklayer)
+library(GenomicRanges)
 
 # Additional options
 set.seed(2570)
@@ -46,7 +43,7 @@ use_condaenv("../../../menv")
 n_cores <- future::availableCores()
 options(mc.cores=n_cores)
 
-pd <- import("pandas")
+pd <- reticulate::import("pandas")
 ```
 
 ```{r config}
@@ -62,7 +59,7 @@ mtx_path <- "../results/junction_counts/thalamus_sc_perind_numers.counts.gz"
 meta_path <- "../results/barcodes.tsv"
 
 # Path to GTF
-gtf <- "../../../input/thalamus_excitatory/genes.gtf.gz"
+gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
 
 # Path to Snakemake config
 snakemake_config <- "../config/config.yaml"
@@ -109,6 +106,9 @@ factor_groups <- list(
 subset_col <- list(study_celltype=c('study', 'cell_type'))
 sample_col <- 'SampleID'
 celltype_col <- 'cell_type'
+
+# Specify genes explored in the current analysis
+genes <- read_yaml(snakemake_config)[['genes']] 
 ```
 
 ```{python ppackages}
@@ -127,7 +127,7 @@ The number of splicing junctions was counted based on cellranger-aligned reads m
 genes:
 
 ```{r genes_tested}
-print(read_yaml(snakemake_config)[['genes']])
+print(genes)
 ```
 
 These counts were compiled into a junction-by-barcode matrix for differential testing.
@@ -146,6 +146,80 @@ adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.it
 
 # Import junction matrix and metadata
 counts = pd.read_csv(r.mtx_path, sep=" ")
+
+```
+
+# Annotating input junctions
+
+```{r junction_annotation, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk annotates input junctions
+# --------------------------------------------------------------------------------
+
+# Import GTF annotation
+gtf <- import(gtf_path)
+
+# Prep a data frame consisting of genomic coordinates for splice start and end sites
+junctions <- data.frame(junctions=rownames(py$counts)) %>%
+    separate(junctions, c('chr', 'start', 'end'), sep=":") %>%
+    mutate_at(c('start', 'end'), as.numeric)
+
+# Convert the data frame into GRanges obj
+junctions_gr <- GRanges(
+    seqnames=junctions$chr,
+    ranges=IRanges(start=junctions$start, end=junctions$end))
+
+# Annotate gene names
+hits <- findOverlaps(junctions_gr, gtf, type= "within")
+annotated <- queryHits(hits)
+junctions[['gene_name']][annotated] <- sapply(
+    subjectHits(hits),
+    function(x) mcols(gtf)$gene_name[x])
+
+# Filter GTF by genes and structure of interest
+gtf <- gtf[gtf$type == "exon" & gtf$gene_name %in% genes]
+
+# Extract splice sites in any direction for genes of interest
+boundaries <- c(
+    GRanges(seqnames=seqnames(gtf),
+            ranges=IRanges(start=start(gtf), end=start(gtf))),
+    GRanges(seqnames=seqnames(gtf),
+            ranges=IRanges(start=end(gtf), end=end(gtf)))
+) %>%
+as.data.frame() %>%
+dplyr::select(seqnames, start) %>%
+set_names(c('seqnames', 'splice_sites'))
+
+# Add a column indicating the type of splicing
+junctions[['splice_type']] <- 
+    ifelse(! junctions[['start']] %in% boundaries[['splice_sites']],
+           "cryptic_start",
+    ifelse(! junctions[['end']] %in% boundaries[['splice_sites']],
+           "cryptic_end",
+           "annodated")
+    )
+
+
+DT::datatable(junctions)
+
+# Add a column for junction ids
+junctions[['junction_id']] <- paste(
+    junctions$chr,
+    junctions$start,
+    junctions$end,
+    junctions$gene_name,
+    junctions$splice_type,
+    sep=":"
+)
+```
+
+```{python ann_data}
+
+# Replace index with junction ids
+counts.index = r.junctions['junction_id']
+
+# reticulate::repl_python()
 
 for celltype in adata_dic.keys():
 
@@ -633,16 +707,6 @@ for (name in names(sc_list)) {
         cat('\n\n')
     }
 }
-
-```
-
-# Annotating junctions
-
-```{r junction_annotation}
-
-# --------------------------------------------------------------------------------
-# This chunk annotates junctions
-# --------------------------------------------------------------------------------
 
 ```
 

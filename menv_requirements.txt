@@ -17,3 +17,7 @@ bioconductor-mast
 bioconductor-limma
 bioconductor-scater
 bioconductor-deseq2
+bioconductor-rtracklayer
+bioconductor-genomicfeatures
+bioconductor-txdbmaker
+
