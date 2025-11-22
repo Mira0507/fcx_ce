@@ -1333,10 +1333,31 @@ fcx_ce
 
 @Mira0507
 
-- DS analysis using DESeq2
+- Downstream single cell junction exploratory analysis
     - conda env: ``menv``
     - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd``
       renamed to ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
     - notes
         - QC added: single-cell heatmap, PCA, UMAP, and junction count distribution
         - junction annotation in progress
+
+2025-11-21
+----------
+
+@Mira0507
+
+- Additional packages installed in ``menv`` through conda
+    - packages
+        - ``bioconductor-rtracklayer``
+        - ``bioconductor-genomicfeatures``
+        - ``bioconductor-txdbmaker``
+    - files updated
+        - ``menv_requirements.txt``
+        - ``menv.archived.yaml``
+
+- Downstream single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - annotated splice junctions
+        - replaced the rownames for junction count matrix with annotated junction ids
