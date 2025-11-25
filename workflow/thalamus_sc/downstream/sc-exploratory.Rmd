@@ -107,9 +107,13 @@ factor_groups <- list(
 subset_col <- list(study_celltype=c('study', 'cell_type'))
 sample_col <- 'SampleID'
 celltype_col <- 'cell_type'
+disease_col <- 'general_disease'
 
 # Specify genes explored in the current analysis
 genes <- read_yaml(snakemake_config)[['genes']] 
+
+# Specify colors
+disease_colors <- c(Control="#9ACD32", FTD="#808000", AD="#006400")
 ```
 
 ```{python ppackages}
@@ -791,6 +795,11 @@ criteria:
 
 ```{r ce_umap, results='asis'}
 
+# --------------------------------------------------------------------------------
+# This chunk generates UMAPs color-coding nuclei with and without CEs 
+# along with disease status
+# --------------------------------------------------------------------------------
+
 # Specify plotting options
 exon_levels <- list(factors=c('junction undetected',
                               'junction detected without CE',
@@ -827,7 +836,7 @@ for (celltype in names(py$adata_dic)) {
              sep=":") 
 
     for (gene in genes) {
-        cat('#####', gene, '{.tabset}\n\n')
+        cat('####', gene, '{.tabset}\n\n')
 
         # Subset the data frame for a gene
         gdf <- udf[udf$gene == gene,] %>%
@@ -867,19 +876,36 @@ for (celltype in names(py$adata_dic)) {
 
         gdf_list <- split(gdf, gdf[[names(subset_col)[1]]])
         for (name in names(gdf_list)) {
-            cat("######", name, "\n\n")
+            cat("#####", name, "{.tabset}\n\n")
             # Print UMAP
-            p <- ggplot(gdf_list[[name]], aes(x=UMAP1, y=UMAP2, color=exon_detection)) +
-                geom_point(size=0.5) +
+            pdf <- gdf_list[[name]]
+            cat("###### Junction detection\n\n")
+            p <- ggplot(pdf[pdf$exon_detection == "junction undetected",],
+                        aes(x=UMAP1, y=UMAP2, color=exon_detection)) +
+                geom_point(size=0.5, alpha=0.5) +
+                geom_point(data=pdf[pdf$exon_detection != "junction undetected",],
+                           aes(x=UMAP1, y=UMAP2, color=exon_detection),
+                           size=0.5, alpha=1) +
                 theme_bw() +
                 scale_color_manual(values=exon_levels[['colors']])
+            print(p)
+            cat("\n\n")
+            cat("###### Disease\n\n")
+            p <- ggplot(pdf,
+                        aes_string(x='UMAP1', y='UMAP2', color=disease_col)) +
+                geom_point(size=0.5) +
+                theme_bw() +
+                scale_color_manual(values=disease_colors)
             print(p)
             cat("\n\n")
         }
     }
 }
 
+
 ```
+
+
 
 # Saving pseudobulk count matrices
 
