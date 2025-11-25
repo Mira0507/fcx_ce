@@ -173,6 +173,8 @@ are annotated as summarized below:
       at non-annotated positions
     * _cryptic_: one or both of the start and end coordinates of the junction is within intron regions
 
+<img src="junction_exon.png" width="600">
+
 Refer to the following annotation table, which includes a toy junction at `chr8:79611214:79636812`.
 This junction hypothetically ends in an exon.
 
@@ -800,12 +802,12 @@ criteria:
 # --------------------------------------------------------------------------------
 
 # Specify plotting options
-exon_levels <- list(factors=c('junction undetected',
+exon_levels <- list(factors=c('CE detected',
                               'junction detected without CE',
-                              'CE detected'),
-                    colors=c("grey",
+                              'junction undetected'),
+                    colors=c("#6A5ACD",
                              "#DA70D6",
-                             "#6A5ACD"))
+                             "grey"))
 names(exon_levels[['colors']]) <- exon_levels[['factors']]
 
 # Function to label each exon based on the counts of cryptic splicing
@@ -942,7 +944,8 @@ print(gene_expressed)
 
 The [Gittings et al. paper](https://doi.org/10.1007/s00401-023-02599-5) suggested that the expression of
 the STMN2 gene is lower in cells where the STMN2 CE is detected. We examine whether the same pattern 
-is observed across the genes of interest in our datasets.
+is observed across the genes of interest in our datasets. Note that cells are excluded if junctions 
+are not detected.
 
 ```{r prep_gene_expression, cache=TRUE}
 
@@ -1053,10 +1056,11 @@ for (celltype in names(py$adata_dic)) {
         # Calculate p-values using t-test
         ncell_df <- pdf %>%
             group_by(exon_detection, gene) %>%
-            summarize(nCell=n()) %>%
+            summarize(nCell_tested=n()) %>%
             unique()
         print(knitr::kable(ncell_df))
-        if (length(unique(pdf$exon_detection)) == 2 & !any(ncell_df$nCell == 1)) {
+        if (length(unique(pdf$exon_detection)) == 2 & 
+            !any(ncell_df$nCell_tested == 1)) {
             for (g in genes_i) {
                 pval <- t.test(gene_exp ~ exon_detection,
                                data=pdf[pdf$gene == g,],
@@ -1064,7 +1068,7 @@ for (celltype in names(py$adata_dic)) {
                 cat("\n\n*", g, "expression p-value -", pval, "\n\n")
             }
         } else {
-            cat("\n\nP-values cannot be calculated...\n\n")
+            cat("\n\nP-values unavailable...\n\n")
         }
     }
 }
