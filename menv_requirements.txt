@@ -3,6 +3,7 @@ anndata
 scanpy
 python-igraph
 leidenalg
+pysam
 r-base
 r-tidyverse
 r-dt
