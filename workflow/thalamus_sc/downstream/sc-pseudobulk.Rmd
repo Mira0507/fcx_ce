@@ -69,6 +69,12 @@ for (p in c(out_dir)) {
     if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
 }
 
+# Specify a pseudocount to be added to count matrices
+# NOTE: The sparsity of single cell matrix sometimes causes an error
+#       that cannot calculate geometric means because of many zeros. 
+#       This issue is prevented by adding a small pseudocount.
+pseudocount <- 1
+
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
@@ -176,32 +182,199 @@ The subset-wise aggregation was performed as summarized below:
 # This chunk explores the number of samples and metadata info across the subsets
 # --------------------------------------------------------------------------------
 
-for (name in names(coldata_list)) {
+# Function to summarize the number of samples (N)
+summarize_N <- function(meta_df) {
 
-    df <- coldata_list[[name]] %>%
-        remove_rownames()
-    cat("##", name, "{.tabset}\n\n")
-    cat("### N\n\n")
     # Count the number of samples
-    n_df <- df %>%
+    n_df <- meta_df %>%
         group_by_at(vars(subset_col, disease_col)) %>%
         summarize(N=n()) %>%
         spread(disease_col, N)
     # Reorder columns
-    disease_order <- factor_groups[[disease_col]][factor_groups[[disease_col]] %in% colnames(n_df)]
+    disease_order <- factor_groups[[disease_col]][factor_groups[[disease_col]] %in% 
+                                                  colnames(n_df)]
     n_df <- n_df[, c(subset_col, disease_order)]
     # Replace missing values with zero
     n_df[is.na(n_df)] <- 0
     # Add a new column for all N
     n_df[['all_N']] <- rowSums(n_df[, colnames(n_df)[-1]])
 
+    return(n_df)
+}
+
+for (name in names(coldata_list)) {
+
+    df <- coldata_list[[name]] %>%
+        remove_rownames()
+    cat("##", name, "{.tabset}\n\n")
+    cat("### N\n\n")
+    # Prep the summary table for N
+    n_df <- summarize_N(df)
+
     # Print tables
     print(knitr::kable(n_df))
     cat('\n\n')
 
     cat("### Full table\n\n")
-    subchunkify(paste0(name, "_subset_summary_table"))
+    subchunkify(paste0(name, "_subset_N_unfiltered"))
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_unfiltered_sampletable.csv'))
+    write.csv(df,
+              csv_path,
+              row.names=FALSE,
+              quote=FALSE)
+
+    link_table(csv_path)
+    cat('\n\n')
 }
+```
+
+# Pre-filtering nonzero samples {.tabset}
+
+Samples with zero junction counts are removed from each subset. The number of samples before
+and after filtering is summarized below.
+
+
+```{r prefilter_samples, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk filters nonzero-count samples
+# --------------------------------------------------------------------------------
+
+for (name in names(mat_list)) {
+    cat("##", name, "{.tabset}\n\n")
+    # Remove zero-count samples from the count matrix
+    m <- mat_list[[name]]
+    nonzero_samples <- colSums(m) > 0
+    m <- m[, nonzero_samples]
+    mat_list[[name]] <- m
+    # Remove zero-count samples from the metadata table
+    cdata_old <- coldata_list[[name]]
+    cdata_new <- cdata_old[colnames(m),]
+    coldata_list[[name]] <- cdata_new
+    
+    cat("### N\n\n")
+    n_df <- summarize_N(cdata_new)
+    cat("A total of",
+        sum(!nonzero_samples),
+        "samples are removed from the current subset.",
+        "Refer to the following table for remaining samples:")
+    print(knitr::kable(n_df))
+    cat("\n\n")
+
+    cat("### Full table\n\n")
+    subchunkify(paste0(name, "_subset_N_filtered"))
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_filtered_sampletable.csv'))
+    write.csv(df,
+              csv_path,
+              row.names=FALSE,
+              quote=FALSE)
+
+    link_table(csv_path)
+    cat('\n\n')
+}
+
+```
+
+
+```{r setup_dds, cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk create dds objects per subset
+# --------------------------------------------------------------------------------
+
+# Build a list of dds objects after adding a pseudocount of 1 across the subsets
+# NOTE: While DESeq2 discourages manipulating raw counts, the sparsity (many zeros) 
+#       of the count matrices ended up raising errors in estimating size factors and 
+#       dispersions. The pseudocount is added to prevent such errors.
+#       e.g. 
+#       Error in estimateSizeFactorsForMatrix(counts(object), locfunc = locfunc,  : 
+#       every gene contains at least one zero, cannot compute log geometric means
+dds_list <- mclapply(names(coldata_list), function(name) {
+    DESeqDataSetFromMatrix(mat_list[[name]] + pseudocount,
+                           colData=coldata_list[[name]],
+                           design=~general_disease + 0)
+}) %>%
+# Run DESeq
+# NOTE: The current dataset cannot run the DESeq function due to the following error
+#      Error in estimateDispersionsFit(object, fitType = fitType) :
+#      all gene-wise dispersion estimates are within 2 orders of magnitude
+#      from the minimum value, and so the standard curve fitting techniques will not work.
+#      One can instead use the gene-wise estimates as final estimates:
+#      dds <- estimateDispersionsGeneEst(dds)
+#      dispersions(dds) <- mcols(dds)$dispGeneEst
+#      ...then continue with testing using nbinomWaldTest or nbinomLRT
+mclapply(function(dds) {
+    # dds <- DESeq(dds, parallel=TRUE, fitType="mean")
+    dds <- estimateSizeFactors(dds) %>%
+        estimateDispersionsGeneEst()
+    dispersions(dds) <- mcols(dds)$dispGeneEst
+    dds <- nbinomWaldTest(dds)
+    return(dds)
+}) %>%
+set_names(names(coldata_list))
+
+# Run log2(normalized_counts + 1) transformation
+# NOTE: The current dataset cannot use the `varianceStabilizingTransformation` nor `vst` function as 
+#       the gene-wise dispersions are almost constant over the mean, so DESeq2 cannot fit 
+#       its usual mean–dispersion curve (“parametric”, “local”, or “mean”).
+l2t_list <- lapply(names(dds_list), function(name) {
+    dds <- dds_list[[name]]
+    # varianceStabilizingTransformation(dds, blind=TRUE)
+    m <- log2(counts(dds, normalized=TRUE) + 1)
+    return(m)
+}) %>%
+set_names(names(dds_list))
+```
+
+# Quality control (QC)
+
+## Sample similarity heatmap {.tabset}
+
+Sample-to-sample similarity in junction profiling is explored using a heatmap of normalized counts 
+(log2 scale), with *Euclidean distance* represented by the color scale. Darker blue indicates
+less distance (i.e., greater similarity) in splice junction profiling.
+
+```{r qc_heatmap, results='asis', eval=FALSE}
+
+for (name in names(sp_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve the raw count matrix
+    scmat <- sc_list[[name]][['raw']]
+    # Remove zero-count barcodes
+    scmat <- scmat[, colSums(scmat) > 0]
+    # Transform to a distance matrix after applying log2 transformation
+    # with a pseudocount of 1
+    scmat <- as.matrix(dist(t(log2(scmat + 1))))
+
+    # Set color to be displayed
+    colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, 'Blues')))(255)
+
+    # Prep metadata for heatmap
+    heatmap_meta <- as.data.frame(py$subadata_dic[[name]][['obs']]) %>%
+        unite(col="SampleID_celltype",
+              sample_col,
+              celltype_col,
+              sep="_",
+              remove=FALSE) 
+    heatmap_meta <- clean_metadata(heatmap_meta)[['df']]
+
+    # Print heatmap
+    print(pheatmap::pheatmap(
+        scmat,
+        scale='none',
+        color=colors,
+        annotation_col=heatmap_meta,
+        show_rownames=FALSE,
+        show_colnames=FALSE,
+        cluster_cols=TRUE,
+        border_color=NA
+    )
+    )
+    cat('\n\n')
+}
+
 ```
 
 
@@ -210,6 +383,4 @@ for (name in names(coldata_list)) {
 ```{r session_info, collapse=FALSE}
 sessionInfo()
 ```
-
-
 
