@@ -101,6 +101,7 @@ factor_groups <- list(
 subset_col <- 'study_celltype'
 sample_col <- 'SampleID_celltype'
 celltype_col <- 'cell_type'
+disease_col <- "general_disease"
 ```
 
 # Loading input data {.tabset}
@@ -113,8 +114,9 @@ print(config_yaml[['genes']])
 ```
 
 Raw junction counts were compiled into a junction-by-barcode matrix for differential testing in the
-previous analysis, [`sc-exploratory.html`](sc-exploratory.html). These matrices and metadata are
-imported from the following location:
+previous analysis, [`sc-exploratory.html`](sc-exploratory.html). This matrix was preprocessed
+to aggregate the counts per sample per celltype, along with their associated metadata table.
+These preprocessed matrices and metadata are imported from the following location:
 
 ```{r infile_info}
 print(in_rds)
@@ -124,7 +126,7 @@ print(in_rds)
 
 # --------------------------------------------------------------------------------
 # This chunk imports input data saved in the previous single-cell 
-# exploratory analysis. Manually edit the code if necessary.
+# exploratory analysis. Manually edit the following code if necessary.
 # --------------------------------------------------------------------------------
 
 # Import input RDS file
@@ -141,9 +143,14 @@ sampletable <- obj[['meta']] %>%
                                                   "_",
                                                   cell_type))
 
+# Ensure to have correct levels for each factor columns
+for (f in names(factor_groups)) {
+    sampletable[[f]] <- factor(sampletable[[f]], levels=factor_groups[[f]])
+}
+
 
 # Prep a list of metadata tables for each subset
-coldata_list <- lapply(mat_list, function(m) { 
+coldata_list <- mclapply(mat_list, function(m) { 
     # Splice the metadata table based on samples in the matrix
     cdata <- sampletable[sampletable[[sample_col]] %in% colnames(m),
                          c(sample_col, names(factor_groups))] %>%
@@ -161,11 +168,40 @@ coldata_list <- lapply(mat_list, function(m) {
 
 # Subsets {.tabset}
 
-The number of splice junctions was aggregated per sample per celltype. Each count matrix consists of 
-samples within a study, as summarized below:
+The subset-wise aggregation was performed as summarized below:
 
-```{r subset_overview}
+```{r subset_overview, results='asis'}
 
+# --------------------------------------------------------------------------------
+# This chunk explores the number of samples and metadata info across the subsets
+# --------------------------------------------------------------------------------
+
+for (name in names(coldata_list)) {
+
+    df <- coldata_list[[name]] %>%
+        remove_rownames()
+    cat("##", name, "{.tabset}\n\n")
+    cat("### N\n\n")
+    # Count the number of samples
+    n_df <- df %>%
+        group_by_at(vars(subset_col, disease_col)) %>%
+        summarize(N=n()) %>%
+        spread(disease_col, N)
+    # Reorder columns
+    disease_order <- factor_groups[[disease_col]][factor_groups[[disease_col]] %in% colnames(n_df)]
+    n_df <- n_df[, c(subset_col, disease_order)]
+    # Replace missing values with zero
+    n_df[is.na(n_df)] <- 0
+    # Add a new column for all N
+    n_df[['all_N']] <- rowSums(n_df[, colnames(n_df)[-1]])
+
+    # Print tables
+    print(knitr::kable(n_df))
+    cat('\n\n')
+
+    cat("### Full table\n\n")
+    subchunkify(paste0(name, "_subset_summary_table"))
+}
 ```
 
 
