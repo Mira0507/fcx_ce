@@ -1194,7 +1194,8 @@ for (celltype in names(ncell_list)) {
             remove_rownames()
         df <- df[, c("CE", colnames(df)[-ncol(df)])]
 
-        subchunkify(paste0(celltype, "_", counttype))
+        # subchunkify(paste0(celltype, "_", counttype))
+        print(knitr::kable(df))
         cat('\n\n')
 
         csv <- file.path(out_dir,
