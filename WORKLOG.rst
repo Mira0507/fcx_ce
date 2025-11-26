@@ -1393,3 +1393,7 @@ fcx_ce
           and celltypes
         - added metadata to the ``rds`` file for subset-wise
           count matrices
+
+- Pseudobulk differential analysis
+    - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd`` 
+      renamed to ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
