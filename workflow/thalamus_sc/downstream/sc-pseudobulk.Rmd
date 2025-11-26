@@ -1,0 +1,143 @@
+---
+title: "Pseudobulk differential analysis on cryptic exons (CEs)"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct pseudobulk differential analysis
+using [DESeq2](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8).
+
+Refer to the following resources for technical details:
+
+- [Documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+- [GitHub](https://github.com/thelovelab/DESeq2)
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(parallel)
+library(yaml)
+library(reshape2)
+library(RColorBrewer)
+library(plotly)
+
+# Additional options
+set.seed(2570)
+source('../config/helpers.R')
+
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrices
+in_rds <- "../sc-exploratory/aggr_matrices.rds"
+
+# Path to Snakemake config
+snakemake_config <- "../config/config.yaml"
+
+# Paths to yaml config
+config_yaml <- read_yaml(snakemake_config)
+
+# Path to output directory
+out_dir <- "sc-pseudobulk"
+
+# Create directories if missing
+for (p in c(out_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    cell_type=c('ExNeu1', 'ExNeu2'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c('Control-Marsan',
+                                      'Control-Biogen',
+                                      'Control-Mathys',
+                                      'FTD-Marsan',
+                                      'FTD-Biogen',
+                                      'AD-Mathys'),
+    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Marsan_ExNeu2',
+                                      'Control-Biogen_ExNeu1',
+                                      'Control-Biogen_ExNeu2',
+                                      'Control-Mathys_ExNeu1',
+                                      'Control-Mathys_ExNeu2',
+                                      'FTD-Marsan_ExNeu1',
+                                      'FTD-Marsan_ExNeu2',
+                                      'FTD-Biogen_ExNeu1',
+                                      'FTD-Biogen_ExNeu2',
+                                      'AD-Mathys_ExNeu1',
+                                      'AD-Mathys_ExNeu2'),
+    study_celltype=c('Marsan_ExNeu1', 'Biogen_ExNeu1', 'Mathys_ExNeu1',
+                     'Marsan_ExNeu2', 'Biogen_ExNeu2', 'Mathys_ExNeu2')
+)
+
+# Specify column names to subset barcodes
+# NOTE: Set to NULL if unnecessary
+subset_col <- 'study_celltype'
+sample_col <- 'SampleID'
+celltype_col <- 'cell_type'
+```
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
+genes:
+
+```{r genes_tested}
+print(config_yaml[['genes']])
+```
+
+These counts were compiled into a junction-by-barcode matrix for differential testing.
+
+
+```{r import_adata}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input data saved in the previous single-cell 
+# exploratory analysis
+# --------------------------------------------------------------------------------
+
+obj <- readRDS(in_rds)
+
+```
+
+Input data loaded from the following path:
+
+```{r infile_info}
+print(in_rds)
+```
+
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+
