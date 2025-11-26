@@ -28,14 +28,14 @@ Refer to the following resources for technical details:
 
 ```{r libraries}
 # Libraries
-library(parallel)
 library(tidyverse)
+library(DESeq2)
 library(ggplot2)
 library(parallel)
 library(yaml)
-library(reshape2)
 library(RColorBrewer)
 library(plotly)
+library(parallel)
 
 # Additional options
 set.seed(2570)
@@ -53,7 +53,7 @@ options(mc.cores=n_cores)
 # --------------------------------------------------------------------------------
 
 # Path to input matrices
-in_rds <- "../sc-exploratory/aggr_matrices.rds"
+in_rds <- "sc-exploratory/aggr_matrices.rds"
 
 # Path to Snakemake config
 snakemake_config <- "../config/config.yaml"
@@ -99,7 +99,7 @@ factor_groups <- list(
 # Specify column names to subset barcodes
 # NOTE: Set to NULL if unnecessary
 subset_col <- 'study_celltype'
-sample_col <- 'SampleID'
+sample_col <- 'SampleID_celltype'
 celltype_col <- 'cell_type'
 ```
 
@@ -112,24 +112,60 @@ genes:
 print(config_yaml[['genes']])
 ```
 
-These counts were compiled into a junction-by-barcode matrix for differential testing.
+Raw junction counts were compiled into a junction-by-barcode matrix for differential testing in the
+previous analysis, [`sc-exploratory.html`](sc-exploratory.html). These matrices and metadata are
+imported from the following location:
 
+```{r infile_info}
+print(in_rds)
+```
 
 ```{r import_adata}
 
 # --------------------------------------------------------------------------------
 # This chunk imports input data saved in the previous single-cell 
-# exploratory analysis
+# exploratory analysis. Manually edit the code if necessary.
 # --------------------------------------------------------------------------------
 
+# Import input RDS file
 obj <- readRDS(in_rds)
 
+# Extract count matrices
+mat_list <- obj[['bulk']]
+
+# Extract the entire sampletable (Edit manually if necessary)
+sampletable <- obj[['meta']] %>%
+    remove_rownames() %>%
+    mutate(SampleID_celltype=paste0(SampleID, "_", cell_type), 
+           study_disease_specific_celltype=paste0(study_specific_disease_specific,
+                                                  "_",
+                                                  cell_type))
+
+
+# Prep a list of metadata tables for each subset
+coldata_list <- lapply(mat_list, function(m) { 
+    # Splice the metadata table based on samples in the matrix
+    cdata <- sampletable[sampletable[[sample_col]] %in% colnames(m),
+                         c(sample_col, names(factor_groups))] %>%
+        unique()
+    # Break if columns of the matrix and rows of the metadata don't match
+    if (nrow(cdata) != ncol(m)) {
+        stop("Rownames of coldata and colnames of matrix should be the same!")
+    }
+    # Reorder rows of the subsetted metadata table
+    rownames(cdata) <- cdata[[sample_col]]
+    cdata <- cdata[colnames(m),]
+    return(cdata)
+})
 ```
 
-Input data loaded from the following path:
+# Subsets {.tabset}
 
-```{r infile_info}
-print(in_rds)
+The number of splice junctions was aggregated per sample per celltype. Each count matrix consists of 
+samples within a study, as summarized below:
+
+```{r subset_overview}
+
 ```
 
 
