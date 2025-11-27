@@ -1420,4 +1420,4 @@ fcx_ce
           due to almost constant dispersions over the mean within each feature.
           this appears to be associated with the sparsity of the matrices with very 
           few junction counts across the samples and features.
-        - sample similarity heatmap and PCA added
+        - sample similarity heatmap, PCA, size factors, and dispersion plots added
