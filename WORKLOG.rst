@@ -1397,3 +1397,27 @@ fcx_ce
 - Pseudobulk differential analysis
     - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd`` 
       renamed to ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+
+
+2025-11-26
+----------
+
+@Mira0507
+
+- Pseudobulk differential analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - the number of samples (N) calculated before and after
+          pre-filtering nonzero samples
+        - dds obj created
+        - calling the ``DESeq`` failed because of every feature containing 
+          at least one zero. This issue ended up making it impossible to compute
+          log geometric means in estimating size factors. adding a pseudocount
+          of 1 resolved this issue, but it's suboptimal in terms of that 
+          DESeq2 recommends using raw counts as-is.
+        - calling the ``varianceStabilizingTransformation`` function failed
+          due to almost constant dispersions over the mean within each feature.
+          this appears to be associated with the sparsity of the matrices with very 
+          few junction counts across the samples and features.
+        - sample similarity heatmap and PCA added
