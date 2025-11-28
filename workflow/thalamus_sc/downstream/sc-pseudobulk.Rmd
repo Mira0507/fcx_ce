@@ -108,6 +108,10 @@ subset_col <- 'study_celltype'
 sample_col <- 'SampleID_celltype'
 celltype_col <- 'cell_type'
 disease_col <- "general_disease"
+
+# Specify DE thresholds
+lfc_thresh <- 0
+alpha <- 0.1
 ```
 
 # Loading input data {.tabset}
@@ -518,6 +522,155 @@ for (name in names(dds_list)) {
 }
 
 ```
+
+# Differential expression {.tabset}
+
+We perform pairwise differential testing using the [Wald test](https://en.wikipedia.org/wiki/Wald_test);
+therefore, subsets containing more than one disease status are not examined.
+
+
+- **subset**: study and celltype
+- **nonzero.vs.total**: the number of junctions with nonzero read counts and the total number of 
+  tested junctions
+- **alpha**: false discovery rate (FDR) cutoff determining significant genes
+- **lfcThreshold**: by default, the null hypothesis is that the log2 fold change of splicing is 
+  not different from zero. In some circumstances, it is useful to use a different threshold, 
+  which will be reported here.
+- **outliers**: Cook’s distance is used as a measure of how much a single sample is influencing 
+  the fitted coefficients for a junction. If that value is too high, the gene is marked as an 
+  outlier and the pvalue and adjusted pvalue will be set to NA. If there are many 
+  (hundreds to thousands) of outliers, this is an indication that a sample may be problematic. 
+  In this case, the dds diagnostics plots may help identify the culprit.
+- **low.counts**: How many junctions were not even tested for differential analysis because they 
+  had too low counts.
+- **test**: The contrast performed using the design. `A vs B` indicates differential expression of junctions
+  in A (experimental) compared to B (control).
+
+
+
+## Summary table
+
+
+```{r de_summary, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk summarizes testing results
+# --------------------------------------------------------------------------------
+
+# Calculate results
+res_list <- mclapply(dds_list[!str_detect(names(dds_list), "all")], results)
+
+lapply(names(res_list), function(name) {
+    # Extract res and dds objects
+    res <- res_list[[name]]
+    dds <- dds_list[[name]]
+    # Summary metrics
+    notallzero <- sum(res$baseMean > 0)
+    up <- sum(res$padj < alpha & res$log2FoldChange > lfc_thresh, na.rm=TRUE)
+    down <- sum(res$padj < alpha & res$log2FoldChange < -lfc_thresh, na.rm=TRUE)
+    filt <- sum(!is.na(res$pvalue) & is.na(res$padj))
+    outlier <- sum(res$baseMean > 0 & is.na(res$pvalue))
+    test <- mcols(res)['log2FoldChange', 'description']
+
+    # Build a summary dataframe
+    data.frame(
+        subset=name,
+        up=up,
+        down=down,
+        nonzero.vs.total=paste0(notallzero, '/', nrow(res)), 
+        alpha=alpha,
+        lfcThreshold=lfc_thresh,
+        outliers=outlier,
+        low.counts=filt,
+        # adjust width.cutoff here because newline insertion causes this to return
+        # a df with multiple duplicate rows
+        design=deparse(design(dds), width.cutoff=500L),
+        test=test
+    )
+}) %>%
+bind_rows() %>%
+knitr::kable()
+```
+
+## Full table {.tabset}
+
+Annotation:
+
+*exon_type* annotation:
+
+- *cryptic*: one or both of the start and end coordinates of the junction is within intron regions
+- *non-cryptic-annotated*: both the start and end of the junction coordinates are at annotated positions
+- *non-cryptic-novel*: neither coordinate of the junction is within an intron AND either position 
+  is at non-annotated positions
+
+It's assumed that only the *cryptic* type generates CEs by starting or ending at intron.
+
+```{r de_full, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays full results
+# --------------------------------------------------------------------------------
+
+for (name in names(res_list)) {
+    cat('###', name, '\n\n')
+    # Clean the result data frame
+    df <- res_list[[name]] %>%
+        as.data.frame() %>%
+        rownames_to_column('exon_type') %>%
+        separate(exon_type,
+                 c('chr', 'start', 'end', 'gene_name', 'exon_type'),
+                 sep=":") %>%
+        mutate(exon_detection=ifelse(exon_type == "cryptic",
+                                     "CE detected",
+                                     "junction detected without CE")) %>%
+        remove_rownames()
+
+    # Print
+    subchunkify(paste0(name, '_differential_testing'))
+    cat('\n\n')
+
+    # Save
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_differential_results.csv'))
+    write.csv(df, csv_path, row.names=FALSE, quote=FALSE)
+    link_table(csv_path)
+    cat('\n\n')
+}
+```
+
+
+# BED files for individual splice junctions
+
+The BED files generated here contain the splice junctions tested in the current differential analysis.
+They are prepared for data exploration using IGV. Refer to the naming convention when loaded on IGV: 
+`<chromosome>:<start>:<end>:<gene_name>:<exon_type>`. 
+
+
+```{r create_intron_bed, eval=FALSE}
+
+df <- data.frame()
+
+for (name in names(coord_list)) {
+    # 
+    c_df <- coord_list[[name]] %>%
+        dplyr::select(-middle) %>%
+        mutate(clu=paste0(chr, ":", start, ":", end, ":", clu))
+    bed <- file.path(out_dir, paste0(name, '_introns.bed'))
+    write.table(c_df,
+                file=bed,
+                sep="\t",
+                col.names=FALSE,
+                row.names=FALSE,
+                quote=FALSE)
+    df <- rbind(df, data.frame(comparison=name, bed=bed))
+}
+
+df %>%
+    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
+    knitr::kable()
+
+```
+ 
 
 # Session info
 
