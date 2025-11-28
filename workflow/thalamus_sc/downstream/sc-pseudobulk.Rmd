@@ -529,6 +529,8 @@ We perform pairwise differential testing using the [Wald test](https://en.wikipe
 therefore, subsets containing more than one disease status are not examined.
 
 
+## Summary table
+
 - **subset**: study and celltype
 - **nonzero.vs.total**: the number of junctions with nonzero read counts and the total number of 
   tested junctions
@@ -545,10 +547,6 @@ therefore, subsets containing more than one disease status are not examined.
   had too low counts.
 - **test**: The contrast performed using the design. `A vs B` indicates differential expression of junctions
   in A (experimental) compared to B (control).
-
-
-
-## Summary table
 
 
 ```{r de_summary, results='asis'}
@@ -594,16 +592,27 @@ knitr::kable()
 
 ## Full table {.tabset}
 
-Annotation:
+Metrics:
 
-*exon_type* annotation:
+- **chr**, **start**, **end**: junction genomic coordinates
+- **gene_name**: gene name corresponding to the splice junction
+- **baseMean**: mean normalized counts of the splice junction in all samples
+- **log2FoldChange**: fold changes in a log2 scale
+- **lfcSE**: standard error of the log2 fold change. A smaller value suggests a more precise estimate of 
+  the fold change.
+- **stat**: test statistic. For the Wald test, this metric refers to the log2FoldChange divided by lfcSE,
+  which is compared to a standard normal distribution to generate a two-tailed pvalue. For the likelihood
+  ratio test (LRT), stat is the difference in deviance between the reduced model and the full model, which 
+  is compared to a chi-squared distribution to generate a pvalue.
+- **pvalue**: raw p-values
+- **padj**: false discovery rate (FDR) computed using the Benjamini-Hochberg (BH) method
+- **exon_type**:
+    - *cryptic*: one or both of the start and end coordinates of the junction is within intron regions
+    - *non-cryptic-annotated*: both the start and end of the junction coordinates are at annotated positions
+    - *non-cryptic-novel*: neither coordinate of the junction is within an intron AND either position 
+      is at non-annotated positions
 
-- *cryptic*: one or both of the start and end coordinates of the junction is within intron regions
-- *non-cryptic-annotated*: both the start and end of the junction coordinates are at annotated positions
-- *non-cryptic-novel*: neither coordinate of the junction is within an intron AND either position 
-  is at non-annotated positions
-
-It's assumed that only the *cryptic* type generates CEs by starting or ending at intron.
+It's assumed that only the *cryptic* type generates CEs by starting or ending at an intron.
 
 ```{r de_full, results='asis'}
 
@@ -639,36 +648,35 @@ for (name in names(res_list)) {
 ```
 
 
-# BED files for individual splice junctions
+# BED file for splice junctions
 
-The BED files generated here contain the splice junctions tested in the current differential analysis.
-They are prepared for data exploration using IGV. Refer to the naming convention when loaded on IGV: 
-`<chromosome>:<start>:<end>:<gene_name>:<exon_type>`. 
+The following BED file contains the splice junctions tested in the current differential analysis.
+Refer to the naming convention when loading the file in IGV: `<chr>:<start>:<end>:<gene_name>:<exon_type>`. 
 
+```{r create_intron_bed, results='asis'}
 
-```{r create_intron_bed, eval=FALSE}
+# --------------------------------------------------------------------------------
+# This chunk preps a BED file for tested splice junctions
+# --------------------------------------------------------------------------------
 
-df <- data.frame()
+# Prep coordinates and annotation in a data frame
+df <- data.frame(junction=rownames(dds_list[[1]])) %>%
+    separate(junction,
+             c('chr', 'start', 'end', 'gene_name', 'exon_type'),
+             sep=":") %>%
+    unite("annotation", chr:exon_type, remove=FALSE, sep=":") %>%
+    dplyr::select(chr, start, end, annotation)
 
-for (name in names(coord_list)) {
-    # 
-    c_df <- coord_list[[name]] %>%
-        dplyr::select(-middle) %>%
-        mutate(clu=paste0(chr, ":", start, ":", end, ":", clu))
-    bed <- file.path(out_dir, paste0(name, '_introns.bed'))
-    write.table(c_df,
-                file=bed,
-                sep="\t",
-                col.names=FALSE,
-                row.names=FALSE,
-                quote=FALSE)
-    df <- rbind(df, data.frame(comparison=name, bed=bed))
-}
+# Save
+bed <- file.path(out_dir, "junctions.bed")
+write.table(df,
+            file=bed,
+            sep="\t",
+            col.names=FALSE,
+            row.names=FALSE,
+            quote=FALSE)
 
-df %>%
-    mutate(bed=paste("[", bed, "](", bed, ")")) %>%
-    knitr::kable()
-
+link_table(bed)
 ```
  
 
