@@ -1421,3 +1421,17 @@ fcx_ce
           this appears to be associated with the sparsity of the matrices with very 
           few junction counts across the samples and features.
         - sample similarity heatmap, PCA, size factors, and dispersion plots added
+
+
+2025-11-27
+----------
+
+@Mira0507
+
+- Pseudobulk differential analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - performed differential testing
+        - added summary table
+        - added a junction BED file
