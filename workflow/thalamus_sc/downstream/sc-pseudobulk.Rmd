@@ -36,6 +36,9 @@ library(yaml)
 library(RColorBrewer)
 library(plotly)
 library(parallel)
+library(rtracklayer)
+library(GenomicRanges)
+library(GenomicFeatures)
 
 # Additional options
 set.seed(2570)
@@ -63,6 +66,9 @@ config_yaml <- read_yaml(snakemake_config)
 
 # Path to output directory
 out_dir <- "sc-pseudobulk"
+
+# Path to GTF
+gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
 
 # Create directories if missing
 for (p in c(out_dir)) {
@@ -647,8 +653,16 @@ for (name in names(res_list)) {
 }
 ```
 
+# Counts for CEs
 
-# BED file for splice junctions
+```{r norm_ce, results='asis'}
+
+```
+
+
+# BED files {.tabset}
+
+## Splice junctions
 
 The following BED file contains the splice junctions tested in the current differential analysis.
 Refer to the naming convention when loading the file in IGV: `<chr>:<start>:<end>:<gene_name>:<exon_type>`. 
@@ -668,17 +682,61 @@ df <- data.frame(junction=rownames(dds_list[[1]])) %>%
     dplyr::select(chr, start, end, annotation)
 
 # Save
-bed <- file.path(out_dir, "junctions.bed")
+bed_path <- file.path(out_dir, "junctions.bed")
 write.table(df,
-            file=bed,
+            file=bed_path,
             sep="\t",
             col.names=FALSE,
             row.names=FALSE,
             quote=FALSE)
 
-link_table(bed)
+link_table(bed_path)
 ```
  
+## Exons
+
+Filtered exons for genes of interest are saved as a BED file for data exploration in IGV.
+
+
+```{r create_exon_bed, results='asis', cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk preps a BED file for all exons in the GTF file
+# --------------------------------------------------------------------------------
+
+# Import GTF annotation
+gtf <- import(gtf_path)
+
+# Filter genes of interest and exons
+gtf <- gtf[gtf$type == "exon" & mcols(gtf)$gene_name %in% 
+           config_yaml[['genes']]]
+
+# Prep a data frame having a BED format for the filtered coordinates
+df <- data.frame(
+    seqnames = as.character(seqnames(gtf)),
+    start = start(gtf) - 1,
+    end = end(gtf),
+    name = mcols(gtf)$gene_name,
+    score = ".",
+    strand = as.character(strand(gtf))
+    )
+
+# Break of any missing values are found
+if (any(is.na(df))) {
+    stop("BED file cannot include missing values!")
+}
+
+# Save as a BED file
+bed_path <- file.path(out_dir, "exons.bed")
+write.table(df,
+            bed_path,
+            col.names=FALSE,
+            row.names=FALSE,
+            quote=FALSE,
+            sep="\t")
+
+link_table(bed_path)
+```
 
 # Session info
 
