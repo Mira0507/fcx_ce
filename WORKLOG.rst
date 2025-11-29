@@ -1435,3 +1435,27 @@ fcx_ce
         - performed differential testing
         - added summary table
         - added a junction BED file
+
+
+2025-11-28
+----------
+
+@Mira0507
+
+- Pseudobulk differential analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - added an exon BED file
+
+2025-11-29
+----------
+
+@Mira0507
+
+- Update Single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes:
+        - modified the output aggregated matrices to include log1p-normalized
+          counts for the pseudobulk data
