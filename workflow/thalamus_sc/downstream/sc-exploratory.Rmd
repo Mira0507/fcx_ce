@@ -523,29 +523,35 @@ for (name in names(py$subadata_dic)) {
     sc_list[[name]] <- mat_list
 
     # Collapse the single cell matrix to the following dimension: junction-by-sample
-    mat <- mat_list[['raw']] %>%
-        as.data.frame() %>%
-        rownames_to_column('junction') %>%
-        pivot_longer(!junction, names_to='barcodes', values_to='junction_counts') %>%
-        left_join(o$obs %>% rownames_to_column('barcodes'), by="barcodes") %>%
-        as.data.frame() %>%
-        unite(col="SampleID_celltype",
-              sample_col,
-              celltype_col,
-              sep="_",
-              remove=FALSE) %>%
-        dplyr::select(junction, barcodes,
-                      junction_counts,
-                      SampleID_celltype) %>%
-        group_by(junction, SampleID_celltype) %>%
-        summarize(counts=sum(junction_counts)) %>%
-        spread(SampleID_celltype, counts) %>%
-        column_to_rownames('junction')
+    mat2_list <- mclapply(names(mat_list), function(ctype) {
+        mat <- mat_list[[ctype]] %>%
+            as.data.frame() %>%
+            rownames_to_column('junction') %>%
+            pivot_longer(!junction, names_to='barcodes', values_to='junction_counts') %>%
+            left_join(o$obs %>% rownames_to_column('barcodes'), by="barcodes") %>%
+            as.data.frame() %>%
+            unite(col="SampleID_celltype",
+                  sample_col,
+                  celltype_col,
+                  sep="_",
+                  remove=FALSE) %>%
+            dplyr::select(junction, barcodes,
+                          junction_counts,
+                          SampleID_celltype) %>%
+            group_by(junction, SampleID_celltype) %>%
+            summarize(counts=sum(junction_counts)) %>%
+            spread(SampleID_celltype, counts) %>%
+            column_to_rownames('junction')
+        # Break if missing values have been introduced to the collapsed matrix
+        if (any(is.na(mat))) { 
+            paste0(name, ": Missing values introdueced to ", ctype, " counts!") 
+        }
 
-    # Break if missing values have been introduced to the collapsed matrix
-    if (any(is.na(mat))) { paste0(name, ": Missing values introdueced!") }
+        return(mat)
+    }) %>%
+    set_names(names(mat_list))
 
-    sp_list[[name]] <- mat
+    sp_list[[name]] <- mat2_list
 }
 
 ```
