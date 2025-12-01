@@ -658,7 +658,8 @@ for (name in names(res_list)) {
 
 # Counts for splice junctions {.tabset}
 
-Log1p-normalized pseudobulk counts are compared between disease conditions across the datasets.
+Log1p-normalized pseudobulk counts are compared between disease conditions across the datasets. P-values
+and FDR values were calculated using the two-tailed t-test and BH method.
 
 ```{r junction_comparisons, results='asis', fig.width=10}
 
@@ -690,34 +691,23 @@ for (name in names(res_list)) {
         cat('###', ce, '{.tabset}\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ]
-        print(nrow(df))
 
         if (nrow(ce_df) > 0) {
 
-            cat('#### Plot\n\n')
+            cat('#### Comparison\n\n')
+            # Plot
             p <- ggplot(ce_df, aes_string(x=disease_col, y='counts', fill=disease_col)) +
                 geom_boxplot(color="black", width=0.5) +
                 theme_bw() +
-                facet_grid(. ~ junction, scales="free_y") +
+                facet_wrap(. ~ junction, scales="free_y") +
                 ylab('log2p-normalized junction counts') +
                 theme(axis.title.x=element_blank(),
                       axis.text.x=element_text(angle=90, vjust=0.5, hjust=1))
+
             print(p)
             cat('\n\n')
-            cat('#### Tables {.tabset}\n\n')
-            cat('##### Average and median counts\n\n')
-            stat_df <- split(ce_df, df$junction) %>%
-                map_df(function(df_i) df_i %>%
-                       group_by_at(vars(disease_col)) %>%
-                       summarize(junction=junction,
-                                 N=n(),
-                                 average_counts=mean(counts),
-                                 median_counts=median(counts)) %>%
-                       unique()) %>%
-                as.data.frame()
-            print(knitr::kable(stat_df))
-            cat('\n\n')
-            cat('##### Disease vs Control p-values\n\n')
+
+            # Statistical analysis using t-test on differences
             formula_str <- paste("counts ~", disease_col)
             pval_vec <- sapply(unique(ce_df$junction), function(j) {
                 df_i <- ce_df[ce_df$junction == j,]
@@ -735,7 +725,19 @@ for (name in names(res_list)) {
 
             print(knitr::kable(pval_df))
             cat('\n\n')
-
+            cat('#### Counts\n\n')
+            # Display mean and median counts for each junction
+            stat_df <- split(ce_df, df$junction) %>%
+                map_df(function(df_i) df_i %>%
+                       group_by_at(vars(disease_col)) %>%
+                       summarize(junction=junction,
+                                 N=n(),
+                                 average_counts=mean(counts),
+                                 median_counts=median(counts)) %>%
+                       unique()) %>%
+                as.data.frame()
+            print(knitr::kable(stat_df))
+            cat('\n\n')
         } else {
             cat("\n\nPlots/tables not generated..\n\n")
         }
