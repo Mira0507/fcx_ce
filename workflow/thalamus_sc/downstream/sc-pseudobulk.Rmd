@@ -118,6 +118,9 @@ disease_col <- "general_disease"
 # Specify DE thresholds
 lfc_thresh <- 0
 alpha <- 0.1
+
+# Specify CE target genes
+ce_targets <- config_yaml[['genes']]
 ```
 
 # Loading input data {.tabset}
@@ -126,7 +129,7 @@ The number of splicing junctions was counted based on cellranger-aligned reads m
 genes:
 
 ```{r genes_tested}
-print(config_yaml[['genes']])
+print(ce_targets)
 ```
 
 Raw junction counts were compiled into a junction-by-barcode matrix for differential testing in the
@@ -148,8 +151,8 @@ print(in_rds)
 # Import input RDS file
 obj <- readRDS(in_rds)
 
-# Extract count matrices
-mat_list <- obj[['bulk']]
+# Extract raw count matrices
+mat_list <-  map(obj[['bulk']], ~.x[['raw']])
 
 # Extract the entire sampletable (Edit manually if necessary)
 sampletable <- obj[['meta']] %>%
@@ -653,10 +656,91 @@ for (name in names(res_list)) {
 }
 ```
 
-# Counts for CEs
+# Counts for splice junctions {.tabset}
 
-```{r norm_ce, results='asis'}
+Log1p-normalized pseudobulk counts are compared between disease conditions across the datasets.
 
+```{r junction_comparisons, results='asis', fig.width=10}
+
+# --------------------------------------------------------------------------------
+# This chunk compares junction counts
+# --------------------------------------------------------------------------------
+
+# Prep a list of tables consisting of normalized counts and metadata
+norm_list <- mclapply(names(res_list), function(name) {
+
+    obj[['bulk']][[name]][['norm']] %>%
+        rownames_to_column('junction') %>%
+        pivot_longer(!junction,
+                     names_to=sample_col,
+                     values_to="counts") %>%
+        inner_join(sampletable[, c(sample_col, names(factor_groups))],
+                   by=sample_col) %>%
+        unique() %>%
+        as.data.frame()
+}) %>%
+set_names(names(res_list))
+
+for (name in names(res_list)) {
+    cat('##', name, '{.tabset}\n\n')
+    # Extract input data frame
+    df <- norm_list[[name]]
+    
+    for (ce in ce_targets) {
+        cat('###', ce, '{.tabset}\n\n')
+        # Subset rows for the corresponding CE target gene
+        ce_df <- df[str_detect(df$junction, ce), ]
+        print(nrow(df))
+
+        if (nrow(ce_df) > 0) {
+
+            cat('#### Plot\n\n')
+            p <- ggplot(ce_df, aes_string(x=disease_col, y='counts', fill=disease_col)) +
+                geom_boxplot(color="black", width=0.5) +
+                theme_bw() +
+                facet_grid(. ~ junction, scales="free_y") +
+                ylab('log2p-normalized junction counts') +
+                theme(axis.title.x=element_blank(),
+                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1))
+            print(p)
+            cat('\n\n')
+            cat('#### Tables {.tabset}\n\n')
+            cat('##### Average and median counts\n\n')
+            stat_df <- split(ce_df, df$junction) %>%
+                map_df(function(df_i) df_i %>%
+                       group_by_at(vars(disease_col)) %>%
+                       summarize(junction=junction,
+                                 N=n(),
+                                 average_counts=mean(counts),
+                                 median_counts=median(counts)) %>%
+                       unique()) %>%
+                as.data.frame()
+            print(knitr::kable(stat_df))
+            cat('\n\n')
+            cat('##### Disease vs Control p-values\n\n')
+            formula_str <- paste("counts ~", disease_col)
+            pval_vec <- sapply(unique(ce_df$junction), function(j) {
+                df_i <- ce_df[ce_df$junction == j,]
+                tryCatch(
+                    { 
+                        t.test(as.formula(formula_str), data=df_i)$p.value
+                    },
+                    error = function(e) { 
+                        NA 
+                    })})
+            pval_df <- data.frame(junction=names(pval_vec),
+                                  pvalue=pval_vec,
+                                  FDR=p.adjust(pval_vec, method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+
+        } else {
+            cat("\n\nPlots/tables not generated..\n\n")
+        }
+    } 
+}
 ```
 
 
@@ -709,7 +793,7 @@ gtf <- import(gtf_path)
 
 # Filter genes of interest and exons
 gtf <- gtf[gtf$type == "exon" & mcols(gtf)$gene_name %in% 
-           config_yaml[['genes']]]
+           ce_targets]
 
 # Prep a data frame having a BED format for the filtered coordinates
 df <- data.frame(
