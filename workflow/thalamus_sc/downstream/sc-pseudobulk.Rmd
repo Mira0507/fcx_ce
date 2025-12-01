@@ -441,7 +441,7 @@ for (name in names(l2t_list)) {
             xlab(axis_titles[1]) +
             ylab(axis_titles[2])
 
-        subchunkify(paste0("PCA_", name, "_", c), input="plot")
+        print(p)
         cat('\n\n')
     }
 }
