@@ -901,7 +901,7 @@ for (name in names(res_list)) {
             p <- ggplot(ce_df, aes_string(x=disease_col, y='ratio', fill=disease_col)) +
                 geom_boxplot(color="black", width=0.5) +
                 theme_bw() +
-                ylab('Junction counts for CE / non-CE') +
+                ylab('Count ratios (CE / non-CE)') +
                 theme(axis.title.x=element_blank(),
                       axis.text.x=element_text(angle=90, vjust=0.5, hjust=1))
 
