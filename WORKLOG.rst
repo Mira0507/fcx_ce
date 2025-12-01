@@ -1461,3 +1461,17 @@ fcx_ce
           counts for the pseudobulk data
 
 
+
+2025-12-01
+----------
+
+@Mira0507
+
+- Update Single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - added boxplots for junction counts between disease and control groups
+        - added boxplots for CE counts between disease and control groups
+        - added boxplots for CE/non-CE ratios between disease and control groups
+        - created sashimi plots using IGV (locally)
