@@ -1475,3 +1475,13 @@ fcx_ce
         - added boxplots for CE counts between disease and control groups
         - added boxplots for CE/non-CE ratios between disease and control groups
         - created sashimi plots using IGV (locally)
+
+
+2025-12-02
+----------
+
+@Mira0507
+
+- Update ``workflow/thalamus_sc/Snakefile``
+    - saved the ``sampletable`` data frame including a new column 
+      indicating sequencing read length
