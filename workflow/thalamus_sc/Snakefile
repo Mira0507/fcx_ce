@@ -30,12 +30,28 @@ barcode_file = f"{outdir}/barcodes.tsv"
 # Path to input bam directory
 bam_dir = config['bam_dir']
 
+# Specify a new column name for bam paths
+bam_col = config['bam_col']
+
+# Specify a new column name for samplename
+index_col = config['index_col']
+
 # Prep sampletable
-sampletable = pd.read_csv(config['sampletable']).set_index(config['index_col'], drop=False)
-sampletable[config['bam_col']] = bam_dir + "/" + sampletable.index + '_possorted_genome_bam.bam'
+sampletable = pd.read_csv(config['sampletable']).set_index(index_col, drop=False)
+sampletable[bam_col] = bam_dir + "/" + sampletable.index + '_possorted_genome_bam.bam'
+
+# Add a column for seq read length, if missing
+if 'read_length' not in list(sampletable.columns): 
+    rl = []
+    for bamfile in list(sampletable[bam_col]):
+        cmd = f"samtools view {bamfile} | cut -f 10 | head -n 1 | wc -m"
+        read_length = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        rl.append(read_length.stdout.strip())
+    sampletable['read_length'] = rl
+    sampletable.to_csv(config['sampletable'], index=False)
 
 # Break if input bams don't align with sampletable
-missing_bams = [b for b in sampletable[config['bam_col']] if not os.path.isfile(b)]
+missing_bams = [b for b in sampletable[bam_col] if not os.path.isfile(b)]
 if len(missing_bams) > 0:
     raise ValueError(f"{missing_bams} not found in the directory!")
 
@@ -49,21 +65,21 @@ for celltype, path in config['adata'].items():
     meta_df['barcode'] = meta_df.index
     # Remove sample suffixes from the barcodes
     barcode_df = meta_df['barcode'].str.split('_', expand=True)
-    barcode_df.columns = ['barcode', config['index_col']]
+    barcode_df.columns = ['barcode', index_col]
     # Add new columns to the metadata
     meta_df['barcode_sc'] = meta_df['barcode']
     meta_df['barcode'] = barcode_df['barcode']
-    meta_df[config['index_col']] = barcode_df[config['index_col']]
+    meta_df[index_col] = barcode_df[index_col]
     meta_list.append(meta_df)
 
 # Save all barcodes in a tsv file
 meta_df = pd.concat(meta_list, axis=0)
 
 # Add bam file paths to the metadata table and save as a tsv file
-meta_df = pd.merge(sampletable.loc[:, [config['index_col'], config['key_col'], config['bam_col']]].reset_index(drop=True),
+meta_df = pd.merge(sampletable.loc[:, [index_col, config['key_col'], bam_col]].reset_index(drop=True),
                    meta_df,
                    how="right",
-                   on=[config['index_col'], config['key_col']])
+                   on=[index_col, config['key_col']])
 meta_df.to_csv(barcode_file, sep="\t", index=False)
 
 ##################################### PREP FUNCTIONS ####################################
@@ -80,7 +96,7 @@ def extract_headers_SQ(bam):
 # Function to select input bam files required for output 
 def select_input_bam(wildcards):
     filtered_df = meta_df[(meta_df['barcode_sc'] == wildcards.sc_barcode)]
-    samplename = filtered_df[config['index_col']].unique()[0]
+    samplename = filtered_df[index_col].unique()[0]
     return "{}/{}_possorted_genome_bam.bam".format(bam_dir, samplename)
 
 # Function to select bam files to be merged by group and celltype
