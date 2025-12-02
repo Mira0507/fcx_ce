@@ -1193,3 +1193,295 @@ fcx_ce
 
             $ ls workflow/thalamus_sc/results/junction_counts | grep num
             thalamus_sc_perind_numers.counts.gz
+
+- create a new conda env ``menv`` for MAST
+    - recipe: ``menv_requirements.txt``
+
+    .. code-block:: bash
+
+        $ cat menv_requirements.txt
+        python
+        anndata
+        r-base
+        r-tidyverse
+        r-dt
+        r-plotly
+        r-ggplot2
+        bioconductor-mast
+
+    - exported to ``menv.archived.yaml``
+
+
+2025-11-13
+----------
+
+
+@Mira0507
+
+- update ``menv`` conda env: ``r-reticulate`` installed
+
+- start DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - updated AnnData to include splice junction matrices 
+          and save as and ``h5ad`` file
+
+
+2025-11-14
+----------
+
+@Mira0507
+
+- start DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - applied log2 transformation and log2 + 1 TPM
+        - added those transformed junction counts to AnnData with the following
+          keys:
+            - ``AnnData.obsm['junction_raw']``: raw counts
+            - ``AnnData.obsm['junction_log2']``: log2(raw counts + 1)
+            - ``AnnData.obsm['junction_log2TPM']``: log2(TPM + 1)
+        - saved the updated AnnData objects in ``workflow/thalamus_sc/downstream/mast``
+        - created SCA obj based on the following references
+            - https://rglab.github.io/MAST/articles/MAST-interoperability.html
+            - https://rglab.github.io/MAST/reference/FromMatrix.html
+        - QC in progress
+
+
+
+2025-11-17
+----------
+
+@Mira0507
+
+- work on DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - pre-filtered cells with non-zero junctions
+        - added heamaps on all and celltype-specifically subsetted cells
+
+- install ``scanpy`` in ``menv``
+
+
+2025-11-18
+----------
+
+@Mira0507
+
+- work on DS analysis using MAST
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+    - notes
+        - pre-filtering non-zero count cells performed BEFORE log2TPM
+          transformation
+        - ``AnnData`` objects were re-created using filtered matrices
+        - barcodes were re-subsetted by study and celltype
+        - added UMAP on splice junction counts in a log2TPM 
+          using scanpy with default arguments.
+        - plotted the distribution of raw and log2TPM counts
+
+
+
+2025-11-19
+----------
+
+@Mira0507
+
+- update snakemake pipeline
+    - conda env: ``env``
+    - script: ``workflow/thalamus_sc/Snakefile``
+    - notes
+        - add rule ``aggr_bams_sample_celltype`` and run
+
+        .. code-block:: bash
+
+            Job stats:
+            job                          count
+            -------------------------  -------
+            aggr_bams_sample_celltype      186
+            all                              1
+            total                          187
+
+
+- DESeq2 installed in ``menv`` through conda
+
+- DS analysis using MAST on hold
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/mast.Rmd``
+
+- DS analysis using DESeq2
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd``
+    - notes
+        - raw and log1p-transformed junction count matrices 
+          added to the input ``AnnData`` objects updated with raw and log1p-normalized
+          and saved
+          (e.g. ``ExNeu1_JUNCTIONS_ADDED.h5ad``)
+        - new ``AnnData`` objects created with junction count matrices and saved
+          (e.g. ``ExNeu1_JUNCTIONS_ONLY.h5ad``)
+        - QC in progress
+            - the proportion of cells with nonzero junction counts calculated 
+              across the subsets
+            - per-sample-per-celltype heatmaps created across the subsets
+
+
+2025-11-20
+----------
+
+@Mira0507
+
+- Downstream single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd``
+      renamed to ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - QC added: single-cell heatmap, PCA, UMAP, and junction count distribution
+        - junction annotation in progress
+
+2025-11-21
+----------
+
+@Mira0507
+
+- Additional packages installed in ``menv`` through conda
+    - packages
+        - ``bioconductor-rtracklayer``
+        - ``bioconductor-genomicfeatures``
+        - ``bioconductor-txdbmaker``
+    - files updated
+        - ``menv_requirements.txt``
+        - ``menv.archived.yaml``
+
+- Downstream single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - annotated splice junctions
+        - replaced the rownames for junction count matrix with annotated junction ids
+
+
+2025-11-24
+----------
+
+@Mira0507
+
+- Downstream single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes: 
+        - reannotated exon types generated by each splice junction
+        - added UMAPs with and without CEs across the celltypes and genes of interest
+
+
+2025-11-25
+----------
+
+@Mira0507
+
+- Install ``pysam`` in ``menv`` using conda
+
+- Downstream single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes: 
+        - added boxplots for the expression of genes in cells with 
+          and without CEs
+        - added a table for the number of CEs across the datasets 
+          and celltypes
+        - added metadata to the ``rds`` file for subset-wise
+          count matrices
+
+- Pseudobulk differential analysis
+    - script: ``workflow/thalamus_sc/downstream/sc-ds.Rmd`` 
+      renamed to ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+
+
+2025-11-26
+----------
+
+@Mira0507
+
+- Pseudobulk differential analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - the number of samples (N) calculated before and after
+          pre-filtering nonzero samples
+        - dds obj created
+        - calling the ``DESeq`` failed because of every feature containing 
+          at least one zero. This issue ended up making it impossible to compute
+          log geometric means in estimating size factors. adding a pseudocount
+          of 1 resolved this issue, but it's suboptimal in terms of that 
+          DESeq2 recommends using raw counts as-is.
+        - calling the ``varianceStabilizingTransformation`` function failed
+          due to almost constant dispersions over the mean within each feature.
+          this appears to be associated with the sparsity of the matrices with very 
+          few junction counts across the samples and features.
+        - sample similarity heatmap, PCA, size factors, and dispersion plots added
+
+
+2025-11-27
+----------
+
+@Mira0507
+
+- Pseudobulk differential analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - performed differential testing
+        - added summary table
+        - added a junction BED file
+
+
+2025-11-28
+----------
+
+@Mira0507
+
+- Pseudobulk differential analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - added an exon BED file
+
+2025-11-29
+----------
+
+@Mira0507
+
+- Update Single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes:
+        - modified the output aggregated matrices to include log1p-normalized
+          counts for the pseudobulk data
+
+
+
+2025-12-01
+----------
+
+@Mira0507
+
+- Update Single cell junction exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - added boxplots for junction counts between disease and control groups
+        - added boxplots for CE counts between disease and control groups
+        - added boxplots for CE/non-CE ratios between disease and control groups
+        - created sashimi plots using IGV (locally)
+
+
+2025-12-02
+----------
+
+@Mira0507
+
+- Update ``workflow/thalamus_sc/Snakefile``
+    - saved the ``sampletable`` data frame including a new column 
+      indicating sequencing read length
