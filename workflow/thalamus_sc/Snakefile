@@ -99,26 +99,21 @@ def select_input_bam(wildcards):
     samplename = filtered_df[index_col].unique()[0]
     return "{}/{}_possorted_genome_bam.bam".format(bam_dir, samplename)
 
-# Function to select bam files to be merged by group and celltype
-def input_group_celltype_bams(wildcards):
-    filtered_df = meta_df[
-        (meta_df[config['celltype_col']] == wildcards.celltype) &
-        (meta_df[config['key_col']] == wildcards.group)]
-    bcd = list(set(filtered_df['barcode_sc']))
-    return [f"{wildcards.outdir}/bam/cell/{b}_sorted.bam" for b in bcd]
-
 
 #################################### RULES ####################################
 
 rule all:
     input:
-        expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
-               outdir=config['outdir'],
-               group=list(set(meta_df[config['key_col']])),
-               celltype=list(set(meta_df[config['celltype_col']]))),
-        expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
-               outdir=config['outdir'],
-               analysis=config['analysis'])
+        expand("{outdir}/sam/{sc_barcode}.sam",
+               outdir=outdir,
+               sc_barcode=meta_df['barcode_sc']),
+        # expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
+        # outdir=config['outdir'],
+        # group=list(set(meta_df[config['key_col']])),
+        # celltype=list(set(meta_df[config['celltype_col']]))),
+        # expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
+        # outdir=config['outdir'],
+    # analysis=config['analysis'])
 
 rule create_header:
     """
@@ -152,6 +147,7 @@ rule prep_bam:
         header = "{outdir}/header.sam",
         bam = select_input_bam
     output:
+        sam = "{outdir}/sam/{sc_barcode}.sam",
         bam = "{outdir}/bam/cell/{sc_barcode}_sorted.bam",
         bai = "{outdir}/bam/cell/{sc_barcode}_sorted.bam.bai"
     resources:
@@ -172,125 +168,23 @@ rule prep_bam:
         gene_list = [f"GN:Z:{g.strip()}" for g in params.genes]
         # Join genes into a single string (w header)
         gene_joined = "|".join(gene_list)
-        # Specify paths to sam files
+        # Specify paths to a temp sam file
         temp_sam = f"{wildcards.outdir}/{wildcards.sc_barcode}_temp.sam"
-        sam = f"{wildcards.outdir}/{wildcards.sc_barcode}.sam"
-        # Specify path to a temporary bam file 
+        # Specify path to a temp bam file 
         temp_bam = f"{wildcards.outdir}/{wildcards.sc_barcode}_unsorted.bam"
         # Run samtools with or without module load samtools/1.19
+        # NOTE:
+        # A sleep for 10min is optionally added in order to avoid the short job warning from HPC
         shell(
             """
-            cat {input.header} > {sam}
+            cat {input.header} > {output.sam}
             samtools view -@ {threads} {input.bam} | grep "{target_barcode}" > {temp_sam} || true
-            cat {temp_sam} | grep -E "{gene_joined}" >> {sam} || true
-            cat {sam} | samtools view -bS -@ {threads} > {temp_bam}
+            cat {temp_sam} | grep -E "{gene_joined}" >> {output.sam} || true
+            cat {output.sam} | samtools view -bS -@ {threads} > {temp_bam}
             samtools sort -@ {threads} {temp_bam} -o {output.bam}
             samtools index {output.bam}
-            rm -f {temp_sam} {sam} {temp_bam}
+            rm -f {temp_sam} {temp_bam}
+            sleep 10m
             """
             )
 
-rule aggr_bams_group_celltype:
-    """
-    This rule aggregates bam files per group per celltype
-    """
-    input:
-        bam = input_group_celltype_bams
-    output:
-        bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
-        bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
-    resources:
-        mem_mb = 1024 * 20,
-        disk_mb = 1024 * 10,
-        runtime = 30
-    params:
-        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam",
-        ncells = len(meta_df)
-    threads: 4
-    shell:
-        """
-        ulimit -n {params.ncells}
-        samtools merge {params.temp_bam} {input.bam}
-        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
-        samtools index {output.bam}
-        rm {params.temp_bam}
-        """
-
-rule extract_junctions:
-    """
-    This rule captures splicing junctions using regtools extract.
-    If a bam input file contains no reads, this rule will return
-    an ampty bed file. 
-    Note that the output bed file name has to end with `.junc`.
-    """
-    input:
-        bam = "{outdir}/bam/cell/{sc_barcode}_sorted.bam",
-        fasta = config['fasta']
-    output:
-        junc = "{outdir}/bed/cell/{sc_barcode}.junc"
-    resources:
-        mem_mb = 1024 * 10,
-        disk_mb = 1024 * 5,
-        runtime = 15
-    threads: 1
-    shell:
-        """
-        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
-            touch {output.junc}
-        fi
-        """
-
-
-rule prep_juncfiles:
-    """
-    This rule prepares a text file storing paths to all input junction 
-    files (<sample>.junc) saved as a bed format. The output of this rule
-    is required to count the number of junctions using leafcutter.
-    """
-    input:
-        expand("{outdir}/bed/cell/{sc_barcode}.junc",
-               outdir=config['outdir'],
-               sc_barcode=list(set(meta_df['barcode_sc'])))
-    output:
-        "{outdir}/juncfiles.txt"
-    resources:
-        mem_mb = 1024 * 20,
-        disk_mb = 1024 * 10,
-        runtime = 10
-    shell:
-        """
-        printf '%s\n' {input} > {output}
-        """
-
-rule count_junctions:
-    """
-    This rule counts the number of junctions across the input 
-    samples or groups using leafcutter. This rule generates
-    the following output files:
-
-    - <sample>_regtools.junc.<analysis>.sorted.gz: per-sample junctions
-    - <analysis>_pooled: all junctions
-    - <analysis>_refined: clustered junctions
-    - <analysis>_sortedlibs: paths to all <sample>_regtools.junc.<analysis>.sorted.gz
-    - <analysis>_perind.counts.gz
-    - <analysis>_perind_numers.counts.gz: output count matrix for junction clusters
-
-    Call `zcat <analysis>_perind_numers.counts.gz` to print 
-    the output count matrix.
-    """
-    input: "{outdir}/juncfiles.txt"
-    output: "{outdir}/junction_counts/{analysis}_perind_numers.counts.gz"
-    resources:
-        mem_mb = 1024 * 100,
-        disk_mb = 1024 * 50,
-        runtime = 60
-    threads: 12
-    shell:
-        """
-        python leafcutter_cluster_regtools.py \
-           -j {input} \
-           -m 10 \
-           -p 0.0001 \
-           -r {wildcards.outdir}/junction_counts \
-           -o {wildcards.analysis}
-        """
