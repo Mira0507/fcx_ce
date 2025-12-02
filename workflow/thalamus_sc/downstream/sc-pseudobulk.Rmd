@@ -532,7 +532,7 @@ for (name in names(dds_list)) {
 
 ```
 
-# Differential expression {.tabset}
+# Differential testing {.tabset}
 
 We perform pairwise differential testing using the [Wald test](https://en.wikipedia.org/wiki/Wald_test);
 therefore, subsets containing more than one disease status are not examined.
@@ -644,7 +644,7 @@ for (name in names(res_list)) {
         remove_rownames()
 
     # Print
-    subchunkify(paste0(name, '_differential_testing'))
+    print(knitr::kable(df))
     cat('\n\n')
 
     # Save
