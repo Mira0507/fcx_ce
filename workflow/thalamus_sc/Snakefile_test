@@ -105,6 +105,12 @@ def sample_celltype_sams(wildcards):
     samlist = [f"{outdir}/sam/{b}_{samplename}.sam" for b in barcode_set]
     return samlist
 
+def sample_group_sams(wildcards):
+    groupname = wildcards.group
+    barcode_set = list(set(meta_df[meta_df[key_col] == groupname]['barcode']))
+    samlist = [f"{outdir}/sam/{b}_{groupname}.sam" for b in barcode_set]
+    return samlist
+
 
 #################################### RULES ####################################
 
@@ -113,9 +119,13 @@ rule all:
         # expand("{outdir}/sam/{sc_barcode}.sam",
                # outdir=outdir,
                # sc_barcode=meta_df['barcode_sc']),
-        expand("{outdir}/bam/group/{sample}_{celltype}_sorted.bam",
-               outdir=config['outdir'],
+        expand("{outdir}/bam/sample/{sample}_{celltype}_sorted.bam",
+               outdir=outdir,
                sample=list(set(meta_df[index_col])),
+               celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
+               outdir=outdir,
+               group=list(set(meta_df[key_col])),
                celltype=list(set(meta_df[config['celltype_col']]))),
 
 rule create_header:
@@ -206,6 +216,30 @@ rule bams_sample_celltype:
         runtime = 60
     params:
         temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/sample/{wildcards.sample}_{wildcards.celltype}_unsorted.bam"
+    threads: 8
+    shell:
+        """
+        cat {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        rm {params.temp_bam}
+        """
+
+rule bams_group_celltype:
+    """
+    This rule creates bam files per group per celltype
+    """
+    input:
+        sam = group_celltype_sams
+    output:
+        bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
+        bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60
+    params:
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam"
     threads: 8
     shell:
         """
