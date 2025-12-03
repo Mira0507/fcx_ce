@@ -31,6 +31,16 @@ barcode_file = f"{outdir}/barcodes.tsv"
 sampletable = pd.read_csv(config['sampletable']).set_index(config['index_col'], drop=False)
 sampletable[config['bam_col']] = config['bam_dir'] + "/" + sampletable.index + '_possorted_genome_bam.bam'
 
+# Add a column for seq read length, if missing
+if 'read_length' not in list(sampletable.columns): 
+    rl = []
+    for bamfile in list(sampletable[bam_col]):
+        cmd = f"samtools view {bamfile} | cut -f 10 | head -n 1 | wc -m"
+        read_length = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        rl.append(read_length.stdout.strip())
+    sampletable['read_length'] = rl
+    sampletable.to_csv(config['sampletable'], index=False)
+
 # Break if input bams don't align with sampletable
 missing_bams = [b for b in sampletable[config['bam_col']] if not os.path.isfile(b)]
 if len(missing_bams) > 0:
