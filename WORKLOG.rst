@@ -1482,6 +1482,48 @@ fcx_ce
 
 @Mira0507
 
+- Troubleshoot the failure of the ``Control-Mathys_ExNeu2_sorted.bam`` (493MB)
+  and ``AD-Mathys_ExNeu2_sorted.bam`` (471MB) files in loading in local IGV
+    - ``$ samtools quickcheck Control-Mathys_ExNeu2_sorted.bam``` returned nothing, 
+      which indicates this file is valid
+    - locally saved ``igv0.log`` says the following:
+
+    .. code-block:: bash
+
+        $ cat igv0.log
+        SEVERE [Dec 02,2025 11:41] [TrackLoader] An error occurred while accessing:    path/to/Control-Mathys_ExNeu2_sorted.bam<br>Error loading BAM file: java.lang.StringIndexOutOfBoundsException: offset 0, count -703043178, length 16
+        SEVERE [Dec 02,2025 11:41] [TrackLoader] org.broad.igv.exceptions.DataLoadException: An error occurred while accessing:    path/to/Control-Mathys_ExNeu2_sorted.bam<br>Error loading BAM file: java.lang.StringIndexOutOfBoundsException: offset 0, count -703043178, length 16
+        at org.igv/org.broad.igv.sam.reader.AlignmentReaderFactory.getReader(AlignmentReaderFactory.java:88)
+        at org.igv/org.broad.igv.sam.reader.AlignmentReaderFactory.getReader(AlignmentReaderFactory.java:57)
+        at org.igv/org.broad.igv.sam.AlignmentDataManager.<init>(AlignmentDataManager.java:78)
+        at org.igv/org.broad.igv.track.TrackLoader.loadAlignmentsTrack(TrackLoader.java:910)
+        at org.igv/org.broad.igv.track.TrackLoader.load(TrackLoader.java:161)
+        at org.igv/org.broad.igv.ui.IGV.load(IGV.java:1249)
+        at org.igv/org.broad.igv.ui.IGV.lambda$load$5(IGV.java:1281)
+        at org.igv/org.broad.igv.util.LongRunningTask.call(LongRunningTask.java:72)
+        at java.base/java.util.concurrent.FutureTask.run(Unknown Source)
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+        at java.base/java.lang.Thread.run(Unknown Source)
+
+    - potential causes:
+        - Corrupt BAM file: The file was not written or copied properly, or the disk is failing.
+        - Incomplete download/transfer: You moved or copied the file, but the process was interrupted or incomplete.
+        - Not a proper BAM file: The file extension is .bam, but the file is actually not in BAM format (for example, it is just a text SAM file, or something else).
+        - File truncation: The BAM file was not fully written out (e.g., job crashed before completion).
+        - Compression issue: BAM files are compressed; if the compression is broken, you’ll get weird binary read errors.
+
+    - transferring from helix to local computer using the ``rsync`` command
+      didn't resolve this issue
+    - regenerating problematic BAM files didn't resolve this issue
+    - decided to rerun Snakemake to generate BAM files from SAM instead of barcode-wise filtered BAM
+
 - Update ``workflow/thalamus_sc/Snakefile``
     - saved the ``sampletable`` data frame including a new column 
       indicating sequencing read length
+    - redesigned rules to retain sam files 
+    - redesigned rules to generate per-sample-per-celltype and
+      per-group-per-celltype bam files by directly filtering cellranger-created
+      bam files rather than aggregating per-barcode bam files
+
+
