@@ -1516,14 +1516,11 @@ fcx_ce
     - transferring from helix to local computer using the ``rsync`` command
       didn't resolve this issue
     - regenerating problematic BAM files didn't resolve this issue
-    - decided to rerun Snakemake to generate BAM files from SAM instead of barcode-wise filtered BAM
+    - decided to use per-group-per-celltype bam files from the 
+      ``thalamus_excitatory/results/bam/group`` directory
 
-- Update ``workflow/thalamus_sc/Snakefile``
+- Update ``workflow/thalamus_sc/Snakefile`` and ``workflow/thalamus_excitatory/Snakefile``
     - saved the ``sampletable`` data frame including a new column 
       indicating sequencing read length
-    - redesigned rules to retain sam files 
-    - redesigned rules to generate per-sample-per-celltype and
-      per-group-per-celltype bam files by directly filtering cellranger-created
-      bam files rather than aggregating per-barcode bam files
 
 
