@@ -1524,3 +1524,11 @@ fcx_ce
       indicating sequencing read length
 
 
+2025-12-05
+----------
+
+@Mira0507
+
+- fisher's exact test on binarized pseudobulk counts in progress
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-fisherexact.Rmd``
