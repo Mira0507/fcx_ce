@@ -228,22 +228,16 @@ and visualization of cells by junction type in a UMAP embedding.
 
 - `workflow/thalamus_excitatory/downstream/ds.Rmd`: differential splicing analysis
 comparing *patient vs control* and *ExNeu2 vs ExNeu1* using *LeafCutter* in R.
-
 Refer to the following resources for more information about
-*LeafCutter*:
-
-    - [Li et al., 2018](https://www.nature.com/articles/s41588-017-0004-9)
-    - [LeafCutter Documentation](https://davidaknowles.github.io/leafcutter/index.html)
-    - [LeafCutter GitHub](https://github.com/davidaknowles/leafcutter)
+*LeafCutter*: [Li et al., 2018](https://www.nature.com/articles/s41588-017-0004-9),
+[LeafCutter Documentation](https://davidaknowles.github.io/leafcutter/index.html),
+[LeafCutter GitHub](https://github.com/davidaknowles/leafcutter)
 
 - `workflow/thalamus_sc/downstream/sc-pseudobulk.Rmd`: differential analysis
 comparing *patient vs control* across per-study-per-celltype subsets,
-using DESeq2. 
-
-Refer to the following resources for details on DESeq2:
-
-    - [Love et al., 2013](https://doi.org/10.1186/s13059-014-0550-8)
-    - [DESeq2 Documentation](https://www.bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+using DESeq2. Refer to the following resources for details on DESeq2: 
+[Love et al., 2013](https://doi.org/10.1186/s13059-014-0550-8), 
+[DESeq2 Documentation](https://www.bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
 
 - `workflow/thalamus_sc/downstream/sc-fisherexact.Rmd`: differential analysis
 comparing *patient vs control* across per-study-per-celltype subsets,
