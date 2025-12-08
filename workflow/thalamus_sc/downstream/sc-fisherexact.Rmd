@@ -407,28 +407,41 @@ _detection_ of each junction is associated with the disease condition, using bin
 1 for detected and 0 otherwise. We aim to determine whether junction detection is significantly 
 more frequent in one condition than in the other.
 
-```{r binarize_matrix_junction}
+```{r prep_fishers_exact_test}
 
 # --------------------------------------------------------------------------------
-# This chunk performs fisher's exact test after binarizing the count matrices
+# This chunk preps fisher's exact test 
 # --------------------------------------------------------------------------------
 
-# Binarize each count matrix (1 for detected, 0 for undetected)
-b_list <- mclapply(mat_list, function(m) ifelse(m > 0, 1, 0))
+# Binarize each count matrix (1 for detected, 0 for undetected) - individual junctions
+bj_list <- mclapply(mat_list, function(m) ifelse(m > 0, 1, 0))
+
+# Binarize each count matrix (1 for detected, 0 for undetected) - individual junctions for exon type 
+be_list <- mclapply(mat_list, function(m) {
+    as.data.frame(m) %>%
+        rownames_to_column('junction') %>%
+        mutate(exon_type=ifelse(str_detect(junction, "non-cryptic"),
+                                "junction detected without CE",
+                                "CE detected")) %>%
+        pivot_longer(!c(junction, exon_type),
+                     names_to="sample",
+                     values_to="counts") %>%
+        group_by(exon_type, sample) %>%
+        summarize(counts=sum(counts)) %>%
+        mutate(counts=ifelse(counts > 0, 1, 0)) %>%
+        pivot_wider(names_from=sample, values_from=counts) %>%
+        column_to_rownames('exon_type') %>%
+        as.matrix()
+    })
 
 # Specify subsets to be analyzed
-pairwise_subsets <- names(b_list)[!str_detect(names(b_list), "all")]
+pairwise_subsets <- names(bj_list)[!str_detect(names(bj_list), "all")]
 
-res_list <- lapply(pairwise_subsets, function(name) {
-    # Extract the count matrix and metadata
-    mat <- b_list[[name]]
-    meta <- coldata_list[[name]]
-
-    # Extract which column will be compared
-    group_labs <- meta[[disease_col]]
+# Function to run Fisher's exact test and summarize the results in a data frame
+fisher_exact_in_df <- function(mat, group_labs) {
 
     # Run Fisher's exact test for each junction (row) and return a p-value
-    stats_df <- mclapply(1:nrow(mat), function(i) {
+    mclapply(1:nrow(mat), function(i) {
         # Subset a row
         mat_i <- mat[i, ]
         # Prep a contingency table
@@ -447,7 +460,10 @@ res_list <- lapply(pairwise_subsets, function(name) {
 
         return(res) }) %>%
         bind_rows() 
+}
 
+# Function to prep a cleaned data frame from the Fisher's exact test results
+clean_fisher_exact_res <- function(mat, stats_df, group_labs) {
     # Build a summary data frame
     f_df <- cbind(data.frame(subset=rep(name, nrow(mat)),
                              junction=rownames(mat)),
@@ -473,54 +489,62 @@ res_list <- lapply(pairwise_subsets, function(name) {
                      'relative_detection',
                      "pvalue",
                      "FDR")]
+    return(f_df)
+}
 
-    return(f_df) }) %>%
-    # Name the list
-    set_names(pairwise_subsets)
 ```
 
 Metrics:
 
 - **subset**: study and celltype
-- **junction**: `<chr>:<start>:<end>:<gene_name>:<junction_category>`
-- **N**: the number of samples for each condition
+- **junction**: 
+    - junction by junction type: `<chr>:<start>:<end>:<gene_name>:<junction_category>`
+    - junction by exon type: junctions with or without exon detection
+- **N**: number of samples per condition
 - **Conditions (e.g. Control, FTD, AD)**: detection rate within each condition
-- **relative_detection**: relative detection (detection rate in disease / detection rate in control)
+- **relative_detection**: detection rate in disease divided by detection rate in control
 - **pvalue**: raw p-values
 - **FDR**: false discovery rate (FDR) computed using the Benjamini-Hochberg (BH) method
 
-```{r junction_de_full, results='asis'}
+```{r differential_full, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk displays full results for per-junction fisher's exact test
+# This chunk displays full results for fisher's exact test
 # --------------------------------------------------------------------------------
 
-for (name in names(res_list)) {
-    cat('##', name, '\n\n')
-    # Clean the result data frame
-    df <- res_list[[name]] %>%
-        remove_rownames()
+for (name in pairwise_subsets) {
+    cat('##', name, '{.tabset}\n\n')
 
-    # Print
-    print(knitr::kable(df))
-    cat('\n\n')
+    # Extract metadata 
+    meta <- coldata_list[[name]]
+    # Extract which column will be compared
+    group_labs <- meta[[disease_col]]
+    # Extract the count matrix and metadata
+    m_list <- list(junction=bj_list[[name]], exon=be_list[[name]])
+    # Clean the count matrices after running Fisher's exact test
+    m_list <- map(m_list, function(m) {
+        stats_df <- fisher_exact_in_df(m, group_labs)
+        clean_fisher_exact_res(m, stats_df, group_labs)
+    })
 
-    # Save
-    csv_path <- file.path(out_dir,
-                          paste0(name, '_differential_results_junction.csv'))
-    write.csv(df, csv_path, row.names=FALSE, quote=FALSE)
-    link_table(csv_path)
-    cat('\n\n')
+    for (datatype in names(m_list)) {
+        cat('###', datatype, 'detection\n\n') 
+        # Print
+        df <- m_list[[datatype]]
+        print(knitr::kable(df))
+        cat('\n\n')
+
+        # Save
+        csv_path <- file.path(
+            out_dir, 
+            paste0(name, '_differential_results_', datatype, '.csv'))
+
+        write.csv(df, csv_path, row.names=FALSE, quote=FALSE)
+        link_table(csv_path)
+        cat('\n\n')
+    }
 }
 ```
-
-
-# Differential testing (CE) {.tabset}
-
-```{r binarize_matrix_ce}
-
-```
-
 
 # Session info
 
