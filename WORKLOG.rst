@@ -1532,3 +1532,21 @@ fcx_ce
 - fisher's exact test on binarized pseudobulk counts in progress
     - conda env: ``menv``
     - script: ``workflow/thalamus_sc/downstream/sc-fisherexact.Rmd``
+        - note:
+            - all counts are binarized (1 for detected and 0 for undetected)
+            - a 2 x 2 contingency table is generated for a junction
+            - a fisher's exact test runs
+
+2025-12-08
+----------
+
+@Mira0507
+
+- fisher's exact test on binarized pseudobulk counts in progress
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-fisherexact.Rmd``
+        - fisher's exact test completed for both junctions and junctions 
+          associated with exon detection
+        - none of the junctions were found to be significant
+
+- ``README.md`` updated
