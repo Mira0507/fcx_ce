@@ -400,7 +400,7 @@ for (name in names(l2t_list)) {
 ```
 
 
-# Differential testing (junction) {.tabset}
+# Differential testing {.tabset}
 
 We perform pairwise differential testing using Fisher's exact test. This analysis examines whether
 _detection_ of each junction is associated with the disease condition, using binary count matrices with 
@@ -501,7 +501,8 @@ Metrics:
     - junction by junction type: `<chr>:<start>:<end>:<gene_name>:<junction_category>`
     - junction by exon type: junctions with or without exon detection
 - **N**: number of samples per condition
-- **Conditions (e.g. Control, FTD, AD)**: detection rate within each condition
+- **Conditions (e.g. Control, FTD, AD)**: detection rate within each condition calculated by
+  the number of samples with detection divided by N
 - **relative_detection**: detection rate in disease divided by detection rate in control
 - **pvalue**: raw p-values
 - **FDR**: false discovery rate (FDR) computed using the Benjamini-Hochberg (BH) method
