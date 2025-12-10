@@ -19,12 +19,15 @@ knitr::opts_chunk$set(warning=FALSE,
 Last run: `r date()`
 
 This workflow is designed to conduct pseudobulk differential analysis
-using [DESeq2](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8).
+using [DESeq2](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8) 
+incorporating [zinbwave](https://link.springer.com/article/10.1186/s13059-018-1406-4). 
+Zinbwave is used to downweight zeros when fitting negative binomial (NB) models to zero-inflated datasets.
 
 Refer to the following resources for technical details:
 
-- [Documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
-- [GitHub](https://github.com/thelovelab/DESeq2)
+- [DESeq2 Documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+- [DESeq2 GitHub](https://github.com/thelovelab/DESeq2)
+- [zinbwave-deseq2 workflow](https://github.com/mikelove/zinbwave-deseq2/blob/master/zinbwave-deseq2.Rmd)
 
 ```{r libraries}
 # Libraries
@@ -130,6 +133,9 @@ aggregate_subsets <- list(
     MarsanBiogen_ExNeu1=c('Marsan_ExNeu1', 'Biogen_ExNeu1'),
     MarsanBiogen_ExNeu2=c('Marsan_ExNeu2', 'Biogen_ExNeu2')
 )
+
+# TRUE or FALSE if the dispersion function needs to be replaced after inspection
+replace_dispersion_function <- TRUE
 ```
 
 # Loading input data {.tabset}
@@ -366,21 +372,18 @@ dds_list <- mclapply(
     function(name) {
         sizeFactors(dds_list[[name]]) <- sizeFactors(scr_list[[name]])
         dds_list[[name]] }) %>% 
-    # Run DESeq2
-    # lapply(DESeq,
-           # test="LRT",
-           # reduced=~1,
-           # minmu=1e-6,
-           # minRep=Inf,
-           # parallel=TRUE) %>%
-    lapply(function(dds) {
-        dds <- estimateDispersionsGeneEst(dds)
-        dispersions(dds) <- mcols(dds)$dispGeneEst
-        dds <- nbinomLRT(dds, reduced=~1, minmu=1e-6)
-        return(dds)
-}) %>%
-    set_names(names(dds_list))
-
+    # Run DESeq
+    # NOTE: Set the `fitType` argument to "mean" only if none of the options work
+    lapply(function(dds)
+        DESeq(dds,
+              test="LRT",
+              reduced=~1,
+              minmu=1e-6,
+              minRep=Inf,
+              parallel=TRUE,
+              fitType="mean")
+    ) %>%
+    set_names(names(scr_list))
 
 # Run log2(normalized_counts + 1) transformation
 # NOTE: The current dataset cannot use the `varianceStabilizingTransformation` nor `vst` function as 
@@ -569,24 +572,182 @@ Based on this relationship, the dispersion is higher for small mean counts and l
 mean counts. Therefore, the dispersion estimates reflect the variance in gene expression for a given 
 mean value. 
 
-DESeq2 shares information across genes to generate more accurate estimates of variation based on 
-the mean expression level of the gene using a method called ‘shrinkage’. DESeq2 assumes that genes 
-with similar expression levels have similar dispersion.
+Due to the zero-inflated nature of the input dataset, we estimate gene-wise dispersions both including
+and excluding low-count features. Feature filtering is not carried forward to the differential testing step
+once dispersion estimation is complete. After a thorough inspection, decide whether to replace the current
+dispersion function with an updated one calculated based on the filtered data.
 
+Note that the dispersion estimation performed here follows the DESeq2 workflow that incorporates zinbwave, 
+which is designed to better handle zero-inflated data. See the following page for more information:
+[zinbwave-deseq2-dispersion](https://github.com/mikelove/zinbwave-deseq2/blob/master/zinbwave-deseq2.Rmd#L117)
+
+
+```{r replace_dispersion_function}
+if (replace_dispersion_function) {
+    print("Dispersion functions replaced with re-captured ones!")
+} else {
+    print("Dispersion functions are taken from raw dispersion!")
+}
+```
 
 ```{r dispersion, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk explores dispersions across the features
+# Dispersion functions are replaced if necessary
 # --------------------------------------------------------------------------------
 
 for (name in names(dds_list)) {
+    cat("\n\n###", name, "{.tabset}\n\n")
+    dds <- dds_list[[name]]
 
+    cat("\n\n#### Raw dispersion\n\n")
+    # Inspect the current dispersion-mean relationship as-is
+    plotDispEsts(dds)
+
+    # Recapture dispersion-mean relationship after further filtering features 
+    # above the threshold. This threshold is determined empirically.
+    cat("\n\n#### Re-captured dispersion\n\n")
+    keepForDispTrend <- rowSums(counts(dds, normalized=TRUE) >= 0.5) >= 1
+    dds2 <- dds[keepForDispTrend,]
+    dds2 <- estimateDispersionsFit(dds2, fitType='mean')
+    dds2 <- estimateDispersionsMAP(dds2)
+    # Inspect the updated dispersion-mean relationship
+    plotDispEsts(dds2)
+    cat("\n\n")
+
+    # Replace the dispersion function if necessary
+    if (replace_dispersion_function) {
+        dispersionFunction(dds) <- dispersionFunction(dds2)
+        dds <- estimateDispersionsMAP(dds)
+        # dds_list[[name]] <- nbinomLRT(dds, reduced=~1, minmu=1e-6)
+        dds_list[[name]] <- nbinomWaldTest(dds)
+    }
+}
+```
+
+# Differential testing {.tabset}
+
+We perform pairwise differential testing using the [Wald test](https://en.wikipedia.org/wiki/Wald_test);
+therefore, subsets containing more than one disease status are not examined.
+
+
+## Summary table
+
+- **subset**: study and celltype
+- **nonzero.vs.total**: the number of junctions with nonzero read counts and the total number of 
+  tested junctions
+- **alpha**: false discovery rate (FDR) cutoff determining significant genes
+- **lfcThreshold**: by default, the null hypothesis is that the log2 fold change of splicing is 
+  not different from zero. In some circumstances, it is useful to use a different threshold, 
+  which will be reported here.
+- **outliers**: Cook’s distance is used as a measure of how much a single sample is influencing 
+  the fitted coefficients for a junction. If that value is too high, the gene is marked as an 
+  outlier and the pvalue and adjusted pvalue will be set to NA. If there are many 
+  (hundreds to thousands) of outliers, this is an indication that a sample may be problematic. 
+  In this case, the dds diagnostics plots may help identify the culprit.
+- **low.counts**: How many junctions were not even tested for differential analysis because they 
+  had too low counts.
+- **test**: The contrast performed using the design. `A vs B` indicates differential expression of junctions
+  in A (experimental) compared to B (control).
+
+
+```{r de_summary, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk summarizes testing results
+# --------------------------------------------------------------------------------
+
+# Calculate results
+res_list <- mclapply(dds_list[!str_detect(names(dds_list), "all")], results)
+
+lapply(names(res_list), function(name) {
+    # Extract res and dds objects
+    res <- res_list[[name]]
+    dds <- dds_list[[name]]
+    # Summary metrics
+    notallzero <- sum(res$baseMean > 0)
+    up <- sum(res$padj < alpha & res$log2FoldChange > lfc_thresh, na.rm=TRUE)
+    down <- sum(res$padj < alpha & res$log2FoldChange < -lfc_thresh, na.rm=TRUE)
+    filt <- sum(!is.na(res$pvalue) & is.na(res$padj))
+    outlier <- sum(res$baseMean > 0 & is.na(res$pvalue))
+    test <- mcols(res)['log2FoldChange', 'description']
+
+    # Build a summary dataframe
+    data.frame(
+        subset=name,
+        up=up,
+        down=down,
+        nonzero.vs.total=paste0(notallzero, '/', nrow(res)), 
+        alpha=alpha,
+        lfcThreshold=lfc_thresh,
+        outliers=outlier,
+        low.counts=filt,
+        # adjust width.cutoff here because newline insertion causes this to return
+        # a df with multiple duplicate rows
+        design=deparse(design(dds), width.cutoff=500L),
+        test=test
+    )
+}) %>%
+bind_rows() %>%
+knitr::kable()
+```
+
+## Full table {.tabset}
+
+Metrics:
+
+- **chr**, **start**, **end**: junction genomic coordinates
+- **gene_name**: gene name corresponding to the splice junction
+- **baseMean**: mean normalized counts of the splice junction in all samples
+- **log2FoldChange**: fold changes in a log2 scale
+- **lfcSE**: standard error of the log2 fold change. A smaller value suggests a more precise estimate of 
+  the fold change.
+- **stat**: test statistic. For the Wald test, this metric refers to the log2FoldChange divided by lfcSE,
+  which is compared to a standard normal distribution to generate a two-tailed pvalue. For the likelihood
+  ratio test (LRT), stat is the difference in deviance between the reduced model and the full model, which 
+  is compared to a chi-squared distribution to generate a pvalue.
+- **pvalue**: raw p-values
+- **padj**: false discovery rate (FDR) computed using the Benjamini-Hochberg (BH) method
+- **exon_type**:
+    - *cryptic*: one or both of the start and end coordinates of the junction is within intron regions
+    - *non-cryptic-annotated*: both the start and end of the junction coordinates are at annotated positions
+    - *non-cryptic-novel*: neither coordinate of the junction is within an intron AND either position 
+      is at non-annotated positions
+
+It's assumed that only the *cryptic* type generates CEs by starting or ending at an intron.
+
+```{r de_full, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays full results
+# --------------------------------------------------------------------------------
+
+for (name in names(res_list)) {
     cat('###', name, '\n\n')
-    DESeq2::plotDispEsts(dds_list[[name]])
+    # Clean the result data frame
+    df <- res_list[[name]] %>%
+        as.data.frame() %>%
+        rownames_to_column('exon_type') %>%
+        separate(exon_type,
+                 c('chr', 'start', 'end', 'gene_name', 'exon_type'),
+                 sep=":") %>%
+        mutate(exon_detection=ifelse(exon_type == "cryptic",
+                                     "CE detected",
+                                     "junction detected without CE")) %>%
+        remove_rownames()
+
+    # Print
+    print(knitr::kable(df))
+    cat('\n\n')
+
+    # Save
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_differential_results.csv'))
+    write.csv(df, csv_path, row.names=FALSE, quote=FALSE)
+    link_table(csv_path)
     cat('\n\n')
 }
-
 ```
 
 
