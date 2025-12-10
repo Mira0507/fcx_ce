@@ -1550,3 +1550,37 @@ fcx_ce
         - none of the junctions were found to be significant
 
 - ``README.md`` updated
+
+
+2025-12-09
+----------
+
+@Mira0507
+
+- Rerun DESeq2 on aggregated counts
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggr.Rmd``
+    - notes
+        - aggregate junction counts for samples from all FTD and samples from all 
+          FTD-Control, respectively
+        - ultimately, this analysis is designed to compare FTD vs FTD-Control 
+          and AD vs AD-Control, separately
+
+
+2025-12-10
+----------
+
+@Mira0507
+
+- Install the following packages in ``menv`` using conda
+    - ``bioconductor-zinbwave``
+    - ``bioconductor-scran``
+
+- Rerun DESeq2 on aggregated counts
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggr.Rmd``
+    - notes
+        - sample similarity QC
+        - size factors estimated using zinbwave
+        - dispersions estimated (``fitType="mean"``)
+        - differential testing using Wald test
