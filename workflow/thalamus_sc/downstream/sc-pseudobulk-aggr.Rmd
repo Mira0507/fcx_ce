@@ -1,0 +1,320 @@
+---
+title: "Pseudobulk differential analysis on cryptic exons (CEs)"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct pseudobulk differential analysis
+using [DESeq2](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8).
+
+Refer to the following resources for technical details:
+
+- [Documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+- [GitHub](https://github.com/thelovelab/DESeq2)
+
+```{r libraries}
+# Libraries
+library(tidyverse)
+library(DESeq2)
+library(ggplot2)
+library(parallel)
+library(yaml)
+library(RColorBrewer)
+library(plotly)
+library(parallel)
+library(rtracklayer)
+library(GenomicRanges)
+library(GenomicFeatures)
+
+# Additional options
+set.seed(2570)
+source('../config/helpers.R')
+
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrices
+in_rds <- "sc-exploratory/aggr_matrices.rds"
+
+# Path to Snakemake config
+snakemake_config <- "../config/config.yaml"
+
+# Paths to yaml config
+config_yaml <- read_yaml(snakemake_config)
+
+# Path to output directory
+out_dir <- "sc-pseudobulk-aggr"
+
+# Path to GTF
+gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
+
+# Create directories if missing
+for (p in c(out_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
+
+# Specify a pseudocount to be added to count matrices
+# NOTE: The sparsity of single cell matrix sometimes causes an error
+#       that cannot calculate geometric means because of many zeros. 
+#       This issue is prevented by adding a small pseudocount.
+pseudocount <- 0
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    cell_type=c('ExNeu1', 'ExNeu2'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c('Control-Marsan',
+                                      'Control-Biogen',
+                                      'Control-Mathys',
+                                      'FTD-Marsan',
+                                      'FTD-Biogen',
+                                      'AD-Mathys'),
+    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
+                                      'Control-Marsan_ExNeu2',
+                                      'Control-Biogen_ExNeu1',
+                                      'Control-Biogen_ExNeu2',
+                                      'Control-Mathys_ExNeu1',
+                                      'Control-Mathys_ExNeu2',
+                                      'FTD-Marsan_ExNeu1',
+                                      'FTD-Marsan_ExNeu2',
+                                      'FTD-Biogen_ExNeu1',
+                                      'FTD-Biogen_ExNeu2',
+                                      'AD-Mathys_ExNeu1',
+                                      'AD-Mathys_ExNeu2'),
+    study_celltype=c('Marsan_ExNeu1', 'Biogen_ExNeu1', 'Mathys_ExNeu1',
+                     'Marsan_ExNeu2', 'Biogen_ExNeu2', 'Mathys_ExNeu2')
+)
+
+# Specify column names to subset barcodes
+# NOTE: Set to NULL if unnecessary
+subset_col <- 'study_celltype'
+sample_col <- 'SampleID_celltype'
+celltype_col <- 'cell_type'
+disease_col <- "general_disease"
+
+# Specify DE thresholds
+lfc_thresh <- 0
+alpha <- 0.1
+
+# Specify CE target genes
+ce_targets <- config_yaml[['genes']]
+
+# Aggregate subsets? Set to NULL if unset.
+aggregate_subsets <- list(
+    MarsanBiogen_ExNeu1=c('Marsan_ExNeu1', 'Biogen_ExNeu1'),
+    MarsanBiogen_ExNeu2=c('Marsan_ExNeu2', 'Biogen_ExNeu2')
+)
+```
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
+genes:
+
+```{r genes_tested}
+print(ce_targets)
+```
+
+Raw junction counts were compiled into a junction-by-barcode matrix for differential testing in the
+previous analysis, [`sc-exploratory.html`](sc-exploratory.html). This matrix was preprocessed
+to aggregate the counts per sample per celltype, along with their associated metadata table.
+These preprocessed matrices and metadata are imported from the following location:
+
+```{r infile_info}
+print(in_rds)
+```
+
+```{r import_adata}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input data saved in the previous single-cell 
+# exploratory analysis. Manually edit the following code if necessary.
+# --------------------------------------------------------------------------------
+
+# Import input RDS file
+obj <- readRDS(in_rds)
+
+# Extract raw count matrices
+mat_list <-  map(obj[['bulk']], ~.x[['raw']])
+
+# Aggregate subsets if necessary
+if (!is.null(aggregate_subsets)) {
+    for (name in names(aggregate_subsets)) {
+        # Extract subset names to be aggregated
+        subset_i <- aggregate_subsets[[name]]
+        # Filter subsets of interest
+        subset_list <- mat_list[subset_i] %>% unname()
+        # Merge matrices by binding columns
+        mat_list[[name]] <- do.call("cbind", subset_list)
+    }
+    # Remove old subsets
+    mat_list <- mat_list[! names(mat_list) %in% unlist(aggregate_subsets)]
+}
+
+# Extract the entire sampletable (Edit manually if necessary)
+sampletable <- obj[['meta']] %>%
+    remove_rownames() %>%
+    mutate(SampleID_celltype=paste0(SampleID, "_", cell_type), 
+           study_disease_specific_celltype=paste0(study_specific_disease_specific,
+                                                  "_",
+                                                  cell_type))
+
+# Ensure to have correct levels for each factor columns
+for (f in names(factor_groups)) {
+    sampletable[[f]] <- factor(sampletable[[f]], levels=factor_groups[[f]])
+}
+
+
+# Prep a list of metadata tables for each subset
+coldata_list <- lapply(mat_list, function(m) { 
+    # Splice the metadata table based on samples in the matrix
+    cdata <- sampletable[sampletable[[sample_col]] %in% colnames(m),
+                         c(sample_col, names(factor_groups))] %>%
+        unique()
+    # Break if columns of the matrix and rows of the metadata don't match
+    if (nrow(cdata) != ncol(m)) {
+        stop("Rownames of coldata and colnames of matrix should be the same!")
+    }
+    # Reorder rows of the subsetted metadata table
+    rownames(cdata) <- cdata[[sample_col]]
+    cdata <- cdata[colnames(m),]
+    return(cdata)
+})
+```
+
+# Subsets {.tabset}
+
+The subset-wise aggregation was performed as summarized below:
+
+```{r subset_overview, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk explores the number of samples and metadata info across the subsets
+# --------------------------------------------------------------------------------
+
+# Function to summarize the number of samples (N)
+summarize_N <- function(meta_df) {
+
+    # Count the number of samples
+    n_df <- meta_df %>%
+        group_by_at(vars(subset_col, disease_col)) %>%
+        summarize(N=n()) %>%
+        spread(disease_col, N)
+    # Reorder columns
+    disease_order <- factor_groups[[disease_col]][factor_groups[[disease_col]] %in% 
+                                                  colnames(n_df)]
+    n_df <- n_df[, c(subset_col, disease_order)]
+    # Replace missing values with zero
+    n_df[is.na(n_df)] <- 0
+    # Add a new column for all N
+    n_df[['all_N']] <- rowSums(n_df[, colnames(n_df)[-1]])
+
+    return(n_df)
+}
+
+for (name in names(coldata_list)) {
+
+    df <- coldata_list[[name]] %>%
+        remove_rownames()
+    cat("##", name, "{.tabset}\n\n")
+    cat("### N\n\n")
+    # Prep the summary table for N
+    n_df <- summarize_N(df)
+
+    # Print tables
+    print(knitr::kable(n_df))
+    cat('\n\n')
+
+    cat("### Full table\n\n")
+    subchunkify(paste0(name, "_subset_N_unfiltered"))
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_unfiltered_sampletable.csv'))
+    write.csv(df,
+              csv_path,
+              row.names=FALSE,
+              quote=FALSE)
+
+    link_table(csv_path)
+    cat('\n\n')
+}
+```
+
+# Pre-filtering nonzero samples {.tabset}
+
+Samples with zero junction counts are removed from each subset. The number of samples before
+and after filtering is summarized below.
+
+
+```{r prefilter_samples, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk filters nonzero-count samples
+# --------------------------------------------------------------------------------
+
+for (name in names(mat_list)) {
+    cat("##", name, "{.tabset}\n\n")
+    # Remove zero-count samples from the count matrix
+    m <- mat_list[[name]]
+    nonzero_samples <- colSums(m) > 0
+    m <- m[, nonzero_samples]
+    mat_list[[name]] <- m
+    # Remove zero-count samples from the metadata table
+    cdata_old <- coldata_list[[name]]
+    cdata_new <- cdata_old[colnames(m),]
+    coldata_list[[name]] <- cdata_new
+    
+    cat("### N\n\n")
+    n_df <- summarize_N(cdata_new)
+    cat("A total of",
+        sum(!nonzero_samples),
+        "samples are removed from the current subset.",
+        "Refer to the following table for remaining samples:")
+    print(knitr::kable(n_df))
+    cat("\n\n")
+
+    cat("### Full table\n\n")
+    subchunkify(paste0(name, "_subset_N_filtered"))
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_filtered_sampletable.csv'))
+    write.csv(df,
+              csv_path,
+              row.names=FALSE,
+              quote=FALSE)
+
+    link_table(csv_path)
+    cat('\n\n')
+}
+
+```
+
+
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
