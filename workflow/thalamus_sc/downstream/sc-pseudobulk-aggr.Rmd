@@ -502,20 +502,91 @@ for (name in names(l2t_list)) {
 
 ```
 
+## Size factors {.tabset}
+
+Ideally, all libraries were sequenced to identical depth, in which case all size factors would be 1.0. 
+In practice, this is almost never the case due to the difficulties of accurately measuring 
+low concentrations of cDNA. DESeq2 uses size factor estimates to normalized for sequencing depth across 
+libraries. If some libraries are much higher or lower than 1 then those libraries had dramatically
+different coverage and we should be careful about interpreting results.
 
 
-```{r eval=FALSE}
+Unlike the standard DESeq2 workflow, which uses the median-of-ratio method, the current analysis
+estimates size factors using the [deconvolution method](https://doi.org/10.1186/s13059-016-0947-7).
+This method is robust to many zeros by pooling counts across samples during size factor estimation,
+whereas the median-of-ratio method relies on geometric means, which returns zero if any feature
+has a count of zero.
 
-# Compare size factors vs sum factors
+These diagnostic plots show the size factors (as a ranked bar plot) and the relationship between the size 
+factors and the total read count (as a scatterplot). Samples whose total read count differs from size
+factor may indicate that the sample has a small number of highly expressed features.
+
+```{r size_factors, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk explores size factors across the samples
+# --------------------------------------------------------------------------------
+
 for (name in names(dds_list)) {
-    sf_df <- data.frame(pos=sizeFactors(dds_list[[name]]),
-                        sum=sizeFactors(scr_list[[name]])) %>%
-        rownames_to_column(sample_col) %>%
-        left_join(coldata_list[[name]], by=sample_col)
-    print("##", name, "\n\n")
-    print(knitr::kable(head(sf_df)))
-    print("\n\n")
+    cat('###', name, '{.tabset}\n\n')
+    # Extract and reorder size factors
+    dds <- dds_list[[name]]
+    sf <- sizeFactors(dds)
+    sf <- sf[order(sf)] %>%
+        tibble::enframe(value="Size Factor")
+
+    p <- ggplot(sf) +
+        aes(x=reorder(name, `Size Factor`), y=`Size Factor`) +
+        xlab('cluster') +
+        geom_col() +
+        theme_bw() +
+        theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1))
+
+    cat('#### Size factors\n\n')
+    subchunkify(paste(name, '_sizefactor1'), input='plot', width=10)
+    cat('\n\n')
+
+    trc <- colSums(counts(dds)) %>% 
+        tibble::enframe(value = 'Total Read Count')
+    trc_vs_sf <- dplyr::full_join(sf, trc, by='name')
+    p <- ggplot(data=trc_vs_sf,
+                aes_string(x="`Total Read Count`", y="`Size Factor`", label='name')) +
+        geom_point(size=3) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+    cat('#### Size factors vs total read counts\n\n')
+    subchunkify(paste(name, '_sizefactor2'), input='plot')
+    cat('\n\n')
 }
+
+```
+
+## Dispersion {.tabset}
+
+The DESeq2 dispersion estimates are inversely related to the mean and directly related to variance.
+Based on this relationship, the dispersion is higher for small mean counts and lower for large 
+mean counts. Therefore, the dispersion estimates reflect the variance in gene expression for a given 
+mean value. 
+
+DESeq2 shares information across genes to generate more accurate estimates of variation based on 
+the mean expression level of the gene using a method called ‘shrinkage’. DESeq2 assumes that genes 
+with similar expression levels have similar dispersion.
+
+
+```{r dispersion, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk explores dispersions across the features
+# --------------------------------------------------------------------------------
+
+for (name in names(dds_list)) {
+
+    cat('###', name, '\n\n')
+    DESeq2::plotDispEsts(dds_list[[name]])
+    cat('\n\n')
+}
+
 ```
 
 
