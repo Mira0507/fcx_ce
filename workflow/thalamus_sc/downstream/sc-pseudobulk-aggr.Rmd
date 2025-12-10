@@ -32,6 +32,7 @@ library(tidyverse)
 library(DESeq2)
 library(ggplot2)
 library(parallel)
+library(BiocParallel)
 library(yaml)
 library(RColorBrewer)
 library(plotly)
@@ -39,6 +40,8 @@ library(parallel)
 library(rtracklayer)
 library(GenomicRanges)
 library(GenomicFeatures)
+library(zinbwave)
+library(scran)
 
 # Additional options
 set.seed(2570)
@@ -307,6 +310,45 @@ for (name in names(mat_list)) {
     link_table(csv_path)
     cat('\n\n')
 }
+
+```
+
+```{r setup_dds, cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk creates dds objects per subset
+# --------------------------------------------------------------------------------
+
+# Convert the count matrix into the SummarizedExperiment obj across the subsets
+# NOTE: Features that were undetected in any of the samples are removed here.
+#       This is required by zinbwave
+se_list <- map(mat_list, ~.x[rowSums(.x) > 0,]) %>% 
+    map2(coldata_list,
+         ~SummarizedExperiment(assays=list(counts=.x), colData=.y))
+
+# Specify a design formula
+design_formula <- as.formula(paste("~", disease_col))
+
+# Model zero components
+zinb_list <- mclapply(se_list, function(se) {
+    nms <- c("counts", setdiff(assayNames(se), "counts"))
+    assays(se) <- assays(se)[nms]
+    assay(se) <- as.matrix(assay(se))
+    zinbwave(Y=se,
+             X=design_formula,
+             K=0,
+             verbose=TRUE,
+             observationalWeight=TRUE,
+             epsilon=1e12)
+
+    })
+
+# Build a list of dds objects
+dds_list <- lapply(zinb_list,
+                   DESeqDataSet,
+                   design=design_formula) %>%
+    # Estimate size factors
+    mclapply(estimateSizeFactors, type="poscounts")
 
 ```
 
