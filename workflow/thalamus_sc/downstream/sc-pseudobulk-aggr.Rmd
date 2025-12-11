@@ -89,7 +89,7 @@ pseudocount <- 0
 
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
-    general_disease=c('Control', 'FTD', 'AD'),
+    general_disease=c('Control-FTD', 'Control-AD', 'FTD', 'AD'),
     cell_type=c('ExNeu1', 'ExNeu2'),
     study=c('Marsan', 'Biogen', 'Mathys'),
     study_specific_disease_specific=c('Control-Marsan',
@@ -112,6 +112,32 @@ factor_groups <- list(
                                       'AD-Mathys_ExNeu2'),
     study_celltype=c('Marsan_ExNeu1', 'Biogen_ExNeu1', 'Mathys_ExNeu1',
                      'Marsan_ExNeu2', 'Biogen_ExNeu2', 'Mathys_ExNeu2')
+)
+
+# Specify HEX color code
+color_map <- list(
+    general_disease=c(
+        `Control-FTD`="#9999FF",
+        `Control-AD`="#6666FF",
+        FTD="#669900",
+        AD="#FF6600"),
+    study=c(
+        Marsan="#FF00FF",
+        Biogen="#00FFFF",
+        Mathys="#BFBFBF"),
+    cell_type=c(
+        Astrocyte="#ABD158",
+        BVC="#74858C",
+        CP="#D5C18E",
+        ExNeu1="#90C6E2",
+        ExNeu2="#547CB2",
+        InNeu1="#21409A",
+        InNeu2="#262262",
+        Lymphocyte="#68151F",
+        Microglia="#D24A75",
+        OL="#FDB515",
+        OPC="#ED7020",
+        PVM="#231F20")
 )
 
 # Specify column names to subset barcodes
@@ -191,11 +217,23 @@ sampletable <- obj[['meta']] %>%
                                                   "_",
                                                   cell_type))
 
+# Update disease labels
+acontrol_rows <- sampletable[[disease_col]] == "Control" &
+    str_detect(sampletable[[subset_col]], "Mathys")
+fcontrol_rows <- sampletable[[disease_col]] == "Control" &
+    ! str_detect(sampletable[[subset_col]], "Mathys")
+sampletable[[disease_col]] <- as.character(sampletable[[disease_col]])
+sampletable[acontrol_rows, disease_col] <- "Control-AD"
+sampletable[fcontrol_rows, disease_col] <- "Control-FTD"
+
 # Ensure to have correct levels for each factor columns
 for (f in names(factor_groups)) {
     sampletable[[f]] <- factor(sampletable[[f]], levels=factor_groups[[f]])
+    # Break if any of the conversion introduced missing values
+    if (any(is.na(sampletable[[f]]))) {
+        stop(paste0("NAs introduced to the following column:", f))
+    }
 }
-
 
 # Prep a list of metadata tables for each subset
 coldata_list <- lapply(mat_list, function(m) { 
@@ -497,7 +535,10 @@ for (name in names(l2t_list)) {
             theme_bw() +
             xlab(axis_titles[1]) +
             ylab(axis_titles[2])
-
+        # Add color code if available
+        if (c %in% names(color_map)) {
+            p <- p + scale_color_manual(values=color_map[[c]])
+        }
         print(p)
         cat('\n\n')
     }
@@ -747,6 +788,215 @@ for (name in names(res_list)) {
     write.csv(df, csv_path, row.names=FALSE, quote=FALSE)
     link_table(csv_path)
     cat('\n\n')
+}
+```
+
+# Counts for splice junctions {.tabset}
+
+Log1p-normalized pseudobulk counts are compared between disease conditions across the datasets. P-values
+and FDR values were calculated using the two-tailed Wilcoxon Rank Sum test and Benjamini-Hochberg (BH)
+method, respectively. Junctions with zero counts across all samples are excluded.
+
+
+```{r prep_counting}
+
+# --------------------------------------------------------------------------------
+# This chunk compares junction counting
+# --------------------------------------------------------------------------------
+
+norm_list <- mclapply(names(res_list), function(name) {
+
+    # Extract the raw count matrix corresponding to the current subset
+    m <- dds_list[[name]] %>%
+        counts(normalized=FALSE)
+
+    # Transform the matrix to a natural log scale and clean data frame
+    df <- log1p(m) %>%
+        as.data.frame() %>%
+        rownames_to_column('junction') %>%
+        pivot_longer(!junction,
+                     names_to=sample_col,
+                     values_to="counts") %>%
+        inner_join(sampletable[, c(sample_col, names(factor_groups))],
+                   by=sample_col) %>%
+        unique() %>%
+        as.data.frame()
+
+    # Add a column for generated exons
+    df[['exon_detection']] <- ifelse(str_detect(df[['junction']], "non-cryptic"),
+                                     "junction detected without CE",
+                                     "CE detected")
+
+    return(df)
+
+}) %>%
+set_names(names(res_list))
+
+# Function to calculate p-values using t-test
+calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat="ttest") {
+
+    # Specify a design formula
+    formula_str <- paste(response_col, "~", explanatory_col)
+    sapply(unique(dataframe[[split_col]]), function(j) {
+        df_i <- dataframe[dataframe[[split_col]] == j,]
+        tryCatch(
+            { 
+                if (stat == "ttest") {
+                    t.test(as.formula(formula_str), data=df_i)$p.value
+                } else if (stat == "wilcox") {
+                    wilcox.test(as.formula(formula_str), data=df_i)$p.value
+                } else {
+                    stop("Wrong statistics!")
+                }
+            },
+            error = function(e) { 
+                NA 
+            })})
+}
+```
+
+```{r junction_comparisons, results='asis', fig.width=10}
+
+# --------------------------------------------------------------------------------
+# This chunk compares junction counts
+# --------------------------------------------------------------------------------
+
+for (name in names(res_list)) {
+    cat('##', name, '{.tabset}\n\n')
+    # Extract input data frame
+    df <- norm_list[[name]]
+    
+    for (ce in ce_targets) {
+        cat('###', ce, '\n\n')
+        # Subset rows for the corresponding CE target gene
+        ce_df <- df[str_detect(df$junction, ce), ]
+
+        if (nrow(ce_df) > 0) {
+
+            cat('#### Comparison\n\n')
+            # Plot
+            p <- ggplot(ce_df, aes_string(x=disease_col, y='counts', fill=disease_col)) +
+                geom_violin(trim=FALSE) +
+                geom_boxplot(fill="white", width=0.1) +
+                theme_bw() +
+                facet_wrap(. ~ junction,
+                           scales="free_y") +
+                           # labeller=labeller(junction=label_wrap_gen(width=15, multi_line=TRUE))) +
+                ylab('log1p-normalized junction counts') +
+                theme(axis.title.x=element_blank(),
+                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+                scale_fill_manual(values=color_map[[disease_col]])
+
+            print(p)
+            cat('\n\n')
+
+            # Statistical analysis using wilcoxon rank sum test on differences
+            pval_vec <- calc_pval(dataframe=ce_df,
+                                  response_col="counts",
+                                  stat="wilcox",
+                                  explanatory_col=disease_col,
+                                  split_col="junction")
+
+            pval_df <- data.frame(junction=names(pval_vec),
+                                  pvalue=pval_vec,
+                                  FDR=p.adjust(pval_vec, method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+            cat('#### Counts\n\n')
+            # Display mean and median counts for each junction
+            stat_df <- split(ce_df, df$junction) %>%
+                map_df(function(df_i) df_i %>%
+                       group_by_at(vars(disease_col, 'junction')) %>%
+                       summarize(junction=junction,
+                                 N=n(),
+                                 average_counts=mean(counts),
+                                 median_counts=median(counts)) %>%
+                       unique()) %>%
+                as.data.frame()
+            print(knitr::kable(stat_df))
+            cat('\n\n')
+        } else {
+            cat("\n\nPlots/tables not generated..\n\n")
+        }
+    } 
+}
+```
+
+# Counts for CEs {.tabset}
+
+Log1p-normalized pseudobulk counts are compared between disease conditions across the datasets.
+P-values and FDR values were calculated using the two-tailed Wilcoxon Rank Sum test and BH
+method, respectively. Junctions with zero counts across all samples are excluded.
+
+```{r ce_comparisons, results='asis', fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk compares CE counts
+# --------------------------------------------------------------------------------
+
+for (name in names(res_list)) {
+    cat('##', name, '{.tabset}\n\n')
+    # Extract input data frame
+    df <- norm_list[[name]]
+    
+    for (ce in ce_targets) {
+        cat('###', ce, '\n\n')
+        # Subset rows for the corresponding CE target gene
+        ce_df <- df[str_detect(df$junction, ce), ] %>%
+            group_by_at(vars(sample_col, "exon_detection", disease_col)) %>%
+            summarize(counts=sum(counts))
+
+        if (nrow(ce_df) > 0) {
+
+            cat('#### Comparison\n\n')
+            # Plot
+            p <- ggplot(ce_df, aes_string(x=disease_col, y='counts', fill=disease_col)) +
+                geom_violin(trim=FALSE) +
+                geom_boxplot(fill="white", width=0.1) +
+                theme_bw() +
+                facet_wrap(. ~ exon_detection, scales="free_y") +
+                ylab('log1p-normalized counts for junctions with or without CEs') +
+                theme(axis.title.x=element_blank(),
+                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+                scale_fill_manual(values=color_map[[disease_col]])
+
+            print(p)
+            cat('\n\n')
+
+            # Statistical analysis using wilcoxon rank sum test on differences
+            pval_vec <- calc_pval(dataframe=ce_df,
+                                  response_col="counts",
+                                  explanatory_col=disease_col,
+                                  stat="wilcox",
+                                  split_col="exon_detection")
+            pval_df <- data.frame(exon_detected=names(pval_vec),
+                                  pvalue=pval_vec,
+                                  FDR=p.adjust(pval_vec, method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+            cat('#### Counts\n\n')
+            # Display mean and median counts for each junction
+            stat_df <- split(ce_df, df$exon_detection) %>%
+                map_df(function(df_i) df_i %>%
+                       group_by_at(vars(disease_col, 'exon_detection')) %>%
+                       summarize(exon_detection=exon_detection,
+                                 N=n(),
+                                 average_counts=mean(counts),
+                                 median_counts=median(counts)) %>%
+                       unique()) %>%
+                as.data.frame() %>%
+                arrange(exon_detection)
+            print(knitr::kable(stat_df))
+            cat('\n\n')
+
+        } else {
+            cat("\n\nPlots/tables not generated..\n\n")
+        }
+    } 
 }
 ```
 
