@@ -243,3 +243,12 @@ using DESeq2. Refer to the following resources for details on DESeq2:
 comparing *patient vs control* across per-study-per-celltype subsets,
 using Fisher's exact test. This analysis was performed on a 2x2 contingency
 table based on a binary matrix that consists of 1 if detected and 0 otherwise.
+
+- `workflow/thalamus_sc/downstream/sc-pseudobulk-aggr.Rmd`: differential analysis
+comparing *patient vs control* across per-study-per-celltype subsets,
+using zinbwave-DESeq2 workflow. This analysis was performed on samples aggregated 
+across all FTD and Control-FTD, respectively. Refer to the following resources 
+for details on zinbwave: 
+[Van den Berge et al., 2018](https://link.springer.com/article/10.1186/s13059-018-1406-4) ,
+[Risso et al., 2018](https://www.nature.com/articles/s41467-017-02554-5),
+[zinbwave-DESeq2 workflow](https://github.com/mikelove/zinbwave-deseq2/blob/master/zinbwave-deseq2.Rmd)
