@@ -442,7 +442,8 @@ set_names(names(dds_list))
 
 Sample-to-sample similarity in junction profiling is explored using a heatmap of normalized counts 
 (log2 scale), with *Euclidean distance* represented by the color scale. Darker blue indicates
-less distance (i.e., greater similarity) in splice junction profiling.
+less distance (i.e., greater similarity) in splice junction profiling. Note that this analysis 
+excluded junctions that were not detected in any of the samples.
 
 ```{r qc_heatmap, results='asis', fig.height=8, fig.width=8}
 
@@ -488,7 +489,8 @@ for (name in names(l2t_list)) {
 
 Another way of looking at sample clustering is principal components analysis (PCA). Each axis does
 not have units, rather, it represents the dimensions along which the samples vary the most. The amount 
-of variance explained by each principal component is indicated in the axes label.
+of variance explained by each principal component is indicated in the axes label. Note that this analysis 
+excluded junctions that were not detected in any of the samples.
 
 ```{r qc_pca, results='asis'}
 
