@@ -1601,5 +1601,20 @@ fcx_ce
           junctions
         - color code added to label celltype, disease status, and study
 
+- Update single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-exploratory.Rmd``
+    - note: boxplots replaced with violin + boxplots
+
 - README updated
 
+
+2025-12-12
+----------
+
+@Mira0507
+
+- Rerun DESeq2 on aggregated counts
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggr.Rmd``
+    - notes: minor updates to documentation
