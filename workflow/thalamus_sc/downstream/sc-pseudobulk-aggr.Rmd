@@ -847,7 +847,7 @@ calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat=
                 if (stat == "ttest") {
                     t.test(as.formula(formula_str), data=df_i)$p.value
                 } else if (stat == "wilcox") {
-                    wilcox.test(as.formula(formula_str), data=df_i)$p.value
+                    wilcox.test(as.formula(formula_str), data=df_i, exact=FALSE)$p.value
                 } else {
                     stop("Wrong statistics!")
                 }
@@ -1088,7 +1088,7 @@ for (name in names(res_list)) {
 
             cat(paste0('\n\n- P-value: ', pval_vec, ' (two-tailed ', stat_label, ')\n\n'))
 
-            cat('\n\nRatio\n\n')
+            cat('\n\n#### Ratio\n\n')
             # Display mean and median counts for each junction
             stat_df <- ce_df %>%
                 group_by_at(vars(disease_col)) %>%
@@ -1156,7 +1156,7 @@ for (name in names(res_list)) {
             ce_df[["all junctions"]] <- rowSums(ce_df[, e_detection])
 
             # Remove samples if they have zero counts for all exon_detection groups
-            ce_df <- ce_df[rowSums(ce_df[, e_detection]) > 0,] %>%
+            ce_df <- ce_df %>%
                 # Add a pseudocount of nonzero_min to all numeric entries
                 mutate_if(is.numeric, function(x) x + 0.1 * nonzero_min) %>%
                 # Calculate CE/non-CE counts
@@ -1171,7 +1171,7 @@ for (name in names(res_list)) {
                 geom_violin(trim=FALSE) +
                 geom_boxplot(fill="white", width=0.1) +
                 theme_bw() +
-                ylab('Count ratios (CE / non-CE)') +
+                ylab('Count ratios (CE / all-junctions)') +
                 theme(axis.title.x=element_blank(),
                       axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
                 scale_fill_manual(values=color_map[[disease_col]]) +
@@ -1190,7 +1190,7 @@ for (name in names(res_list)) {
 
             cat(paste0('\n\n- P-value: ', pval_vec, ' (two-tailed ', stat_label, ')\n\n'))
 
-            cat('\n\nRatio\n\n')
+            cat('\n\n#### Ratio\n\n')
             # Display mean and median counts for each junction
             stat_df <- ce_df %>%
                 group_by_at(vars(disease_col)) %>%
