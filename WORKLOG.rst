@@ -1618,3 +1618,16 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggr.Rmd``
     - notes: minor updates to documentation
+
+
+2025-12-15
+----------
+
+@Mira0507
+
+- Rerun pseudobulk analysis on aggregated counts
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggr.Rmd``
+    - note: 
+        - bugfix
+        - correct y-axis labels in the ratio plot
