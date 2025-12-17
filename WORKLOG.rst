@@ -1631,3 +1631,22 @@ fcx_ce
     - note: 
         - bugfix
         - correct y-axis labels in the ratio plot
+
+
+2025-12-17
+----------
+
+@Mira0507
+
+- Compressed single-cell bam and junc files 
+    - bam: ``workflow/thalamus_sc/results/bam/cell.zip`` from 
+      ``workflow/thalamus_sc/results/bam/cell/``
+    - junc (bed): ``workflow/thalamus_sc/results/bed/cell.zip`` from 
+      ``workflow/thalamus_sc/results/bed/cell/``
+
+    .. code-block:: bash
+
+        # Compress
+        $ zip -r cell.zip cell
+        # Delete
+        $ rm -rf cell
