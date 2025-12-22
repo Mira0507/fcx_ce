@@ -1650,3 +1650,17 @@ fcx_ce
         $ zip -r cell.zip cell
         # Delete
         $ rm -rf cell
+
+2025-12-22
+----------
+
+@Mira0507
+
+- Added packages to ``menv``
+    - packages
+        - ``r-upsetr``
+        - ``r-cowplot``
+        - ``bioconductor-annotationhub``
+    - command: ``$ mamba install r-upsetr r-cowplot bioconductor-annotationhub --freeze-installed``
+    - ``menv_requirements.txt`` and ``menv.archived.yaml`` updated accordingly
+
