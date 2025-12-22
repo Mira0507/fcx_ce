@@ -187,6 +187,7 @@ rule prep_bam:
             samtools sort -@ {threads} {temp_bam} -o {output.bam}
             samtools index {output.bam}
             rm -f {temp_sam} {sam} {temp_bam}
+            sleep 10m
             """
             )
 
@@ -238,6 +239,7 @@ rule extract_junctions:
         if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
             touch {output.junc}
         fi
+        sleep 10m
         """
 
 

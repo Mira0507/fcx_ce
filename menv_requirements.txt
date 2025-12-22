@@ -21,4 +21,5 @@ bioconductor-deseq2
 bioconductor-rtracklayer
 bioconductor-genomicfeatures
 bioconductor-txdbmaker
-
+bioconductor-zinbwave
+bioconductor-scran

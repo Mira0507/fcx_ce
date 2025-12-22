@@ -777,7 +777,8 @@ for (name in names(sc_list)) {
     for (c in condition_cols) {
         cat('\n\n####', c, '\n\n')
         p <- ggplot(counts_df, aes_string(x=c, y='counts', fill=c)) +
-            geom_boxplot(color='black', width=0.5) +
+            geom_violin(trim=FALSE) +
+            geom_boxplot(fill="white", width=0.1) +
             theme_bw() +
             ylab('Normalized junction counts per cell') +
             scale_y_log10() +
@@ -1048,7 +1049,8 @@ for (celltype in names(py$adata_dic)) {
             dplyr::filter(gene %in% genes_i)
         # Create a boxplot
         p <- ggplot(pdf, aes(x=exon_detection, y=gene_exp, fill=exon_detection)) +
-            geom_boxplot(width=0.5, color="black") +
+            geom_violin(trim=FALSE) +
+            geom_boxplot(fill="white", width=0.1) +
             theme_bw() +
             facet_wrap(~gene, scales="free_y") +
             theme(axis.title.x=element_blank(),
