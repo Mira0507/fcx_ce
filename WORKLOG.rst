@@ -1664,3 +1664,17 @@ fcx_ce
     - command: ``$ mamba install r-upsetr r-cowplot bioconductor-annotationhub --freeze-installed``
     - ``menv_requirements.txt`` and ``menv.archived.yaml`` updated accordingly
 
+
+2025-12-23
+----------
+
+@Mira0507
+
+- Input ``AnnData`` files for inhibitory neurons copied
+    - from: ``../trujilloae/thalamus_atlas/Combined_celltypes/post_neuron_explore/post_outlier_removal``
+    - to: ``input/thalamus_inhibitory``
+    - files:
+        - ``SOX14_Pos_InNeu_adata.h5ad``
+        - ``SOX14_Neg_InNeu_adata.h5ad``
+        - ``Mixed_adata.h5ad``
+
