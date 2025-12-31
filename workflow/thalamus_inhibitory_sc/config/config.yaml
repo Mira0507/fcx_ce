@@ -1,0 +1,47 @@
+# Path to sampletable
+sampletable: "../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
+
+# Path to fasta of reference genome
+# NOTE: Specify the reference fasta used when running `cellranger count`
+fasta: "../../input/thalamus_excitatory/genome.fa"
+
+# Metadata column for aggregating reads
+all_cols: 
+  - 'status'
+  - 'study'
+  - 'Genetics'
+  - 'AgeDeath'
+  - 'Disease'
+  - 'BrainRegion'
+  - 'Sex'
+  - 'general_disease'
+  - 'study_disease'
+  - 'study_specific_disease_specific'
+
+# Required column names
+key_col: 'study_specific_disease_specific' # column for read aggregation
+index_col: 'SampleID' # column for unique sample ID, aka index
+bam_col: 'bam' # column for paths to bam files
+celltype_col: 'celltype'  # column for celltype (leave '' to skip this option)
+
+# Path to AnnData
+adata:
+  SOX14Pos: "../../input/thalamus_inhibitory/SOX14_Pos_InNeu_adata.h5ad"
+  SOX14Neg: "../../input/thalamus_inhibitory/SOX14_Neg_InNeu_adata.h5ad"
+  Mixed: "../../input/thalamus_inhibitory/Mixed_adata.h5ad"
+
+# Path to output directory
+outdir: "results"
+
+# Path to bam directory
+bam_dir: '../../input/thalamus_excitatory/bam'
+
+# Genes of interest
+genes:
+  - 'STMN2'
+  - 'UNC13A'
+  - 'KCNQ2'
+
+# Analysis name. This will be used for the file name of
+# the junction count matrix
+analysis: 'thalamus_inhibitory'

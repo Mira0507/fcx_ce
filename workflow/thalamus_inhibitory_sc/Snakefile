@@ -1,0 +1,298 @@
+import os
+import sys
+import subprocess
+import re
+import numpy as np
+import pandas as pd
+import pysam
+import anndata as ad
+
+#################################### USER CONFIGURATION ####################################
+
+# Path to config file
+configfile: 'config/config.yaml'
+
+# Create the output directory
+outdir = config['outdir']
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
+
+# Path to barcode table
+barcode_file = f"{outdir}/barcodes.tsv"
+
+#################################### PREP BARCODES AND SAMPLETABLE ####################################
+
+# NOTE: 
+# - Manually prep data frames for metadata and sampletable
+# - Ensure that the meta_df includes the three required columns
+#   specified in config['key_col'], config['index_col'], and config['bam_col']
+
+# Path to input bam directory
+bam_dir = config['bam_dir']
+
+# Specify a new column name for bam paths
+bam_col = config['bam_col']
+
+# Specify a new column name for samplename
+index_col = config['index_col']
+
+# Prep sampletable
+sampletable = pd.read_csv(config['sampletable']).set_index(index_col, drop=False)
+sampletable[bam_col] = bam_dir + "/" + sampletable.index + '_possorted_genome_bam.bam'
+
+# Add a column for seq read length, if missing
+if 'read_length' not in list(sampletable.columns): 
+    rl = []
+    for bamfile in list(sampletable[bam_col]):
+        cmd = f"samtools view {bamfile} | cut -f 10 | head -n 1 | wc -m"
+        read_length = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        rl.append(read_length.stdout.strip())
+    sampletable['read_length'] = rl
+    sampletable.to_csv(config['sampletable'], index=False)
+
+# Break if input bams don't align with sampletable
+missing_bams = [b for b in sampletable[bam_col] if not os.path.isfile(b)]
+if len(missing_bams) > 0:
+    raise ValueError(f"{missing_bams} not found in the directory!")
+
+# Prep barcode table
+meta_list = []
+for celltype, path in config['adata'].items():
+    # Read AnnData
+    meta_df = ad.read_h5ad(path).obs[list(config['all_cols'])]
+    # Add new columns for celltypes and barcodes
+    meta_df['celltype'] = celltype
+    meta_df['barcode'] = meta_df.index
+    # Remove sample suffixes from the barcodes
+    barcode_df = meta_df['barcode'].str.split('_', expand=True)
+    barcode_df.columns = ['barcode', index_col]
+    # Add new columns to the metadata
+    meta_df['barcode_sc'] = meta_df['barcode']
+    meta_df['barcode'] = barcode_df['barcode']
+    meta_df[index_col] = barcode_df[index_col]
+    meta_list.append(meta_df)
+
+# Save all barcodes in a tsv file
+meta_df = pd.concat(meta_list, axis=0)
+
+# Add bam file paths to the metadata table and save as a tsv file
+meta_df = pd.merge(sampletable.loc[:, [index_col, config['key_col'], bam_col]].reset_index(drop=True),
+                   meta_df,
+                   how="right",
+                   on=[index_col, config['key_col']])
+meta_df.to_csv(barcode_file, sep="\t", index=False)
+
+##################################### PREP FUNCTIONS ####################################
+
+# Function to extract SQ-header from a bam file
+def extract_headers_SQ(bam):
+    # Collect unique SQ header reads in a set
+    headers = set()
+    with pysam.AlignmentFile(bam, "rb") as f:
+        for line in f.header['SQ']:
+            headers.add((line['SN'], line['LN']))
+    return headers
+
+# Function to select input bam files required for output 
+def select_input_bam(wildcards):
+    filtered_df = meta_df[(meta_df['barcode_sc'] == wildcards.sc_barcode)]
+    samplename = filtered_df[index_col].unique()[0]
+    return "{}/{}_possorted_genome_bam.bam".format(bam_dir, samplename)
+
+# Function to select bam files to be merged by group and celltype
+def input_group_celltype_bams(wildcards):
+    filtered_df = meta_df[
+        (meta_df[config['celltype_col']] == wildcards.celltype) &
+        (meta_df[config['key_col']] == wildcards.group)]
+    bcd = list(set(filtered_df['barcode_sc']))
+    return [f"{wildcards.outdir}/bam/cell/{b}_sorted.bam" for b in bcd]
+
+
+#################################### RULES ####################################
+
+rule all:
+    input:
+        expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
+               outdir=config['outdir'],
+               group=list(set(meta_df[config['key_col']])),
+               celltype=list(set(meta_df[config['celltype_col']]))),
+        expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
+               outdir=config['outdir'],
+               analysis=config['analysis'])
+
+rule create_header:
+    """
+    This rule checks whether all headers (@SQ) are identical across the samples
+    and creates header
+    """
+    input:
+        bams = lambda wildcards: [b for b in set(meta_df['bam']) if pd.notnull(b) and os.path.isfile(b)]
+    output:
+        sam = "{outdir}/header.sam"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    run:
+        header_list = []
+        for bam in input.bams:
+            header_set = extract_headers_SQ(bam)
+            if header_set not in header_list:
+                header_list.append(header_set)
+        if len(header_list) != 1:
+            raise ValueError("Headers are discordant across the samples!")
+        else:
+            shell('samtools view -H {input.bams[0]} | grep "^@SQ" > {output.sam}')
+
+rule prep_bam:
+    """
+    This rule preps sam and bam files for each barcode"
+    """
+    input:
+        header = "{outdir}/header.sam",
+        bam = select_input_bam
+    output:
+        bam = "{outdir}/bam/cell/{sc_barcode}_sorted.bam",
+        bai = "{outdir}/bam/cell/{sc_barcode}_sorted.bam.bai"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60
+    threads: 4
+    params:
+        genes = config['genes']
+    run:
+        # Sanity check for the input bam file
+        if not os.path.exists(input.bam):
+            raise ValueError("Input bam file not found!")
+        # Extract a cellranger barcode based on the sample-associated barcode
+        df = meta_df[(meta_df['barcode_sc'] == wildcards.sc_barcode)]
+        target_barcode = df['barcode'].iloc[0]
+        # Prep a list for genes of interest
+        gene_list = [f"GN:Z:{g.strip()}" for g in params.genes]
+        # Join genes into a single string (w header)
+        gene_joined = "|".join(gene_list)
+        # Specify paths to sam files
+        temp_sam = f"{wildcards.outdir}/{wildcards.sc_barcode}_temp.sam"
+        sam = f"{wildcards.outdir}/{wildcards.sc_barcode}.sam"
+        # Specify path to a temporary bam file 
+        temp_bam = f"{wildcards.outdir}/{wildcards.sc_barcode}_unsorted.bam"
+        # Run samtools with or without module load samtools/1.19
+        shell(
+            """
+            cat {input.header} > {sam}
+            samtools view -@ {threads} {input.bam} | grep "{target_barcode}" > {temp_sam} || true
+            cat {temp_sam} | grep -E "{gene_joined}" >> {sam} || true
+            cat {sam} | samtools view -bS -@ {threads} > {temp_bam}
+            samtools sort -@ {threads} {temp_bam} -o {output.bam}
+            samtools index {output.bam}
+            rm -f {temp_sam} {sam} {temp_bam}
+            sleep 10m
+            """
+            )
+
+rule aggr_bams_group_celltype:
+    """
+    This rule aggregates bam files per group per celltype
+    """
+    input:
+        bam = input_group_celltype_bams
+    output:
+        bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
+        bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    params:
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}_{wildcards.celltype}_unsorted.bam",
+        ncells = len(meta_df)
+    threads: 4
+    shell:
+        """
+        ulimit -n {params.ncells}
+        samtools merge {params.temp_bam} {input.bam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        rm {params.temp_bam}
+        """
+
+rule extract_junctions:
+    """
+    This rule captures splicing junctions using regtools extract.
+    If a bam input file contains no reads, this rule will return
+    an ampty bed file. 
+    Note that the output bed file name has to end with `.junc`.
+    """
+    input:
+        bam = "{outdir}/bam/cell/{sc_barcode}_sorted.bam",
+        fasta = config['fasta']
+    output:
+        junc = "{outdir}/bed/cell/{sc_barcode}.junc"
+    resources:
+        mem_mb = 1024 * 10,
+        disk_mb = 1024 * 5,
+        runtime = 60
+    threads: 1
+    shell:
+        """
+        if ! regtools junctions extract -s XS -a 6 -m 30 -M 500000 -o {output.junc} {input.bam} {input.fasta}; then
+            touch {output.junc}
+        fi
+        sleep 10m
+        """
+
+
+rule prep_juncfiles:
+    """
+    This rule prepares a text file storing paths to all input junction 
+    files (<sample>.junc) saved as a bed format. The output of this rule
+    is required to count the number of junctions using leafcutter.
+    """
+    input:
+        expand("{outdir}/bed/cell/{sc_barcode}.junc",
+               outdir=config['outdir'],
+               sc_barcode=list(set(meta_df['barcode_sc'])))
+    output:
+        "{outdir}/juncfiles.txt"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 10
+    shell:
+        """
+        printf '%s\n' {input} > {output}
+        """
+
+rule count_junctions:
+    """
+    This rule counts the number of junctions across the input 
+    samples or groups using leafcutter. This rule generates
+    the following output files:
+
+    - <sample>_regtools.junc.<analysis>.sorted.gz: per-sample junctions
+    - <analysis>_pooled: all junctions
+    - <analysis>_refined: clustered junctions
+    - <analysis>_sortedlibs: paths to all <sample>_regtools.junc.<analysis>.sorted.gz
+    - <analysis>_perind.counts.gz
+    - <analysis>_perind_numers.counts.gz: output count matrix for junction clusters
+
+    Call `zcat <analysis>_perind_numers.counts.gz` to print 
+    the output count matrix.
+    """
+    input: "{outdir}/juncfiles.txt"
+    output: "{outdir}/junction_counts/{analysis}_perind_numers.counts.gz"
+    resources:
+        mem_mb = 1024 * 100,
+        disk_mb = 1024 * 50,
+        runtime = 60
+    threads: 12
+    shell:
+        """
+        python leafcutter_cluster_regtools.py \
+           -j {input} \
+           -m 10 \
+           -p 0.0001 \
+           -r {wildcards.outdir}/junction_counts \
+           -o {wildcards.analysis}
+        """
