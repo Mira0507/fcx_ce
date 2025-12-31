@@ -1678,3 +1678,53 @@ fcx_ce
         - ``SOX14_Neg_InNeu_adata.h5ad``
         - ``Mixed_adata.h5ad``
 
+2025-12-30
+----------
+
+@Mira0507
+
+- Prep new working directories for inhibitory neurons:
+    - ``workflow/thalamus_inhibitory_bulk``
+    - ``workflow/thalamus_inhibitory_sc``
+
+- Prep files in the working directories
+    - ``Snakefile``
+    - ``WRAPPER_SLURM``
+    - ``leafcutter_cluster_regtools.py``
+    - ``config/config.yaml``
+
+- Run Snakemake on inhibitory neurons in ``workflow/thalamus_inhibitory_bulk``
+  (completed)
+
+    .. code-block:: bash
+
+        Job stats:
+        job                           count
+        --------------------------  -------
+        all                               1
+        count_junctions                   1
+        create_group_celltype_bam        18
+        create_header                     1
+        create_sample_celltype_bam      276
+        extract_junctions               276
+        prep_juncfiles                    1
+        prep_sam                        276
+        total                           850
+
+- Run Snakemake on inhibitory neurons in ``workflow/thalamus_inhibitory_sc``
+  (in progress)
+
+    .. code-block:: bash
+
+        Job stats:
+        job                         count
+        ------------------------  -------
+        aggr_bams_group_celltype       18
+        all                             1
+        count_junctions                 1
+        create_header                   1
+        extract_junctions           19539
+        prep_bam                    19539
+        prep_juncfiles                  1
+        total                       39100
+
