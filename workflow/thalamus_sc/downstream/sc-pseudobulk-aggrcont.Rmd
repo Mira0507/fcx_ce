@@ -801,13 +801,17 @@ for (name in names(res_list)) {
 
 # Distribution of junction counts {.tabset}
 
-Log-normalized pseudobulk counts are compared across all disease conditions. Junctions 
-with zero counts across all samples are excluded.
+Log-normalized pseudobulk counts are compared across disease conditions. Junctions 
+with zero counts across all samples are excluded. 
+
+The distribution is shown using a violin plot alongside a scatter plot, where each point 
+represents a sample and is colored by study. The black horizontal line indicates the
+median of each distribution.
 
 ```{r prep_counting}
 
 # --------------------------------------------------------------------------------
-# This chunk compares junction counting
+# This chunk preps input data frames for plotting
 # --------------------------------------------------------------------------------
 
 norm_list <- mclapply(names(mat_list), function(name) {
@@ -845,28 +849,57 @@ for (name in names(norm_list)) {
     }
 }
 
-# Function to calculate p-values using t-test
-calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat="ttest") {
 
-    # Specify a design formula
-    formula_str <- paste(response_col, "~", explanatory_col)
-    sapply(unique(dataframe[[split_col]]), function(j) {
-        df_i <- dataframe[dataframe[[split_col]] == j,]
-        tryCatch(
-            { 
-                if (stat == "ttest") {
-                    t.test(as.formula(formula_str), data=df_i)$p.value
-                } else if (stat == "wilcox") {
-                    wilcox.test(as.formula(formula_str), data=df_i, exact=FALSE)$p.value
-                } else {
-                    stop("Wrong statistics!")
-                }
-            },
-            error = function(e) { 
-                NA 
-            })})
-}
 ```
+
+```{r define_plot_functions}
+
+# --------------------------------------------------------------------------------
+# This chunk sets up functions to visualize the distribution of junction counts and ratios
+# --------------------------------------------------------------------------------
+
+# Specify the plot format displaying counts
+count_plot <- function(input_df, dcol, scol, ylabel) {
+
+    ggplot(input_df,
+        aes_string(x=dcol, y='counts', fill=dcol)) +
+        geom_violin(trim=FALSE) +
+        theme_bw() +
+        geom_point(data=input_df,
+           aes_string(x=dcol, y='counts', color=scol)) +
+        stat_summary(fun="median",
+             geom="crossbar",
+             width=0.1,
+             color="black") +
+        ylab('log-normalized junction counts') +
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+        scale_fill_manual(values=color_map[[dcol]]) +
+        scale_color_manual(values=color_map[[scol]])
+}
+
+# Specify the plot format displaying ratios
+ratio_plot <- function(input_df, dcol, scol, ylabel) {
+
+    ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
+           geom_violin(trim=FALSE) +
+           geom_point(data=input_df,
+                      aes_string(x=dcol, y='ratio', color=scol)) +
+           stat_summary(fun="median",
+                        geom="crossbar",
+                        width=0.1,
+                        color="black") +
+           theme_bw() +
+           ylab(ylabel) +
+           theme(axis.title.x=element_blank(),
+                 axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+           scale_fill_manual(values=color_map[[dcol]]) +
+           scale_color_manual(values=color_map[[scol]]) +
+           scale_y_log10()
+    }
+```
+
+
 
 ## Counts for splice junctions {.tabset}
 
@@ -874,6 +907,10 @@ Log-normalized pseudobulk counts are compared across the disease conditions. Jun
 with zero counts across all samples are excluded.
 
 ```{r junction_count_dist, results='asis', fig.width=10}
+
+# --------------------------------------------------------------------------------
+# This chunk displays individual junction counts across all disease conditions
+# --------------------------------------------------------------------------------
 
 condition_reorder <- c('AD', 'Control', 'FTD')
 
@@ -889,25 +926,16 @@ for (name in names(norm_list)) {
 
         if (nrow(ce_df) > 0) {
 
-            p <- ggplot(ce_df,
-                        aes_string(x=disease_col, y='counts', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                theme_bw() +
-                geom_point(data=ce_df,
-                           aes_string(x=disease_col, y='counts', color=study_col)) +
-                stat_summary(fun="median",
-                             geom="crossbar",
-                             width=0.1,
-                             color="black") +
+            p <- count_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='log-normalized junction conts') +
                 facet_wrap(. ~ junction,
-                           scales="free_y") +
-                ylab('log-normalized junction counts') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_color_manual(values=color_map[[study_col]])
+                           scales="free_y")
 
             print(p)
+        } else {
+            cat("\n\nCount not displayed!\n\n")
         }
     }
 }
@@ -915,7 +943,7 @@ for (name in names(norm_list)) {
 
 ## Counts for CEs {.tabset}
 
-Junctions are counted based on whether it results in CE generation.
+Log-normalized counts are aggregated on whether it results in CE generation.
 
 
 ```{r ce_count_dist, results='asis'}
@@ -943,24 +971,16 @@ for (name in names(norm_list)) {
         if (nrow(ce_df) > 0) {
 
             # Plot
-            p <- ggplot(ce_df,
-                        aes_string(x=disease_col, y='counts', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                theme_bw() +
-                geom_point(data=ce_df,
-                           aes_string(x=disease_col, y='counts', color=study_col)) +
-                stat_summary(fun="median",
-                             geom="crossbar",
-                             width=0.1,
-                             color="black") +
+            p <- count_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='log-normalized counts for junctions with or without CEs') +
                 facet_wrap(. ~ exon_detection,
-                           scales="free_y") +
-                ylab('log-normalized counts for junctions with or without CEs') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_color_manual(values=color_map[[study_col]])
+                           scales="free_y")
+
             print(p)
+        } else {
+            cat("\n\nCount not displayed!\n\n")
         }
     }
 }
@@ -973,6 +993,7 @@ The counts for junctions with CEs are divided by the counts for junctions withou
 not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
 (e.g. STMN2) within a subset (e.g. Mathys_ExNeu1).
+
 
 
 ```{r ce_ratio, results='asis', fig.width=6}
@@ -1020,21 +1041,11 @@ for (name in names(mat_list)) {
                 unique()
 
             # Plot
-            p <- ggplot(ce_df, aes_string(x=disease_col, y='ratio', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                geom_point(data=ce_df,
-                           aes_string(x=disease_col, y='ratio', color=study_col)) +
-                stat_summary(fun="median",
-                             geom="crossbar",
-                             width=0.1,
-                             color="black") +
-                theme_bw() +
-                ylab('Count ratios (CE / non-CE)') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_color_manual(values=color_map[[study_col]]) +
-                scale_y_log10()
+            p <- ratio_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='Count ratios (CE / non-CE)')
+            print(p)
 
             cat('\n\n')
 
@@ -1056,7 +1067,7 @@ to avoid errors when dividing values. The non-zero minimum value was calculated 
 ```{r ce_over_all, results='asis', fig.width=6}
 
 # --------------------------------------------------------------------------------
-# This chunk compares CE/non-CE counts
+# This chunk compares CE/all counts
 # --------------------------------------------------------------------------------
 
 for (name in names(mat_list)) {
@@ -1101,21 +1112,10 @@ for (name in names(mat_list)) {
                 unique()
 
             # Plot
-            p <- ggplot(ce_df, aes_string(x=disease_col, y='ratio', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                geom_point(data=ce_df,
-                           aes_string(x=disease_col, y='ratio', color=study_col)) +
-                stat_summary(fun="median",
-                             geom="crossbar",
-                             width=0.1,
-                             color="black") +
-                theme_bw() +
-                ylab('Count ratios (CE / all-junctions)') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_color_manual(values=color_map[[study_col]]) +
-                scale_y_log10()
+            p <- ratio_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='Count ratios (CE / all-junctions)')
 
             print(p)
             cat('\n\n')
@@ -1129,11 +1129,64 @@ for (name in names(mat_list)) {
 
 ```
 
+# Pairwise Wilcoxon Rank Sum test {.tabset}
+
+We perform pairwise differential tests comparing each disease group to control. Because the dataset
+does not meet the normality assumption, we use a two-tailed Wilcoxon Rank Sum test (Mann-Whitney U),
+followed by the BH method.
 
 
+```{r prep_wilcox_test}
 
+# --------------------------------------------------------------------------------
+# This chunk compares CE/all counts
+# --------------------------------------------------------------------------------
 
-# Pairwise differential testing using Wilcoxon Rank Sum test {.tabset}
+# Function to calculate p-values using t-test or wilcox test
+calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat="ttest") {
+
+    # Specify a design formula
+    formula_str <- paste(response_col, "~", explanatory_col)
+    sapply(unique(dataframe[[split_col]]), function(j) {
+        df_i <- dataframe[dataframe[[split_col]] == j,]
+        tryCatch(
+            { 
+                if (stat == "ttest") {
+                    t.test(as.formula(formula_str), data=df_i)$p.value
+                } else if (stat == "wilcox") {
+                    wilcox.test(as.formula(formula_str), data=df_i, exact=FALSE)$p.value
+                } else {
+                    stop("Wrong statistics!")
+                }
+            },
+            error = function(e) { 
+                NA 
+            })
+        }
+    )
+}
+```
+
+```{r wilcox_test}
+
+# name <- 'all_ExNeu1'
+# 
+# > head(df, 2)
+                                              # junction SampleID_celltype counts
+# 1 chr19:17611855:17616408:UNC13A:non-cryptic-annotated     3075-T_ExNeu1      0
+# 2 chr19:17611855:17616408:UNC13A:non-cryptic-annotated     3514-T_ExNeu1      0
+  # general_disease cell_type  study study_specific_disease_specific
+# 1             FTD    ExNeu1 Biogen                      FTD-Biogen
+# 2         Control    ExNeu1 Biogen                  Control-Biogen
+  # study_disease_specific_celltype study_celltype               exon_detection
+# 1               FTD-Biogen_ExNeu1  Biogen_ExNeu1 junction detected without CE
+# 2           Control-Biogen_ExNeu1  Biogen_ExNeu1 junction detected without CE
+
+for (name in names(norm_list)) {
+    df <- norm_list[[name]]
+}
+
+```
 
 
 # Session info
