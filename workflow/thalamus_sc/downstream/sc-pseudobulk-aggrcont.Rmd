@@ -811,11 +811,10 @@ method, respectively. Junctions with zero counts across all samples are excluded
 # This chunk compares junction counting
 # --------------------------------------------------------------------------------
 
-norm_list <- mclapply(names(res_list), function(name) {
+norm_list <- mclapply(names(mat_list), function(name) {
 
     # Extract the raw count matrix corresponding to the current subset
-    m <- dds_list[[name]] %>%
-        counts(normalized=FALSE)
+    m <- mat_list[[name]]
 
     # Transform the matrix to a natural log scale and clean data frame
     df <- log1p(m) %>%
@@ -837,7 +836,15 @@ norm_list <- mclapply(names(res_list), function(name) {
     return(df)
 
 }) %>%
-set_names(names(res_list))
+set_names(names(mat_list))
+
+# Ensure no missing values were introduced
+for (name in names(norm_list)) {
+    if (any(is.na(norm_list[[name]]))) {
+        stop(paste0("Missing values introduced to the following contrast in `norm_list`:",
+                    name))
+    }
+}
 
 # Function to calculate p-values using t-test
 calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat="ttest") {
@@ -872,6 +879,7 @@ for (name in names(res_list)) {
     cat('##', name, '{.tabset}\n\n')
     # Extract input data frame
     df <- norm_list[[name]]
+    sample_ids <- unique(df[[sample_col]])
     
     for (ce in ce_targets) {
         cat('###', ce, '\n\n')
