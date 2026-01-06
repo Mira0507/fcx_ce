@@ -996,7 +996,7 @@ for (name in names(norm_list)) {
 The counts for junctions with CEs are divided by the counts for junctions without CEs. Note that samples 
 not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
-(e.g. STMN2) within a subset (e.g. Mathys_ExNeu1).
+(e.g. STMN2) within a subset (e.g. ExNeu1).
 
 
 
@@ -1066,7 +1066,7 @@ for (name in names(mat_list)) {
 The counts for junctions with CEs are divided by the counts for all extracted junctions. Note that samples 
 not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
-(e.g. STMN2) within a subset (e.g. Mathys_ExNeu1).
+(e.g. STMN2) within a subset (e.g. ExNeu1).
 
 ```{r ce_over_all, results='asis', fig.width=6}
 
