@@ -1728,3 +1728,16 @@ fcx_ce
         prep_juncfiles                  1
         total                       39100
 
+
+2026-01-05
+----------
+
+@Mira0507
+
+- Rerun differential testing on excitatory neurons
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggrcont.Rmd``
+    - notes
+        - Counts for all control samples are aggregated regardless of study
+        - Plot format changed from *violon + boxplot* to *violin + dotplot*
+        - Code cleaned using custom functions
