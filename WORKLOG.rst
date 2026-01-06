@@ -1741,3 +1741,14 @@ fcx_ce
         - Counts for all control samples are aggregated regardless of study
         - Plot format changed from *violon + boxplot* to *violin + dotplot*
         - Code cleaned using custom functions
+
+
+2026-01-06
+----------
+
+@Mira0507
+
+- Minor updates to the documentation of the excitatory neuron results
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggrcont.Rmd``
+    - note: Results shipped to the collaborator
