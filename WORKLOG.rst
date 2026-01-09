@@ -1782,7 +1782,7 @@ fcx_ce
         thalamus_neurons_bulk
         thalamus_neurons_sc
 
-- Rerun the pipeline on updated ``AnnData`` 
+- Rerun the pipeline on updated ``AnnData`` for bulk CE analysis
     - conda: ``env``
     - Snakefile: ``workflow/thalamus_neurons_bulk/Snakefile``
     - config: ``workflow/thalamus_neurons_bulk/config/config.yaml``
@@ -1805,3 +1805,29 @@ fcx_ce
 - Compress single-cell bam and bed files in ``workflow/thalamus_inhibitory_sc/results``
     - bam: ``workflow/thalamus_inhibitory_sc/results/bam/cell.zip``
     - bed: ``workflow/thalamus_inhibitory_sc/results/junction_counts/junction.zip``
+
+
+2026-01-09
+----------
+
+@Mira0507
+
+- Rerun the pipeline on updated ``AnnData`` for single-cell CE analysis
+    - conda: ``env``
+    - Snakefile: ``workflow/thalamus_neurons_sc/Snakefile``
+    - config: ``workflow/thalamus_neurons_sc/config/config.yaml``
+
+    .. code-block:: bash
+
+        Job stats:
+        job                         count
+        ------------------------  -------
+        aggr_bams_group_celltype       30
+        all                             1
+        count_junctions                 1
+        create_header                   1
+        extract_junctions           46253
+        prep_bam                    46253
+        prep_juncfiles                  1
+        total                       92540
+
