@@ -1752,3 +1752,53 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggrcont.Rmd``
     - note: Results shipped to the collaborator
+
+- Downstream analysis on inhibitory neurons
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_inhibitory_sc/downstream/sc-exploratory.Rmd``
+
+
+2026-01-08
+----------
+
+@Mira0507
+
+- Prep new directories to rerun snakemake on updated ``AnnData`` 
+  (obj generated on 12/17/2025)
+
+    .. code-block:: bash
+
+        # Input directory
+        $ ls input/thalamus_neurons
+        bam  # Symlinked to bam directory
+        ExNeu1_adata.h5ad
+        ExNeu2_adata.h5ad
+        Mixed_adata.h5ad
+        SOX14_Neg_InNeu_adata.h5ad
+        SOX14_Pos_InNeu_adata.h5ad
+
+        # Working directories
+        $ ls workflow | grep neurons
+        thalamus_neurons_bulk
+        thalamus_neurons_sc
+
+- Rerun the pipeline on updated ``AnnData`` 
+    - conda: ``env``
+    - Snakefile: ``workflow/thalamus_neurons_bulk/Snakefile``
+    - config: ``workflow/thalamus_neurons_bulk/config/config.yaml``
+
+    .. code-block:: bash
+
+        Job stats:
+        job                           count
+        --------------------------  -------
+        all                               1
+        count_junctions                   1
+        create_group_celltype_bam        30
+        create_header                     1
+        create_sample_celltype_bam      460
+        extract_junctions               460
+        prep_juncfiles                    1
+        prep_sam                        460
+        total                          1414
+
