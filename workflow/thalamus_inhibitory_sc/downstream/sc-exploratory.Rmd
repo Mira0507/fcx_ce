@@ -104,9 +104,13 @@ factor_groups <- list(
 
 # Specify column names to subset barcodes
 # NOTE: Set to NULL if unnecessary
-subset_col <- list(study_celltype=c('study', 'cell_type'))
+subset_col <- list(study_celltype=c(
+    'study',
+    'renamed_annotation_cell_type_post_outlier_removal')
+)
+
 sample_col <- 'SampleID'
-celltype_col <- 'cell_type'
+celltype_col <- 'renamed_annotation_cell_type_post_outlier_removal'
 disease_col <- 'general_disease'
 
 # Specify genes explored in the current analysis
