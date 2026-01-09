@@ -146,7 +146,7 @@ rule prep_sam:
     resources:
         mem_mb = 1024 * 20,
         disk_mb = 1024 * 10,
-        runtime = 60 * 12
+        runtime = 60 * 18
     threads: 8
     params:
         genes = config['genes']
