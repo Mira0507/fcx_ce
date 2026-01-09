@@ -1802,3 +1802,6 @@ fcx_ce
         prep_sam                        460
         total                          1414
 
+- Compress single-cell bam and bed files in ``workflow/thalamus_inhibitory_sc/results``
+    - bam: ``workflow/thalamus_inhibitory_sc/results/bam/cell.zip``
+    - bed: ``workflow/thalamus_inhibitory_sc/results/junction_counts/junction.zip``
