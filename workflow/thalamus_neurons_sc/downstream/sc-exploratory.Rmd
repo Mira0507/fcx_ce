@@ -47,6 +47,15 @@ options(mc.cores=n_cores)
 pd <- reticulate::import("pandas")
 ```
 
+```{python ppackages}
+import anndata as ad
+import scanpy as sc
+import pandas as pd
+import numpy as np
+import subprocess
+import os
+```
+
 ```{r config}
 
 # --------------------------------------------------------------------------------
@@ -80,26 +89,20 @@ for (p in c(out_dir)) {
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
-    cell_type=c('ExNeu1', 'ExNeu2', 'SOX14Pos', 'Sox14Neg', 'Mixed'),
+    renamed_annotation_cell_type_post_outlier_removal=c( 
+        'ExNeu1',
+        'ExNeu2',
+        'SOX14_Pos_InNeu',
+        'SOX14_Neg_InNeu',
+        'Mixed'),
     study=c('Marsan', 'Biogen', 'Mathys'),
-    study_specific_disease_specific=c('Control-Marsan',
-                                      'Control-Biogen',
-                                      'Control-Mathys',
-                                      'FTD-Marsan',
-                                      'FTD-Biogen',
-                                      'AD-Mathys'),
-    study_disease_specific_celltype=c('Control-Marsan_ExNeu1',
-                                      'Control-Marsan_ExNeu2',
-                                      'Control-Biogen_ExNeu1',
-                                      'Control-Biogen_ExNeu2',
-                                      'Control-Mathys_ExNeu1',
-                                      'Control-Mathys_ExNeu2',
-                                      'FTD-Marsan_ExNeu1',
-                                      'FTD-Marsan_ExNeu2',
-                                      'FTD-Biogen_ExNeu1',
-                                      'FTD-Biogen_ExNeu2',
-                                      'AD-Mathys_ExNeu1',
-                                      'AD-Mathys_ExNeu2')
+    study_specific_disease_specific=c(
+        'Control-Marsan',
+        'Control-Biogen',
+        'Control-Mathys',
+        'FTD-Marsan',
+        'FTD-Biogen',
+        'AD-Mathys')
 )
 
 # Specify column names to subset barcodes
@@ -112,19 +115,33 @@ sample_col <- 'SampleID'
 # Specify genes explored in the current analysis
 genes <- read_yaml(snakemake_config)[['genes']] 
 
-# Specify colors
-disease_colors <- c(Control="#9ACD32", FTD="#808000", AD="#006400")
+# Specify HEX color code
+color_map <- list(
+    general_disease=c(
+        Control="#6666FF",
+        FTD="#669900",
+        AD="#FF6600"),
+    study=c(
+        Marsan="#FF00FF",
+        Biogen="#00FFFF",
+        Mathys="#BFBFBF"),
+    cell_type=c(
+        ExNeu1="#90C6E2",
+        ExNeu2="#547CB2", 
+        SOX14_Pos_InNeu="",
+        SOX14_Neg_InNeu="",
+        Mixed=""))
+        # Astrocyte="#ABD158",
+        # BVC="#74858C",
+        # CP="#D5C18E",
+        # InNeu1="#21409A",
+        # InNeu2="#262262",
+        # Lymphocyte="#68151F",
+        # Microglia="#D24A75",
+        # OL="#FDB515",
+        # OPC="#ED7020",
+        # PVM="#231F20")
 ```
-
-```{python ppackages}
-import anndata as ad
-import scanpy as sc
-import pandas as pd
-import numpy as np
-import subprocess
-import os
-```
-
 
 # Loading input data {.tabset}
 
@@ -430,7 +447,7 @@ for (o in py$adata_dic) {
 }
 n_df <- n_df %>% remove_rownames()
 
-knitr::kable(n_df)
+DT::datatable(n_df)
 ```
 
 ```{r prep_count_list}
@@ -563,7 +580,7 @@ The number of barcodes is counted based on whether junctions were detected in ea
 the following columns for the overview:
 
 - `N_barcodes`: all input barcodes
-- `N_barcodes_junctions`: barcodes in which any junctions were detected
+- `N_barcodes_junctions`: barcodes in which *any junctions* were detected
 - `percentage`: `N_barcodes_junctions / N_barcodes x 100`, representing the proportion
   of barcodes with junction detection
 
@@ -579,7 +596,7 @@ n_df <- n_df %>%
            percentage=N_barcodes_junctions/N_barcodes * 100,
            percentage=round(percentage, 2))
 
-knitr::kable(n_df)
+DT::datatable(n_df)
 ```
 
 ## Heatmap {.tabset}
@@ -591,12 +608,10 @@ with *Euclidean distance* represented by the color scale. Darker blue indicates 
 ```{r function_for_plotting}
 
 # Function cleaning metadata based on available columns
-clean_metadata <- function(data_frame) {
-    condition_cols <- names(factor_groups)[names(factor_groups) %in% colnames(data_frame)]
-    data_frame <- data_frame[, condition_cols]
-    return(list(df=data_frame, cols=condition_cols))
+clean_metadata <- function(data_frame, col_filter) {
+    df_updated <- data_frame[, col_filter]
+    return(list(df=df_updated, cols=col_filter))
 }
-
 ```
 
 ```{r qc_heatmap, results='asis', fig.height=12, fig.width=12}
@@ -625,7 +640,9 @@ for (name in names(sp_list)) {
               celltype_col,
               sep="_",
               remove=FALSE) 
-    heatmap_meta <- clean_metadata(heatmap_meta)[['df']]
+    heatmap_meta <- clean_metadata(
+        data_frame=heatmap_meta,
+        col_filter=c(names(subset_col)[1], names(factor_groups)))[['df']]
 
     # Print heatmap
     print(pheatmap::pheatmap(
@@ -640,6 +657,119 @@ for (name in names(sp_list)) {
     )
     )
     cat('\n\n')
+}
+```
+
+## PCA {.tabset}
+
+Another way of looking at sample clustering is principal components analysis (PCA). Each axis does 
+not have units, rather, it represents the dimensions along which the samples vary the most. 
+The amount of variance explained by each principal component is indicated in the axes label.
+
+```{r pca, results='asis', fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk creates PCA plots across the  cells
+# --------------------------------------------------------------------------------
+
+for (name in names(sp_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve the raw count matrix
+    scmat <- sc_list[[name]][['raw']]
+    # Remove zero-count barcodes and apply log2-transformation
+    scmat <- t(log2(as.matrix(scmat[, colSums(scmat) > 0] + 1)))
+    # Prep metadata
+    meta_data <- clean_metadata(
+        as.data.frame(py$subadata_dic[[name]][['obs']]),
+        c(names(subset_col)[1], names(factor_groups)))
+    m_df <- meta_data[['df']] %>%
+        rownames_to_column('barcode')
+    # Run PCA
+    pca <- prcomp(scmat, center=TRUE, scale=FALSE)
+    # Calculate variance explained by each PC
+    var_exp <- round(pca$sdev^2/sum(pca$sdev^2) * 100, 2)
+    # Prep input dataframe for plotting
+    df <- pca$x[,1:2] %>%
+        as.data.frame() %>%
+        rownames_to_column('barcode') %>%
+        left_join(m_df, by='barcode')
+    # Prep titles for axes
+    axis_titles <- map_chr(
+        1:2,
+        ~paste0("PC ", .x, " (", var_exp[.x], "%)")
+    )
+
+    # Plot PCA
+    condition_cols <- meta_data[['cols']]
+    for (c in condition_cols) {
+        cat('####', c, '\n\n')
+        p <- ggplot(df,
+                    aes_string(x='PC1',
+                               y='PC2',
+                               color=c)) +
+            geom_point(alpha=0.7, size=3) +
+            theme_bw() +
+            xlab(axis_titles[1]) +
+            ylab(axis_titles[2])
+
+        if (c %in% names(color_map)) {
+            p <- p + scale_color_manual(values=color_map[[c]])
+        }
+
+        print(p)
+        cat('\n\n')
+    }
+}
+
+
+
+```
+
+## UMAP {.tabset}
+
+Junction profiling is explored across cells on UMAP. Each dot represents a single cell,
+along with color codes corresponding to different conditions.
+
+
+```{r qc_umap, results='asis', fig.height=8, fig.width=8}
+
+# --------------------------------------------------------------------------------
+# This chunk plots UMAP embedding
+# --------------------------------------------------------------------------------
+
+for (name in names(py$subadata_dic)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Extract UMAP coordinates
+    o <- py$subadata_dic[[name]]
+    df <- o[['obsm']][['X_umap']][, 1:2] %>%
+        as.data.frame() %>%
+        set_names(c('UMAP1', 'UMAP2'))
+    # Prep metadata
+    meta_data <- clean_metadata(
+        as.data.frame(py$subadata_dic[[name]][['obs']]),
+        c(names(subset_col)[1], names(factor_groups)))
+    m_df <- meta_data[['df']]
+    # Add metadata columns to the UMAP coordinates
+    df <- cbind(df, m_df) %>%
+        rownames_to_column('barcode')
+
+    condition_cols <- meta_data[['cols']]
+    for (c in condition_cols) {
+        cat('####', c, '\n\n')
+        p <- ggplot(df,
+                    aes_string(x='UMAP1',
+                               y='UMAP2',
+                               color=c)) +
+            geom_point(alpha=0.7, size=1) +
+            theme_bw()
+
+        if (c %in% names(color_map)) {
+            p <- p + scale_color_manual(values=color_map[[c]])
+        }
+
+        print(p)
+        cat('\n\n')
+    }
 }
 ```
 
