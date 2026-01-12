@@ -1831,3 +1831,13 @@ fcx_ce
         prep_juncfiles                  1
         total                       92540
 
+
+2026-01-12
+----------
+
+@Mira0507
+
+- Run downstream single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - note: in progress
