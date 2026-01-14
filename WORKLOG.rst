@@ -1832,7 +1832,7 @@ fcx_ce
         total                       92540
 
 
-2026-01-12
+2026-01-13
 ----------
 
 @Mira0507
@@ -1841,3 +1841,19 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
     - note: in progress
+
+
+2026-01-14
+----------
+
+@Mira0507
+
+- Run downstream single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - a wide range of single-cell CE metrics calculated per subset
+        - p-values associated with percentage of cells with junction detection
+          calculated using a wilcoxon rank sum test per subset
+        - violin plots generated to present the percentage of cells with junction
+          detection across disease conditions
