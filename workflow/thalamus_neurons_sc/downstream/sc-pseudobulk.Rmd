@@ -1254,7 +1254,7 @@ Refer to the naming convention when loading the file in IGV: `<chr>:<start>:<end
 # --------------------------------------------------------------------------------
 
 # Prep coordinates and annotation in a data frame
-df <- data.frame(junction=rownames(dds_list[[1]])) %>%
+df <- data.frame(junction=rownames(se_list[[1]])) %>%
     separate(junction,
              c('chr', 'start', 'end', 'gene_name', 'exon_type'),
              sep=":") %>%
