@@ -1848,7 +1848,7 @@ fcx_ce
 
 @Mira0507
 
-- Run downstream single-cell exploratory analysis
+- Run downstream single-cell exploratory analysis (in progress)
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
     - notes
@@ -1857,3 +1857,10 @@ fcx_ce
           calculated using a wilcoxon rank sum test per subset
         - violin plots generated to present the percentage of cells with junction
           detection across disease conditions
+
+- Run downstream (in queue)
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes:
+        - DESeq2 deleted
+        - all statistics performed using wilcox test
