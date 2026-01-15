@@ -454,7 +454,7 @@ for (o in py$adata_dic) {
 }
 n_df <- n_df %>% remove_rownames()
 
-DT::datatable(n_df)
+knitr::kable(n_df)
 ```
 
 ```{r prep_count_list}
@@ -604,7 +604,7 @@ n_df <- n_df %>%
            percentage=N_barcodes_junctions/N_barcodes * 100,
            percentage=round(percentage, 2))
 
-DT::datatable(n_df)
+knitr::kable(n_df)
 ```
 
 ## Heatmap {.tabset}
@@ -1135,7 +1135,7 @@ for (celltype in names(py$adata_dic)) {
 
 ```
 
-# Number of cells with and without cryptic junctions {.tabset}
+# Proportion of cells with junction detection {.tabset}
 
 Lastly, we explore various metrics at the single-cell level across samples for each cell subtype 
 and junction target gene. 
@@ -1210,7 +1210,7 @@ for (celltype in names(py$adata_dic)) {
                 unique()
 
                 # Break if any missing values are introduced
-                if (any(is.na(input_df))) {
+                if (any(is.na(stat_df))) {
                     stop('Missing values introduced to the plot input data frame!')
                 }
             return(stat_df)
@@ -1219,6 +1219,7 @@ for (celltype in names(py$adata_dic)) {
     ncount_list[[celltype]][[counttype]] <- gdf_list
     }
 }
+
 ```
 
 The following table summarizes the p-values calculated using a two-tailed Wilcoxon Rank Sum test
@@ -1226,30 +1227,24 @@ on **`percent_detection`** comparing each disease to Control. In the preceding v
 the y-axis summarizes **`percent_detection`**, calculated per sample within each subset.
 
 - **Summary** table (accessible via the Excel-readable files ending with `"*_summary.csv"`):
-    - `exon_type`: [annotation reference](#Annotating_input_junctions)
+    - `exon_type`: [annotation reference](#Annotating-input-junctions)
     - `subset_samples`: number of samples per disease condition per cell subtype
-    - `subset_cells`: number of cells (barcodes) per per disease condition per cell subtype
-    - `MEAN_junction_counts`: average number of junctions detected for the `exon_type` 
+    - `subset_cells`: number of cells (barcodes) per disease condition per cell subtype
+    - `MEAN/MEAN_junction_counts`: average/median number of junctions detected for the `exon_type` 
       per disease condition per sample
-    - `MEDIAN_junction_counts`: median number of junctions detected for the `exon_type` 
-      per disease condition per sample
-    - `MEAN_junction_cells`: average number of cells with junction detection 
+    - `MEAN/MEDIAN_junction_cells`: average/median number of cells with junction detection 
       associated with the `exon_type` per disease condition per sample
-    - `MEDIAN_junction_cells`: median number of cells with junction detection 
-      associated with the `exon_type` per disease condition per sample
-    - `MEAN_percell_junctions`: average number of per-cell junctions associated with the `exon_type`
-      per disease condition per sample
-    - `MEDIAN_percell_junctions`: median number of per-cell junctions associated with the `exon_type`
-      per disease condition per sample
-    - `MEAN_percent_detection`: average junction detection rate associated with the `exon_type`
-    - `MEDIAN_percent_detection`: median junction detection rate associated with the `exon_type`
+    - `MEAN/MEDIAN_percell_junctions`: average/median number of per-cell junctions corresponding to
+      the `exon_type` per disease condition per sample
+    - `MEAN/MEDIAN_percent_detection`: average/median junction detection rate 
+      corresponding to the `exon_type` per disease condition per sample
 
 - **Full** table (accessible via the Excel-readable files ending with `"*_full.csv"`):
     - `sample_cells`: number of cells (barcodes) per sample
     - `junction_counts`: number of junctions detected for the `exon_type` per sample
-    - `junction_cells`: number of cells with junction detection associated 
-      with the `exon_type` per sample
-    - `percell_junctions`: number of junctions detected for the `exon_type` per cell per sample
+    - `junction_cells`: number of cells with junction detection corresponding to the `exon_type` 
+      per sample
+    - `percell_junctions`: number of junctions detected for the `exon_type` per cell
     - `percent_detection`: percentage of cells with junction detection associated 
       with the `exon_type` per sample
 
@@ -1270,7 +1265,7 @@ for (celltype in names(ncount_list)) {
         cat('\n\n###', counttype, '{.tabset}\n\n')
         for (gene in names(ncount_list[[celltype]][[counttype]])) {
 
-            cat('\n\n####', paste0('CE: ', gene) '\n\n')
+            cat('\n\n####', paste0('CE: ', gene), '\n\n')
             # Extract subset- and gene-wise data frame
             input_df <- ncount_list[[celltype]][[counttype]][[gene]]
 
@@ -1280,6 +1275,7 @@ for (celltype in names(ncount_list)) {
             write.csv(input_df, csv_full, row.names=FALSE, quote=FALSE)
 
             # Plot
+            cat('\n\n##### Plot\n\n')
             p <- ggplot(input_df,
                         aes_string(x=disease_col,
                                    y="percent_detection",
@@ -1344,8 +1340,7 @@ for (celltype in names(ncount_list)) {
                         vsControl_pvalue=disease_pvals)
 
                     # Add calculated metrics to the result data frame
-                    metrics <- colnames(nsample)[str_detect(colnames(nsample), "MEDIAN|MEAN")]
-                    for (met_i in metrics) {
+                    for (met_i in colnames(nsample)) {
                         res_df[[met_i]] <- nsample[res_df$disease, met_i]
                     }
                     return(res_df)
@@ -1356,6 +1351,7 @@ for (celltype in names(ncount_list)) {
                 bind_rows() %>%
                 remove_rownames()
 
+            cat('\n\n##### Summary table\n\n')
             print(knitr::kable(stat_df))
             cat('\n\n')
             csv_summary <- file.path(out_dir, paste0(name, "_summary.csv"))
