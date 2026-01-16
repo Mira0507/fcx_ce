@@ -26,6 +26,7 @@ This workflow is designed for exploratory analysis on CE at the single-cell leve
 library(parallel)
 library(tidyverse)
 library(ggplot2)
+library(ggbeeswarm)
 library(reticulate)
 library(parallel)
 library(yaml)
@@ -814,7 +815,7 @@ for (name in names(sc_list)) {
     for (c in condition_cols) {
         cat('\n\n####', c, '\n\n')
         p <- ggplot(counts_df, aes_string(x=c, y='counts', fill=c)) +
-            geom_violin(trim=FALSE) +
+            geom_violin(trim=TRUE) +
             geom_boxplot(fill="white", width=0.1) +
             theme_bw() +
             ylab('Normalized Junction Counts per Cell') +
@@ -1099,7 +1100,7 @@ for (celltype in names(py$adata_dic)) {
             dplyr::filter(gene %in% genes_i)
         # Create a boxplot
         p <- ggplot(pdf, aes(x=exon_detection, y=gene_exp, fill=exon_detection)) +
-            geom_violin(trim=FALSE) +
+            geom_violin(trim=TRUE) +
             geom_boxplot(fill="white", width=0.1) +
             theme_bw() +
             facet_wrap(~gene, scales="free_y") +
@@ -1227,7 +1228,7 @@ on **`percent_detection`** comparing each disease to Control. In the preceding v
 the y-axis summarizes **`percent_detection`**, calculated per sample within each subset.
 
 - **Summary** table (accessible via the Excel-readable files ending with `"*_summary.csv"`):
-    - `exon_type`: [annotation reference](#Annotating-input-junctions)
+    - `exon_type`: see [annotation reference](#annotating-input-junctions)
     - `subset_samples`: number of samples per disease condition per cell subtype
     - `subset_cells`: number of cells (barcodes) per disease condition per cell subtype
     - `MEAN/MEAN_junction_counts`: average/median number of junctions detected for the `exon_type` 
@@ -1280,12 +1281,12 @@ for (celltype in names(ncount_list)) {
                         aes_string(x=disease_col,
                                    y="percent_detection",
                                    fill=disease_col)) +
-                geom_violin(trim=FALSE) +
+                geom_violin(trim=TRUE) +
                 theme_bw() +
-                geom_point(data=input_df,
-                           aes_string(x=disease_col,
-                                      y="percent_detection",
-                                      color=study_col)) +
+                geom_quasirandom(
+                    data=input_df,
+                    aes_string(x=disease_col, y="percent_detection", color=study_col),
+                    width=0.2) +
                 stat_summary(fun="median",
                      geom="crossbar",
                      width=0.1,
