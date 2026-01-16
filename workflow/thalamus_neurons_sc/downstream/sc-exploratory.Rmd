@@ -1253,6 +1253,7 @@ Note that a pseudo-count is added to all values to avoid division errors. The ps
 is defined as the minimum value among all non-zero entries across all cells, within the raw-
 or normalized scale, in the current dataset.
 
+
 ```{r ncell_violin, results='asis'}
 
 # --------------------------------------------------------------------------------
@@ -1292,7 +1293,7 @@ for (celltype in names(ncount_list)) {
                      width=0.1,
                      color="black") +
                 ylab('% Cells with Junction Detection') +
-                facet_wrap(~exon_type, scales="free_y") +
+                facet_wrap(~exon_type) +
                 theme(axis.title.x=element_blank(),
                 axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
                 scale_fill_manual(values=color_map[[disease_col]]) +
