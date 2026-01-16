@@ -591,10 +591,20 @@ for (name in names(norm_list)) {
                             scol=study_col,
                             ylabel='Log-normalized Junction Counts') +
                 facet_wrap(. ~ junction,
-                           ncol=2,
-                           scales="free_y")
+                           ncol=2)
 
-            print(p)
+            plot_name <- paste0(name,
+                                "_",
+                                ce,
+                                "_",
+                                sample(1:10000, 1, replace=FALSE))
+            h <- ifelse(ce == 'UNC13A', 12, 6)
+            w <- 10
+            subchunkify(plot_name,
+                        input="plot",
+                        width=w,
+                        height=h,
+                        ggplotly=FALSE)
         } else {
             cat("\n\nCount not displayed!\n\n")
         }
@@ -636,8 +646,7 @@ for (name in names(norm_list)) {
                             dcol=disease_col,
                             scol=study_col,
                             ylabel='Log-normalized Counts for Junctions with or without CEs') +
-                facet_wrap(. ~ exon_detection,
-                           scales="free_y")
+                facet_wrap(. ~ exon_detection)
 
             print(p)
         } else {
@@ -799,7 +808,7 @@ result table. Note that contrasts with many zero counts can failed, returning mi
 
 
 ```{r prep_wilcox_test}
-
+stop()
 # --------------------------------------------------------------------------------
 # This chunk sets up a pairwise t- or wilcoxon test
 # --------------------------------------------------------------------------------
