@@ -1848,7 +1848,7 @@ fcx_ce
 
 @Mira0507
 
-- Run downstream single-cell exploratory analysis (in progress)
+- Run downstream single-cell exploratory analysis
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
     - notes
@@ -1858,9 +1858,39 @@ fcx_ce
         - violin plots generated to present the percentage of cells with junction
           detection across disease conditions
 
-- Run downstream (in queue)
+- Run downstream pseudobulk CE analysis (in progress)
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
     - notes:
         - DESeq2 deleted
         - all statistics performed using wilcox test
+
+
+2026-01-15
+----------
+
+@Mira0507
+
+- Run downstream pseudobulk CE analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes:
+        - DESeq2 deleted
+        - all statistics performed using wilcox test
+        - violin + dot plots updated using ``geom_quasirandom()`` and
+          ``geom_violin(tri=TRUE)``
+
+        .. code-block:: R
+
+            library(ggbeeswarm)
+            geom_violin(trim=TRUE) +
+            geom_quasirandom(
+                data=input_df,
+                # ...
+                width=0.2)
+
+- Update downstream single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - violin and dot plots updated in the same way as the pseudobulk analysis
