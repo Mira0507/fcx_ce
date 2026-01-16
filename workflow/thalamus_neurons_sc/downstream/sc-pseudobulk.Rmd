@@ -19,21 +19,13 @@ knitr::opts_chunk$set(warning=FALSE,
 Last run: `r date()`
 
 This workflow is designed to conduct pseudobulk differential analysis
-using [DESeq2](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8) 
-incorporating [zinbwave](https://link.springer.com/article/10.1186/s13059-018-1406-4). 
-Zinbwave is used to downweight zeros when fitting negative binomial (NB) models to zero-inflated datasets.
-
-Refer to the following resources for technical details:
-
-- [DESeq2 Documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
-- [DESeq2 GitHub](https://github.com/thelovelab/DESeq2)
-- [zinbwave-deseq2 workflow](https://github.com/mikelove/zinbwave-deseq2/blob/master/zinbwave-deseq2.Rmd)
+on splice junctions with and without CEs.
 
 ```{r libraries}
 # Libraries
 library(tidyverse)
-library(DESeq2)
 library(ggplot2)
+library(ggbeeswarm)
 library(parallel)
 library(BiocParallel)
 library(yaml)
@@ -410,7 +402,7 @@ not have units, rather, it represents the dimensions along which the samples var
 of variance explained by each principal component is indicated in the axes label. Note that this analysis 
 excluded junctions that were not detected in any of the samples.
 
-```{r qc_pca, results='asis'}
+```{r qc_pca, results='asis', fig.width=8}
 
 # --------------------------------------------------------------------------------
 # This chunk explores sample similarity using PCA
@@ -451,7 +443,7 @@ for (name in names(l2t_list)) {
                     aes_string(x='PC1',
                                y='PC2',
                                color=c,
-                               shape=celltype_col)) +
+                               shape=disease_col)) +
             geom_point(alpha=0.7, size=3) +
             theme_bw() +
             xlab(axis_titles[1]) +
@@ -533,15 +525,15 @@ count_plot <- function(input_df, dcol, scol, ylabel) {
 
     ggplot(input_df,
         aes_string(x=dcol, y='counts', fill=dcol)) +
-        geom_violin(trim=FALSE) +
+        geom_violin(trim=TRUE) +
         theme_bw() +
-        geom_point(data=input_df,
-           aes_string(x=dcol, y='counts', color=scol)) +
+        geom_quasirandom(data=input_df,
+                         aes_string(x=dcol, y='counts', color=scol), width=0.2) +
         stat_summary(fun="median",
              geom="crossbar",
              width=0.1,
              color="black") +
-        ylab('log-normalized junction counts') +
+        ylab('Log-normalized Junction Counts') +
         theme(axis.title.x=element_blank(),
         axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
         scale_fill_manual(values=color_map[[dcol]]) +
@@ -552,7 +544,7 @@ count_plot <- function(input_df, dcol, scol, ylabel) {
 ratio_plot <- function(input_df, dcol, scol, ylabel) {
 
     ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
-           geom_violin(trim=FALSE) +
+           geom_violin(trim=TRUE) +
            geom_point(data=input_df,
                       aes_string(x=dcol, y='ratio', color=scol)) +
            stat_summary(fun="median",
@@ -569,14 +561,12 @@ ratio_plot <- function(input_df, dcol, scol, ylabel) {
     }
 ```
 
-
-
-## Counts for splice junctions {.tabset}
+## Counts of splice junctions {.tabset}
 
 Log-normalized pseudobulk counts are compared across the disease conditions. Junctions 
 with zero counts across all samples are excluded.
 
-```{r junction_count_dist, results='asis', fig.width=10}
+```{r junction_count_dist, results='asis', fig.width=10, fig.height=12}
 
 # --------------------------------------------------------------------------------
 # This chunk displays individual junction counts across all disease conditions
@@ -599,8 +589,9 @@ for (name in names(norm_list)) {
             p <- count_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
-                            ylabel='log-normalized junction conts') +
+                            ylabel='Log-normalized Junction Counts') +
                 facet_wrap(. ~ junction,
+                           ncol=2,
                            scales="free_y")
 
             print(p)
@@ -644,7 +635,7 @@ for (name in names(norm_list)) {
             p <- count_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
-                            ylabel='log-normalized counts for junctions with or without CEs') +
+                            ylabel='Log-normalized Counts for Junctions with or without CEs') +
                 facet_wrap(. ~ exon_detection,
                            scales="free_y")
 
@@ -714,7 +705,7 @@ for (name in names(mat_list)) {
             p <- ratio_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
-                            ylabel='Count ratios (CE / non-CE)')
+                            ylabel='Count Ratios (CE / Non-CE)')
             print(p)
 
             cat('\n\n')
@@ -785,7 +776,7 @@ for (name in names(mat_list)) {
             p <- ratio_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
-                            ylabel='Count ratios (CE / all-junctions)')
+                            ylabel='Count Ratios (CE / All-junctions)')
 
             print(p)
             cat('\n\n')
