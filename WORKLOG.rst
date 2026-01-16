@@ -1889,6 +1889,8 @@ fcx_ce
                 # ...
                 width=0.2)
 
+        - p-value tables cleaned
+
 - Update downstream single-cell exploratory analysis
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
