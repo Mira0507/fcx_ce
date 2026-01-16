@@ -807,8 +807,8 @@ followed by the BH method. CSV files containing p-values and individual counts a
 result table. Note that contrasts with many zero counts can failed, returning missing values (`NaN`).
 
 
-```{r prep_wilcox_test}
-stop()
+```{r prep_stat_test}
+
 # --------------------------------------------------------------------------------
 # This chunk sets up a pairwise t- or wilcoxon test
 # --------------------------------------------------------------------------------
@@ -835,6 +835,18 @@ calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat=
             })
         }
     )
+}
+
+# Function to clean p-values and add FDR
+clean_pval <- function(dataframe, dcol, control="Control", padj_method="BH") {
+    # Replace p-value with 1 for rows from control group
+    dataframe[['pvalue']] <- ifelse(dataframe[[dcol]] == control,
+                                    1,
+                                    dataframe[['pvalue']])
+    # Add a column for FDR
+    dataframe[['FDR']] <- p.adjust(dataframe[['pvalue']],
+                                   method=padj_method)
+    return(dataframe)
 }
 
 # Function to subset and clean a count data frame
@@ -901,7 +913,6 @@ for (name in names(norm_list)) {
         contr_label <- paste0(d, "_vs_Control")
         cat('####', contr_label, '\n\n')
         if (d %in% df[[disease_col]]) {
-            cat('##### Comparisons\n\n')
             # Subset the input data frame 
             df_subset <- df[df[[disease_col]] %in% c('Control', d),]
             # Calculate p-values
@@ -912,25 +923,9 @@ for (name in names(norm_list)) {
                               split_col='junction')
             # Add FDR
             pval_df <- data.frame(junction=names(pval),
-                                  pvalue=pval,
-                                  FDR=p.adjust(pval, method="BH")) %>%
+                                  pvalue=pval) %>%
                 remove_rownames()
 
-            print(knitr::kable(pval_df))
-            cat('\n\n')
-
-            # Save the p-value table as a csv file
-            csv_path <- paste0(out_dir, "/",
-                               name,
-                               "_",
-                               contr_label,
-                               "_junction_comparisons.csv")
-            write.csv(pval_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
-            cat('##### Counts\n\n')
             # Display mean and median counts for each junction
             stat_df <- split(df_subset, df_subset$junction) %>%
                 map_df(function(df_i) df_i %>%
@@ -941,15 +936,21 @@ for (name in names(norm_list)) {
                                  median_counts=median(counts)) %>%
                        unique()) %>%
                 as.data.frame()
-            print(knitr::kable(stat_df))
+
+            # Merge statistics, N, and counts
+            res_df <- inner_join(stat_df, pval_df, by='junction') %>%
+                clean_pval(dcol=disease_col)
+
+            print(knitr::kable(res_df))
             cat('\n\n')
+
             # Save the stat table as a csv file
             csv_path <- paste0(out_dir, "/",
                                name,
                                "_",
                                contr_label,
                                "_junction_counts.csv")
-            write.csv(stat_df,
+            write.csv(res_df,
                       csv_path,
                       row.names=FALSE,
                       quote=FALSE)
@@ -979,7 +980,6 @@ for (name in names(norm_list)) {
         contr_label <- paste0(d, "_vs_Control")
         cat('####', contr_label, '\n\n')
         if (d %in% df[[disease_col]]) {
-            cat('##### Comparisons\n\n')
             # Subset the input data frame 
             df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
 
@@ -993,39 +993,33 @@ for (name in names(norm_list)) {
                     split_col='exon_detection')
                 data.frame(gene=g, junction=names(vec), pvalue=vec) }) %>%
                 bind_rows() %>%
-                mutate(FDR=p.adjust(pvalue, method="BH")) %>%
                 remove_rownames()
 
-            print(knitr::kable(pval_df))
-            cat('\n\n')
-
-            # Save the p-value table as a csv file
-            csv_path <- paste0(out_dir, "/",
-                               name,
-                               "_",
-                               contr_label,
-                               "_CE_comparisons.csv")
-            write.csv(pval_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
-
-            cat('##### Counts\n\n')
             # Display mean and median counts for each junction
             stat_list <- split(df_subset, df_subset[['gene_spliced']])
             stat_df <- map(names(stat_list), ~stat_list[[.x]] %>%
                 group_by_at(vars(disease_col, 'exon_detection')) %>%
                 summarize(gene=.x,
-                          exon_detection=exon_detection,
                           N=n(),
                           average_counts=mean(counts),
                           median_counts=median(counts)) %>%
                 unique()) %>%
-                bind_rows() %>%
-                as.data.frame() %>%
-                arrange(gene, exon_detection)
-            print(knitr::kable(stat_df))
+                bind_rows()
+
+            # Merge two data frames
+            res_df <- inner_join(pval_df,
+                                 stat_df,
+                                 by=c('gene', 'junction'='exon_detection')) %>%
+                clean_pval(dcol=disease_col)
+            # Clean column order
+            res_df <- res_df[, c(disease_col,
+                                 'gene',
+                                 'junction',
+                                 'N',
+                                 'average_counts',
+                                 'median_counts',
+                                 'pvalue', 'FDR')]
+            print(knitr::kable(res_df))
             cat('\n\n')
             # Save the stat table as a csv file
             csv_path <- paste0(out_dir, "/",
@@ -1033,7 +1027,7 @@ for (name in names(norm_list)) {
                                "_",
                                contr_label,
                                "_CE_counts.csv")
-            write.csv(stat_df,
+            write.csv(res_df,
                       csv_path,
                       row.names=FALSE,
                       quote=FALSE)
@@ -1064,7 +1058,6 @@ for (name in names(norm_list)) {
         contr_label <- paste0(d, "_vs_Control")
         cat('####', contr_label, '\n\n')
         if (d %in% df[[disease_col]]) {
-            cat('##### Comparisons\n\n')
             # Subset the input data frame 
             df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
 
@@ -1091,37 +1084,30 @@ for (name in names(norm_list)) {
                 }
             }
             pval_df <- data.frame(gene=names(pval_list),
-                                  pvalue=unlist(pval_list),
-                                  FDR=p.adjust(unlist(pval_list), method="BH")) %>%
+                                  pvalue=unlist(pval_list)) %>%
                 remove_rownames()
 
-            print(knitr::kable(pval_df))
-            cat('\n\n')
-
-            # Save the p-value table as a csv file
-            csv_path <- paste0(out_dir, "/",
-                               name,
-                               "_",
-                               contr_label,
-                               "_CE_over_nonCE_comparisons.csv")
-            write.csv(pval_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
-
-            cat('##### Ratios\n\n')
             # Display mean and median counts for each junction
-            stat_df <- df_list %>%
+            res_df <- df_list %>%
                 bind_rows() %>%
                 mutate(gene=gene_spliced) %>%
                 group_by_at(vars('gene', disease_col)) %>%
                 summarize(N=n(),
                           average_ratio=mean(ratio),
                           median_ratio=median(ratio)) %>%
-                unique()
+                unique() %>%
+                inner_join(pval_df, by='gene') %>%
+                clean_pval(dcol=disease_col)
 
-            print(knitr::kable(stat_df))
+            # Reorder columns
+            res_df <- res_df[, c(disease_col,
+                                 'gene',
+                                 'N',
+                                 'average_ratio',
+                                 'median_ratio',
+                                 'pvalue',
+                                 'FDR')]
+            print(knitr::kable(res_df))
             cat('\n\n')
 
             # Save the stat table as a csv file
@@ -1130,7 +1116,7 @@ for (name in names(norm_list)) {
                                "_",
                                contr_label,
                                "_CE_over_nonCE_ratios.csv")
-            write.csv(stat_df,
+            write.csv(res_df,
                       csv_path,
                       row.names=FALSE,
                       quote=FALSE)
@@ -1160,7 +1146,6 @@ for (name in names(norm_list)) {
         contr_label <- paste0(d, "_vs_Control")
         cat('####', contr_label, '\n\n')
         if (d %in% df[[disease_col]]) {
-            cat('##### Comparisons\n\n')
             # Subset the input data frame 
             df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
 
@@ -1187,37 +1172,31 @@ for (name in names(norm_list)) {
                 }
             }
             pval_df <- data.frame(gene=names(pval_list),
-                                  pvalue=unlist(pval_list),
-                                  FDR=p.adjust(unlist(pval_list), method="BH")) %>%
+                                  pvalue=unlist(pval_list)) %>%
                 remove_rownames()
 
-            print(knitr::kable(pval_df))
-            cat('\n\n')
-
-            # Save the p-value table as a csv file
-            csv_path <- paste0(out_dir, "/",
-                               name,
-                               "_",
-                               contr_label,
-                               "_CE_over_all_comparisons.csv")
-            write.csv(pval_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
-
-            cat('##### Ratios\n\n')
             # Display mean and median counts for each junction
-            stat_df <- df_list %>%
+            res_df <- df_list %>%
                 bind_rows() %>%
                 mutate(gene=gene_spliced) %>%
                 group_by_at(vars('gene', disease_col)) %>%
                 summarize(N=n(),
                           average_ratio=mean(ratio),
                           median_ratio=median(ratio)) %>%
-                unique()
+                unique() %>%
+                inner_join(pval_df, by='gene') %>%
+                clean_pval(dcol=disease_col)
 
-            print(knitr::kable(stat_df))
+            # Reorder columns
+            res_df <- res_df[, c(disease_col,
+                                 'gene',
+                                 'N',
+                                 'average_ratio',
+                                 'median_ratio',
+                                 'pvalue',
+                                 'FDR')]
+
+            print(knitr::kable(res_df))
             cat('\n\n')
 
             # Save the stat table as a csv file
@@ -1226,7 +1205,7 @@ for (name in names(norm_list)) {
                                "_",
                                contr_label,
                                "_CE_over_all_ratios.csv")
-            write.csv(stat_df,
+            write.csv(res_df,
                       csv_path,
                       row.names=FALSE,
                       quote=FALSE)
