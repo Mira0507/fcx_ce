@@ -73,12 +73,6 @@ for (p in c(out_dir)) {
     if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
 }
 
-# Specify a pseudocount to be added to count matrices
-# NOTE: The sparsity of single cell matrix sometimes causes an error
-#       that cannot calculate geometric means because of many zeros. 
-#       This issue is prevented by adding a small pseudocount.
-pseudocount <- 0
-
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
@@ -544,9 +538,9 @@ count_plot <- function(input_df, dcol, scol, ylabel) {
 ratio_plot <- function(input_df, dcol, scol, ylabel) {
 
     ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
-           geom_violin(trim=TRUE) +
-           geom_point(data=input_df,
-                      aes_string(x=dcol, y='ratio', color=scol)) +
+        geom_violin(trim=TRUE) +
+        geom_quasirandom(data=input_df,
+                         aes_string(x=dcol, y='ratio', color=scol), width=0.2) +
            stat_summary(fun="median",
                         geom="crossbar",
                         width=0.1,
@@ -772,7 +766,7 @@ for (name in names(mat_list)) {
             ce_df[["all junctions"]] <- rowSums(ce_df[, e_detection])
 
             # Remove samples if they have zero counts for all exon_detection groups
-            ce_df <- ce_df %>%
+            ce_df <- ce_df[ce_df[['all junctions']] > 0,] %>%
                 # Add a pseudocount of nonzero_min to all numeric entries
                 mutate_if(is.numeric, function(x) x + 0.1 * nonzero_min) %>%
                 # Calculate CE/non-CE counts
