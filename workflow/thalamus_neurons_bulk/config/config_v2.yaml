@@ -19,10 +19,10 @@ all_cols:
   - 'study_specific_disease_specific'
 
 # Required column names
-key_col: 'general_disease' # column for read aggregation
+key_col: 'disease_celltype' # column for read aggregation
 index_col: 'SampleID' # column for unique sample ID, aka index
 bam_col: 'bam' # column for paths to bam files
-celltype_col: 'renamed_annotation_cell_type_post_outlier_removal'  # column for celltype (leave '' to skip this option)
+celltype_col: 'celltype'  # column for celltype (leave '' to skip this option)
 study_col: 'study'
 disease_col: 'general_disease'
 
@@ -30,12 +30,12 @@ disease_col: 'general_disease'
 adata:
   ExNeu1: "../../input/thalamus_neurons/ExNeu1_adata.h5ad"
   ExNeu2: "../../input/thalamus_neurons/ExNeu2_adata.h5ad"
-  SOX14Pos: "../../input/thalamus_neurons/SOX14_Pos_InNeu_adata.h5ad"
-  SOX14Neg: "../../input/thalamus_neurons/SOX14_Neg_InNeu_adata.h5ad"
+  SOX14Pos_InNeu: "../../input/thalamus_neurons/SOX14_Pos_InNeu_adata.h5ad"
+  SOX14Neg_InNeu: "../../input/thalamus_neurons/SOX14_Neg_InNeu_adata.h5ad"
   Mixed: "../../input/thalamus_neurons/Mixed_adata.h5ad"
 
 # Path to output directory
-outdir: "results"
+outdir: "results_v2"
 
 # Path to bam directory
 bam_dir: '../../input/thalamus_neurons/bam'
@@ -48,4 +48,4 @@ genes:
 
 # Analysis name. This will be used for the file name of
 # the junction count matrix
-analysis: 'thalamus_neurons'
+analysis: 'thalamus_neurons_v2'
