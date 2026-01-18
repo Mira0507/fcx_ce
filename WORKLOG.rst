@@ -1866,7 +1866,7 @@ fcx_ce
         - all statistics performed using wilcox test
 
 
-2026-01-15
+2026-01-16
 ----------
 
 @Mira0507
@@ -1896,3 +1896,26 @@ fcx_ce
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
     - notes
         - violin and dot plots updated in the same way as the pseudobulk analysis
+
+
+2026-01-17
+----------
+
+@Mira0507
+
+- Run downstream pseudobulk CE analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - ratio plot replacement with ``geom_quasirandom()``
+        - bugfix: samples with zero counts for both CE and non-CE junctions 
+          excluded for junction ratio plots
+
+- Run Snakemake to generate celltype- and disease-aggregated junction bam files
+    - in progress
+    - files added/updated
+        - ``workflow/thalamus_neurons_bulk/config/config_v2.yaml``
+        - ``workflow/thalamus_neurons_bulk/Snakemake``
+        - ``workflow/thalamus_neurons_bulk/WRAPPER_SLURM``
+
+
