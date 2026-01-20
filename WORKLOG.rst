@@ -1935,3 +1935,23 @@ fcx_ce
     .. code-block:: R
 
         scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
+
+
+2026-01-20
+----------
+
+@Mira0507
+
+- Replot CE/non-CE and CE/all-junction ratios
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - cleaned code
+        - fixing the y-min and y-max applied to all pseudobulk violin plots
+
+- Prep celltype- and disease-type-specific bam files for Sashimi plot
+    - conda env: ``env``
+    - scripts: 
+        - ``workflow/thalamus_neurons_bulk/Snakefile``
+        - ``workflow/thalamus_neurons_bulk/config/config_v2.yaml``
+    - output directory: ``workflow/thalamus_neurons_bulk/results_v2``
