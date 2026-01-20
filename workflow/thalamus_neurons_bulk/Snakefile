@@ -67,10 +67,163 @@ for celltype, path in config['adata'].items():
 meta_df = pd.concat(meta_list, axis=0)
 
 # Add bam file paths to the metadata table and save as a tsv file
-meta_df = pd.merge(sampletable.loc[:, [config['index_col'], config['key_col'], config['bam_col']]].reset_index(drop=True),
+meta_df = pd.merge(sampletable.loc[:, [config['index_col'], config['bam_col']]].reset_index(drop=True),
                    meta_df,
                    how="right",
                    on=[config['index_col']])
-# meta_df.to_csv(barcode_file, sep="\t", index=False)
+meta_df.to_csv(barcode_file, sep="\t", index=False)
 
-print(meta_df)
+# Prep a dictionary with keys corresponding to groups 
+# and values corresponding to unique sample ids
+group_dic = {}
+for g in list(set(meta_df[config['disease_col']])):
+    # Filter rows for group
+    df = meta_df[meta_df[config['disease_col']] == g]
+    group_dic[g] = list(set(df[config['index_col']]))
+
+#################################### PREP FUNCTIONS ####################################
+
+# Function to extract SQ-header from a bam file
+def extract_headers_SQ(bam):
+    # Collect unique SQ header reads in a set
+    headers = set()
+    with pysam.AlignmentFile(bam, "rb") as f:
+        for line in f.header['SQ']:
+            headers.add((line['SN'], line['LN']))
+    return headers
+
+def list_group_sams(wildcards):
+    groups = group_dic[wildcards.group]
+    samlist = [f"{outdir}/sam/{g}__{wildcards.celltype}.sam" for g in groups]
+    return samlist
+
+#################################### RULES ####################################
+
+
+rule all:
+    input:
+        expand("{outdir}/bam/sample/{sample}__{celltype}_sorted.bam",
+               outdir=config['outdir'],
+               sample=set(meta_df[config['index_col']]),
+               celltype=set(meta_df[config['celltype_col']])),
+        expand("{outdir}/bam/group/{group}__{celltype}_sorted.bam",
+               outdir=config['outdir'],
+               group=group_dic.keys(),
+               celltype=set(meta_df[config['celltype_col']]))
+
+
+rule create_header:
+    """
+    This rule checks whether all headers (@SQ) are identical across the samples
+    and creates header
+    """
+    input:
+        bams = lambda wildcards: [b for b in set(meta_df['bam']) if pd.notnull(b) and os.path.isfile(b)]
+    output:
+        sam = "{outdir}/header.sam"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 30
+    run:
+        header_list = []
+        for bam in input.bams:
+            header_set = extract_headers_SQ(bam)
+            if header_set not in header_list:
+                header_list.append(header_set)
+        if len(header_list) != 1:
+            raise ValueError("Headers are discordant across the samples!")
+        else:
+            shell('samtools view -H {input.bams[0]} | grep "^@SQ" > {output.sam}')
+
+rule prep_sam:
+    """
+    This rule preps barcodes corresonding to the celltype of interest in a txt file
+    """
+    input:
+        header = "{outdir}/header.sam",
+        bam = lambda wildcards: "{}/".format(config['bam_dir']) + "{sample}_possorted_genome_bam.bam"
+    output:
+        sam = "{outdir}/sam/{sample}__{celltype}.sam"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60 * 12
+    threads: 12
+    params:
+        genes = config['genes']
+    run:
+        # Sanity check for the input bam file
+        if not os.path.exists(input.bam):
+            raise ValueError("Input bam file not found!")
+        # Filter rows by groups of interest
+        df = meta_df[(meta_df[config['index_col']] == wildcards.sample)]
+        if config['celltype_col'] != '':
+            df = df[(df[config['celltype_col']] == wildcards.celltype)]
+        # Create a list storing unique barcodes filtered by cluster and genotype
+        barcode_list = [f"CB:Z:{barcode.strip()}" for barcode in set(df.barcode)]
+        # Join barcodes into a single string (w header)
+        barcode_joined = "|".join(barcode_list)
+        # Prep a list for genes of interest
+        gene_list = [f"GN:Z:{g.strip()}" for g in params.genes]
+        # Join genes into a single string (w header)
+        gene_joined = "|".join(gene_list)
+        # Specify a temporary sam file 
+        temp_sam = f"{wildcards.outdir}/{wildcards.sample}_{wildcards.celltype}_temp.sam"
+        # Run samtools with or without module load samtools/1.19
+        shell(
+            """
+            cat {input.header} > {output.sam}
+            samtools view -@ {threads} {input.bam} | grep -E "{barcode_joined}" > {temp_sam} || true
+            cat {temp_sam} | grep -E "{gene_joined}" >> {output.sam} || true
+            rm -f {temp_sam}
+            """
+            )
+
+rule create_sample_celltype_bam:
+    """
+    This rule aggregates header and filtered sam files into a bam file
+    """
+    input:
+        sam = "{outdir}/sam/{sample}__{celltype}.sam"
+    output:
+        bam = "{outdir}/bam/sample/{sample}__{celltype}_sorted.bam",
+        bai = "{outdir}/bam/sample/{sample}__{celltype}_sorted.bam.bai",
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60
+    params:
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/sample/{wildcards.sample}__{wildcards.celltype}_unsorted.bam"
+    threads: 12
+    shell:
+        """
+        cat {input.sam} | samtools view -bS -@ {threads} > {params.temp_bam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        rm {params.temp_bam}
+        """
+
+rule create_group_celltype_bam:
+    """
+    This rule aggregates header and filtered sam files into a bam file
+    """
+    input:
+        sam = list_group_sams
+    output:
+        bam = "{outdir}/bam/group/{group}__{celltype}_sorted.bam",
+        bai = "{outdir}/bam/group/{group}__{celltype}_sorted.bam.bai"
+    params:
+        temp_bam = lambda wildcards: f"{wildcards.outdir}/bam/group/{wildcards.group}__{wildcards.celltype}_unsorted.bam"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60 * 12
+    threads: 24
+    shell:
+        """
+        samtools merge -f -@ {threads} {params.temp_bam} {input.sam}
+        samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
+        samtools index {output.bam}
+        rm {params.temp_bam}
+        """
