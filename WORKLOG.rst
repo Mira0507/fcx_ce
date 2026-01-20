@@ -1919,3 +1919,19 @@ fcx_ce
         - ``workflow/thalamus_neurons_bulk/WRAPPER_SLURM``
 
 
+2026-01-19
+----------
+
+@Mira0507
+
+- Run downstream pseudobulk CE analysis using raw junction counts
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk-raw.Rmd``
+
+- Replot CE/non-CE and CE/all-junction ratios
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+
+    .. code-block:: R
+
+        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
