@@ -128,15 +128,11 @@ celltype_col <- 'renamed_annotation_cell_type_post_outlier_removal'
 disease_col <- "general_disease"
 study_col <- 'study'
 
-# Specify DE thresholds
-lfc_thresh <- 0
-alpha <- 0.1
-
 # Specify CE target genes
 ce_targets <- config_yaml[['genes']]
 
-# TRUE or FALSE if the dispersion function needs to be replaced after inspection
-replace_dispersion_function <- FALSE
+# Specify the proportion of y-value to be added to the max data point
+ylim_factor <- 0.6
 ```
 
 Loading input data {.tabset}
@@ -537,7 +533,7 @@ count_plot <- function(input_df, dcol, scol, ylabel) {
 # Specify the plot format displaying ratios
 ratio_plot <- function(input_df, dcol, scol, ylabel) {
 
-    ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
+    p <- ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
         geom_violin(trim=TRUE) +
         geom_quasirandom(data=input_df,
                          aes_string(x=dcol, y='ratio', color=scol), width=0.2) +
@@ -550,8 +546,9 @@ ratio_plot <- function(input_df, dcol, scol, ylabel) {
            theme(axis.title.x=element_blank(),
                  axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
            scale_fill_manual(values=color_map[[dcol]]) +
-           scale_color_manual(values=color_map[[scol]]) +
-           scale_y_log10()
+           scale_color_manual(values=color_map[[scol]])
+
+    return(p)
     }
 ```
 
@@ -658,21 +655,19 @@ not containing any junctions are omitted. 1/10 of non-zero minimum value is adde
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
 (e.g. STMN2) within a subset (e.g. ExNeu1).
 
-
-
-```{r ce_ratio, results='asis', fig.width=6}
+```{r ce_ratio}
 
 # --------------------------------------------------------------------------------
 # This chunk compares CE/non-CE counts across all disease conditions
 # --------------------------------------------------------------------------------
 
+ratio_list <- list()
+
 for (name in names(mat_list)) {
-    cat('###', name, '{.tabset}\n\n')
     # Extract input data frame
     df <- norm_list[[name]]
-    
+    ratio_list[[name]] <- list()
     for (ce in ce_targets) {
-        cat('####', ce, '{.tabset}\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
             group_by_at(vars(sample_col,
@@ -704,18 +699,49 @@ for (name in names(mat_list)) {
                 as.data.frame() %>%
                 unique()
 
-            # Plot
-            p <- ratio_plot(input_df=ce_df,
-                            dcol=disease_col,
-                            scol=study_col,
-                            ylabel='Count Ratios (CE / Non-CE)')
-            print(p)
+            ratio_list[[name]][[ce]] <- ce_df
 
-            cat('\n\n')
-
-        } else {
-            cat("\n\nRatio not displayed!\n\n")
         }
+    }
+}
+
+```
+
+```{r ce_ratio_plot,  results='asis', fig.width=6}
+
+# Specify the max ratio value
+max_y <- ratio_list %>%
+    map(~.x %>% bind_rows) %>%
+    map(~.x %>%
+        pull(ratio) %>%
+        max) %>%
+    unlist() %>%
+    max()
+
+# Specify the min ratio value
+min_y <- ratio_list %>%
+    map(~.x %>% bind_rows) %>%
+    map(~.x %>%
+        pull(ratio) %>%
+        min) %>%
+    unlist() %>%
+    min()
+
+for (name in names(ratio_list)) {
+    # Extract input data frame
+    cat('\n\n###', name, '{.tabset}\n\n')
+    for (ce in names(ratio_list[[name]])) {
+    cat('\n\n####', ce, '\n\n')
+    ce_df <- ratio_list[[name]][[ce]]
+    # Plot
+    p <- ratio_plot(input_df=ce_df,
+                    dcol=disease_col,
+                    scol=study_col,
+                    ylabel='Count Ratios (CE / Non-CE)') + 
+        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
+
+    print(p)
+    cat('\n\n')
     }
 }
 
@@ -728,19 +754,18 @@ not containing any junctions are omitted. 1/10 of non-zero minimum value is adde
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
 (e.g. STMN2) within a subset (e.g. ExNeu1).
 
-```{r ce_over_all, results='asis', fig.width=6}
+```{r ce_over_all}
 
 # --------------------------------------------------------------------------------
 # This chunk compares CE/all counts
 # --------------------------------------------------------------------------------
 
+ratio_list <- list()
 for (name in names(mat_list)) {
-    cat('###', name, '{.tabset}\n\n')
     # Extract input data frame
     df <- norm_list[[name]]
-    
+    ratio_list[[name]] <- list()
     for (ce in ce_targets) {
-        cat('####', ce, '\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
             group_by_at(vars(sample_col,
@@ -775,22 +800,49 @@ for (name in names(mat_list)) {
                 as.data.frame() %>%
                 unique()
 
-            # Plot
-            p <- ratio_plot(input_df=ce_df,
-                            dcol=disease_col,
-                            scol=study_col,
-                            ylabel='Count Ratios (CE / All-junctions)')
-
-            print(p)
-            cat('\n\n')
-
-        } else {
-            cat("\n\nRatio not displayed!\n\n")
+            ratio_list[[name]][[ce]] <- ce_df
         }
-
     }
 }
 
+```
+
+```{r ce_over_all_plot, results='asis', fig.width=6}
+# Specify the max ratio value
+max_y <- ratio_list %>%
+    map(~.x %>% bind_rows) %>%
+    map(~.x %>%
+        pull(ratio) %>%
+        max) %>%
+    unlist() %>%
+    max()
+
+# Specify the min ratio value
+min_y <- ratio_list %>%
+    map(~.x %>% bind_rows) %>%
+    map(~.x %>%
+        pull(ratio) %>%
+        min) %>%
+    unlist() %>%
+    min()
+
+for (name in names(ratio_list)) {
+    # Extract input data frame
+    cat('\n\n###', name, '{.tabset}\n\n')
+    for (ce in names(ratio_list[[name]])) {
+    cat('\n\n####', ce, '\n\n')
+    ce_df <- ratio_list[[name]][[ce]]
+    # Plot
+    p <- ratio_plot(input_df=ce_df,
+                    dcol=disease_col,
+                    scol=study_col,
+                    ylabel='Count Ratios (CE / All-junctions)') + 
+        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
+
+    print(p)
+    cat('\n\n')
+    }
+}
 ```
 
 # Pairwise Wilcoxon Rank Sum test {.tabset}
