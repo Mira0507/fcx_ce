@@ -132,7 +132,7 @@ study_col <- 'study'
 ce_targets <- config_yaml[['genes']]
 
 # Specify the proportion of y-value to be added to the max data point
-ylim_factor <- 0.6
+ylim_factor <- 0.8
 ```
 
 Loading input data {.tabset}
@@ -550,6 +550,21 @@ ratio_plot <- function(input_df, dcol, scol, ylabel) {
 
     return(p)
     }
+
+# Function to extract min and max values for ratio
+set_min_max <- function(input_list) {
+
+    # Extract all ratios
+    vec <- ratio_list %>%
+        map(~.x %>%
+            bind_rows() %>%
+            pull(ratio)) %>%
+            unlist()
+
+    # Specify the max ratio value
+    c(min=min(vec), max=max(vec))
+}
+
 ```
 
 ## Counts of splice junctions {.tabset}
@@ -709,23 +724,10 @@ for (name in names(mat_list)) {
 
 ```{r ce_ratio_plot,  results='asis', fig.width=6}
 
-# Specify the max ratio value
-max_y <- ratio_list %>%
-    map(~.x %>% bind_rows) %>%
-    map(~.x %>%
-        pull(ratio) %>%
-        max) %>%
-    unlist() %>%
-    max()
-
-# Specify the min ratio value
-min_y <- ratio_list %>%
-    map(~.x %>% bind_rows) %>%
-    map(~.x %>%
-        pull(ratio) %>%
-        min) %>%
-    unlist() %>%
-    min()
+# Extract y-min and y-max from the dataset
+min_max_y <- set_min_max(input_list=ratio_list)
+min_y <- min_max_y['min']
+max_y <- min_max_y['max']
 
 for (name in names(ratio_list)) {
     # Extract input data frame
@@ -808,23 +810,11 @@ for (name in names(mat_list)) {
 ```
 
 ```{r ce_over_all_plot, results='asis', fig.width=6}
-# Specify the max ratio value
-max_y <- ratio_list %>%
-    map(~.x %>% bind_rows) %>%
-    map(~.x %>%
-        pull(ratio) %>%
-        max) %>%
-    unlist() %>%
-    max()
 
-# Specify the min ratio value
-min_y <- ratio_list %>%
-    map(~.x %>% bind_rows) %>%
-    map(~.x %>%
-        pull(ratio) %>%
-        min) %>%
-    unlist() %>%
-    min()
+# Extract y-min and y-max from the dataset
+min_max_y <- set_min_max(input_list=ratio_list)
+min_y <- min_max_y['min']
+max_y <- min_max_y['max']
 
 for (name in names(ratio_list)) {
     # Extract input data frame
