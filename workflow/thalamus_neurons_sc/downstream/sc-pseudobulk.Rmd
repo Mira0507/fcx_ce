@@ -592,12 +592,16 @@ for (name in names(norm_list)) {
 
         if (nrow(ce_df) > 0) {
 
+            # Set min and max values for the y-axis
+            min_y <- min(ce_df[['counts']])
+            max_y <- max(ce_df[['counts']])
+            # Plot count distribution
             p <- count_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
                             ylabel='Log-normalized Junction Counts') +
-                facet_wrap(. ~ junction,
-                           ncol=2)
+                facet_wrap(. ~ junction, ncol=2) +
+                ylim(min_y, max_y + max_y * 0.2)
 
             plot_name <- paste0(name,
                                 "_",
@@ -646,13 +650,16 @@ for (name in names(norm_list)) {
                                        levels=condition_reorder)
 
         if (nrow(ce_df) > 0) {
-
-            # Plot
+            # Set min and max values for the y-axis
+            min_y <- min(ce_df[['counts']])
+            max_y <- max(ce_df[['counts']])
+            # Plot count distribution
             p <- count_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
                             ylabel='Log-normalized Counts for Junctions with or without CEs') +
-                facet_wrap(. ~ exon_detection)
+                facet_wrap(. ~ exon_detection) +
+                ylim(min_y, max_y + max_y * 0.2)
 
             print(p)
         } else {
