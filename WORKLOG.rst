@@ -1955,3 +1955,18 @@ fcx_ce
         - ``workflow/thalamus_neurons_bulk/Snakefile``
         - ``workflow/thalamus_neurons_bulk/config/config_v2.yaml``
     - output directory: ``workflow/thalamus_neurons_bulk/results_v2``
+
+- Compress single-cell bam and bed files in the current and old working directories
+
+    .. code-block:: bash
+
+        workflow/thalamus_sc/results/junction_counts$ zip -r junctions.zip *.sorted.gz
+        workflow/thalamus_sc/results/junction_counts$ rm *.sorted.gz
+
+        workflow/thalamus_neurons_sc/results/junction_counts$ zip -r junctions.zip *.sorted.gz
+        workflow/thalamus_neurons_sc/results/junction_counts$ rm -rf *.sorted.gz
+
+        workflow/thalamus_neurons_sc/results/bam$ zip -r cell.zip cell/
+        workflow/thalamus_neurons_sc/results/bam$ rm -rf cell
+
+
