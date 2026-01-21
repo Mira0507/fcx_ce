@@ -1650,3 +1650,323 @@ fcx_ce
         $ zip -r cell.zip cell
         # Delete
         $ rm -rf cell
+
+2025-12-22
+----------
+
+@Mira0507
+
+- Added packages to ``menv``
+    - packages
+        - ``r-upsetr``
+        - ``r-cowplot``
+        - ``bioconductor-annotationhub``
+    - command: ``$ mamba install r-upsetr r-cowplot bioconductor-annotationhub --freeze-installed``
+    - ``menv_requirements.txt`` and ``menv.archived.yaml`` updated accordingly
+
+
+2025-12-23
+----------
+
+@Mira0507
+
+- Input ``AnnData`` files for inhibitory neurons copied
+    - from: ``../trujilloae/thalamus_atlas/Combined_celltypes/post_neuron_explore/post_outlier_removal``
+    - to: ``input/thalamus_inhibitory``
+    - files:
+        - ``SOX14_Pos_InNeu_adata.h5ad``
+        - ``SOX14_Neg_InNeu_adata.h5ad``
+        - ``Mixed_adata.h5ad``
+
+2025-12-30
+----------
+
+@Mira0507
+
+- Prep new working directories for inhibitory neurons:
+    - ``workflow/thalamus_inhibitory_bulk``
+    - ``workflow/thalamus_inhibitory_sc``
+
+- Prep files in the working directories
+    - ``Snakefile``
+    - ``WRAPPER_SLURM``
+    - ``leafcutter_cluster_regtools.py``
+    - ``config/config.yaml``
+
+- Run Snakemake on inhibitory neurons in ``workflow/thalamus_inhibitory_bulk``
+  (completed)
+
+    .. code-block:: bash
+
+        Job stats:
+        job                           count
+        --------------------------  -------
+        all                               1
+        count_junctions                   1
+        create_group_celltype_bam        18
+        create_header                     1
+        create_sample_celltype_bam      276
+        extract_junctions               276
+        prep_juncfiles                    1
+        prep_sam                        276
+        total                           850
+
+- Run Snakemake on inhibitory neurons in ``workflow/thalamus_inhibitory_sc``
+  (in progress)
+
+    .. code-block:: bash
+
+        Job stats:
+        job                         count
+        ------------------------  -------
+        aggr_bams_group_celltype       18
+        all                             1
+        count_junctions                 1
+        create_header                   1
+        extract_junctions           19539
+        prep_bam                    19539
+        prep_juncfiles                  1
+        total                       39100
+
+
+2026-01-05
+----------
+
+@Mira0507
+
+- Rerun differential testing on excitatory neurons
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggrcont.Rmd``
+    - notes
+        - Counts for all control samples are aggregated regardless of study
+        - Plot format changed from *violon + boxplot* to *violin + dotplot*
+        - Code cleaned using custom functions
+
+
+2026-01-06
+----------
+
+@Mira0507
+
+- Minor updates to the documentation of the excitatory neuron results
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_sc/downstream/sc-pseudobulk-aggrcont.Rmd``
+    - note: Results shipped to the collaborator
+
+- Downstream analysis on inhibitory neurons
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_inhibitory_sc/downstream/sc-exploratory.Rmd``
+
+
+2026-01-08
+----------
+
+@Mira0507
+
+- Prep new directories to rerun snakemake on updated ``AnnData`` 
+  (obj generated on 12/17/2025)
+
+    .. code-block:: bash
+
+        # Input directory
+        $ ls input/thalamus_neurons
+        bam  # Symlinked to bam directory
+        ExNeu1_adata.h5ad
+        ExNeu2_adata.h5ad
+        Mixed_adata.h5ad
+        SOX14_Neg_InNeu_adata.h5ad
+        SOX14_Pos_InNeu_adata.h5ad
+
+        # Working directories
+        $ ls workflow | grep neurons
+        thalamus_neurons_bulk
+        thalamus_neurons_sc
+
+- Rerun the pipeline on updated ``AnnData`` for bulk CE analysis
+    - conda: ``env``
+    - Snakefile: ``workflow/thalamus_neurons_bulk/Snakefile``
+    - config: ``workflow/thalamus_neurons_bulk/config/config.yaml``
+
+    .. code-block:: bash
+
+        Job stats:
+        job                           count
+        --------------------------  -------
+        all                               1
+        count_junctions                   1
+        create_group_celltype_bam        30
+        create_header                     1
+        create_sample_celltype_bam      460
+        extract_junctions               460
+        prep_juncfiles                    1
+        prep_sam                        460
+        total                          1414
+
+- Compress single-cell bam and bed files in ``workflow/thalamus_inhibitory_sc/results``
+    - bam: ``workflow/thalamus_inhibitory_sc/results/bam/cell.zip``
+    - bed: ``workflow/thalamus_inhibitory_sc/results/junction_counts/junction.zip``
+
+
+2026-01-09
+----------
+
+@Mira0507
+
+- Rerun the pipeline on updated ``AnnData`` for single-cell CE analysis
+    - conda: ``env``
+    - Snakefile: ``workflow/thalamus_neurons_sc/Snakefile``
+    - config: ``workflow/thalamus_neurons_sc/config/config.yaml``
+
+    .. code-block:: bash
+
+        Job stats:
+        job                         count
+        ------------------------  -------
+        aggr_bams_group_celltype       30
+        all                             1
+        count_junctions                 1
+        create_header                   1
+        extract_junctions           46253
+        prep_bam                    46253
+        prep_juncfiles                  1
+        total                       92540
+
+
+2026-01-13
+----------
+
+@Mira0507
+
+- Run downstream single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - note: in progress
+
+
+2026-01-14
+----------
+
+@Mira0507
+
+- Run downstream single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - a wide range of single-cell CE metrics calculated per subset
+        - p-values associated with percentage of cells with junction detection
+          calculated using a wilcoxon rank sum test per subset
+        - violin plots generated to present the percentage of cells with junction
+          detection across disease conditions
+
+- Run downstream pseudobulk CE analysis (in progress)
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes:
+        - DESeq2 deleted
+        - all statistics performed using wilcox test
+
+
+2026-01-16
+----------
+
+@Mira0507
+
+- Run downstream pseudobulk CE analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes:
+        - DESeq2 deleted
+        - all statistics performed using wilcox test
+        - violin + dot plots updated using ``geom_quasirandom()`` and
+          ``geom_violin(tri=TRUE)``
+
+        .. code-block:: R
+
+            library(ggbeeswarm)
+            geom_violin(trim=TRUE) +
+            geom_quasirandom(
+                data=input_df,
+                # ...
+                width=0.2)
+
+        - p-value tables cleaned
+
+- Update downstream single-cell exploratory analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - violin and dot plots updated in the same way as the pseudobulk analysis
+
+
+2026-01-17
+----------
+
+@Mira0507
+
+- Run downstream pseudobulk CE analysis
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - ratio plot replacement with ``geom_quasirandom()``
+        - bugfix: samples with zero counts for both CE and non-CE junctions 
+          excluded for junction ratio plots
+
+- Run Snakemake to generate celltype- and disease-aggregated junction bam files
+    - in progress
+    - files added/updated
+        - ``workflow/thalamus_neurons_bulk/config/config_v2.yaml``
+        - ``workflow/thalamus_neurons_bulk/Snakemake``
+        - ``workflow/thalamus_neurons_bulk/WRAPPER_SLURM``
+
+
+2026-01-19
+----------
+
+@Mira0507
+
+- Run downstream pseudobulk CE analysis using raw junction counts
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk-raw.Rmd``
+
+- Replot CE/non-CE and CE/all-junction ratios
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+
+    .. code-block:: R
+
+        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
+
+
+2026-01-20
+----------
+
+@Mira0507
+
+- Replot CE/non-CE and CE/all-junction ratios
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - cleaned code
+        - fixing the y-min and y-max applied to all pseudobulk violin plots
+
+- Prep celltype- and disease-type-specific bam files for Sashimi plot
+    - conda env: ``env``
+    - scripts: 
+        - ``workflow/thalamus_neurons_bulk/Snakefile``
+        - ``workflow/thalamus_neurons_bulk/config/config_v2.yaml``
+    - output directory: ``workflow/thalamus_neurons_bulk/results_v2``
+
+- Compress single-cell bam and bed files in the current and old working directories
+
+    .. code-block:: bash
+
+        workflow/thalamus_sc/results/junction_counts$ zip -r junctions.zip *.sorted.gz
+        workflow/thalamus_sc/results/junction_counts$ rm *.sorted.gz
+
+        workflow/thalamus_neurons_sc/results/junction_counts$ zip -r junctions.zip *.sorted.gz
+        workflow/thalamus_neurons_sc/results/junction_counts$ rm -rf *.sorted.gz
+
+        workflow/thalamus_neurons_sc/results/bam$ zip -r cell.zip cell/
+        workflow/thalamus_neurons_sc/results/bam$ rm -rf cell
+
+

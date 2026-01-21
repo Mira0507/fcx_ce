@@ -71,7 +71,7 @@ snakemake_config <- "../config/config.yaml"
 config_yaml <- read_yaml(snakemake_config)
 
 # Path to output directory
-out_dir <- "sc-pseudobulk-aggr"
+out_dir <- "sc-pseudobulk-aggrcont"
 
 # Path to GTF
 gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
@@ -89,7 +89,7 @@ pseudocount <- 0
 
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
-    general_disease=c('Control-FTD', 'Control-AD', 'FTD', 'AD'),
+    general_disease=c('Control', 'FTD', 'AD'),
     cell_type=c('ExNeu1', 'ExNeu2'),
     study=c('Marsan', 'Biogen', 'Mathys'),
     study_specific_disease_specific=c('Control-Marsan',
@@ -117,8 +117,9 @@ factor_groups <- list(
 # Specify HEX color code
 color_map <- list(
     general_disease=c(
-        `Control-FTD`="#9999FF",
-        `Control-AD`="#6666FF",
+        # `Control-FTD`="#9999FF",
+        # `Control-AD`="#6666FF",
+        Control="#6666FF",
         FTD="#669900",
         AD="#FF6600"),
     study=c(
@@ -146,6 +147,7 @@ subset_col <- 'study_celltype'
 sample_col <- 'SampleID_celltype'
 celltype_col <- 'cell_type'
 disease_col <- "general_disease"
+study_col <- 'study'
 
 # Specify DE thresholds
 lfc_thresh <- 0
@@ -154,17 +156,11 @@ alpha <- 0.1
 # Specify CE target genes
 ce_targets <- config_yaml[['genes']]
 
-# Aggregate subsets? Set to NULL if unset.
-aggregate_subsets <- list(
-    MarsanBiogen_ExNeu1=c('Marsan_ExNeu1', 'Biogen_ExNeu1'),
-    MarsanBiogen_ExNeu2=c('Marsan_ExNeu2', 'Biogen_ExNeu2')
-)
-
 # TRUE or FALSE if the dispersion function needs to be replaced after inspection
-replace_dispersion_function <- TRUE
+replace_dispersion_function <- FALSE
 ```
 
-# Loading input data {.tabset}
+Loading input data {.tabset}
 
 The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
 genes:
@@ -192,22 +188,9 @@ print(in_rds)
 # Import input RDS file
 obj <- readRDS(in_rds)
 
-# Extract raw count matrices
+# Extract raw count matrices for subsets of interest
 mat_list <-  map(obj[['bulk']], ~.x[['raw']])
-
-# Aggregate subsets if necessary
-if (!is.null(aggregate_subsets)) {
-    for (name in names(aggregate_subsets)) {
-        # Extract subset names to be aggregated
-        subset_i <- aggregate_subsets[[name]]
-        # Filter subsets of interest
-        subset_list <- mat_list[subset_i] %>% unname()
-        # Merge matrices by binding columns
-        mat_list[[name]] <- do.call("cbind", subset_list)
-    }
-    # Remove old subsets
-    mat_list <- mat_list[! names(mat_list) %in% unlist(aggregate_subsets)]
-}
+mat_list <- mat_list[str_detect(names(mat_list), "all")]
 
 # Extract the entire sampletable (Edit manually if necessary)
 sampletable <- obj[['meta']] %>%
@@ -216,15 +199,6 @@ sampletable <- obj[['meta']] %>%
            study_disease_specific_celltype=paste0(study_specific_disease_specific,
                                                   "_",
                                                   cell_type))
-
-# Update disease labels
-acontrol_rows <- sampletable[[disease_col]] == "Control" &
-    str_detect(sampletable[[subset_col]], "Mathys")
-fcontrol_rows <- sampletable[[disease_col]] == "Control" &
-    ! str_detect(sampletable[[subset_col]], "Mathys")
-sampletable[[disease_col]] <- as.character(sampletable[[disease_col]])
-sampletable[acontrol_rows, disease_col] <- "Control-AD"
-sampletable[fcontrol_rows, disease_col] <- "Control-FTD"
 
 # Ensure to have correct levels for each factor columns
 for (f in names(factor_groups)) {
@@ -250,6 +224,37 @@ coldata_list <- lapply(mat_list, function(m) {
     cdata <- cdata[colnames(m),]
     return(cdata)
 })
+
+# Add contrasts by celltype and disease
+new_subsets <- c('ExNeu1_FTD', 'ExNeu2_FTD', 'ExNeu1_AD', 'ExNeu2_AD')
+
+for (name in new_subsets) {
+    # Specify celltype and disease conditions
+    subset_i <- str_split(name, '_')[[1]]
+
+    # Subset metadata and add to the `coldata_list`
+    cdata <- sampletable[sampletable[[celltype_col]] == subset_i[1] &
+                         sampletable[[disease_col]] %in% c("Control", subset_i[2]),
+                         c(sample_col, names(factor_groups))] %>%
+        unique()
+
+    # Subset the count matrix
+    m <- mat_list[['all']]
+    samples_i <- cdata[[sample_col]]
+    m <- m[, samples_i]
+
+    # Break if columns of the matrix and rows of the metadata don't match
+    if (nrow(cdata) != ncol(m)) {
+        stop("Rownames of coldata and colnames of matrix should be the same!")
+    }
+
+    # Reorder rows of the subsetted metadata table
+    rownames(cdata) <- samples_i
+    cdata <- cdata[colnames(m),]
+    coldata_list[[name]] <- cdata
+    mat_list[[name]] <- m
+}
+
 ```
 
 # Subsets {.tabset}
@@ -794,24 +799,25 @@ for (name in names(res_list)) {
 }
 ```
 
-# Counts for splice junctions {.tabset}
+# Distribution of junction counts {.tabset}
 
-Log-normalized pseudobulk counts are compared between disease conditions across the datasets. P-values
-and FDR values were calculated using the two-tailed Wilcoxon Rank Sum test and Benjamini-Hochberg (BH)
-method, respectively. Junctions with zero counts across all samples are excluded.
+Log-normalized pseudobulk counts are compared across disease conditions. Junctions 
+with zero counts across all samples are excluded. 
 
+The distribution is shown using a violin plot alongside a scatter plot, where each point 
+represents a sample and is colored by study. The black horizontal line indicates the
+median of each distribution.
 
 ```{r prep_counting}
 
 # --------------------------------------------------------------------------------
-# This chunk compares junction counting
+# This chunk preps input data frames for plotting
 # --------------------------------------------------------------------------------
 
-norm_list <- mclapply(names(res_list), function(name) {
+norm_list <- mclapply(names(mat_list), function(name) {
 
     # Extract the raw count matrix corresponding to the current subset
-    m <- dds_list[[name]] %>%
-        counts(normalized=FALSE)
+    m <- mat_list[[name]]
 
     # Transform the matrix to a natural log scale and clean data frame
     df <- log1p(m) %>%
@@ -825,6 +831,10 @@ norm_list <- mclapply(names(res_list), function(name) {
         unique() %>%
         as.data.frame()
 
+    # Add a column for spliced gene names
+    df[['gene_spliced']] <- map_chr(df[['junction']],
+                                    ~str_split(.x, "\\:")[[1]][4])
+
     # Add a column for generated exons
     df[['exon_detection']] <- ifelse(str_detect(df[['junction']], "non-cryptic"),
                                      "junction detected without CE",
@@ -833,214 +843,185 @@ norm_list <- mclapply(names(res_list), function(name) {
     return(df)
 
 }) %>%
-set_names(names(res_list))
+set_names(names(mat_list))
 
-# Function to calculate p-values using t-test or wilcox test
-calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat="ttest") {
-
-    # Specify a design formula
-    formula_str <- paste(response_col, "~", explanatory_col)
-    sapply(unique(dataframe[[split_col]]), function(j) {
-        df_i <- dataframe[dataframe[[split_col]] == j,]
-        tryCatch(
-            { 
-                if (stat == "ttest") {
-                    t.test(as.formula(formula_str), data=df_i)$p.value
-                } else if (stat == "wilcox") {
-                    wilcox.test(as.formula(formula_str), data=df_i, exact=FALSE)$p.value
-                } else {
-                    stop("Wrong statistics!")
-                }
-            },
-            error = function(e) { 
-                NA 
-            })})
+# Ensure no missing values were introduced
+for (name in names(norm_list)) {
+    if (any(is.na(norm_list[[name]]))) {
+        stop(paste0("Missing values introduced to the following contrast in `norm_list`:",
+                    name))
+    }
 }
+
+
 ```
 
-```{r junction_comparisons, results='asis', fig.width=10}
+```{r define_plot_functions}
 
 # --------------------------------------------------------------------------------
-# This chunk compares junction counts
+# This chunk sets up functions to visualize the distribution of junction counts and ratios
 # --------------------------------------------------------------------------------
 
-for (name in names(res_list)) {
-    cat('##', name, '{.tabset}\n\n')
-    # Extract input data frame
+# Specify the plot format displaying counts
+count_plot <- function(input_df, dcol, scol, ylabel) {
+
+    ggplot(input_df,
+        aes_string(x=dcol, y='counts', fill=dcol)) +
+        geom_violin(trim=FALSE) +
+        theme_bw() +
+        geom_point(data=input_df,
+           aes_string(x=dcol, y='counts', color=scol)) +
+        stat_summary(fun="median",
+             geom="crossbar",
+             width=0.1,
+             color="black") +
+        ylab('log-normalized junction counts') +
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+        scale_fill_manual(values=color_map[[dcol]]) +
+        scale_color_manual(values=color_map[[scol]])
+}
+
+# Specify the plot format displaying ratios
+ratio_plot <- function(input_df, dcol, scol, ylabel) {
+
+    ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
+           geom_violin(trim=FALSE) +
+           geom_point(data=input_df,
+                      aes_string(x=dcol, y='ratio', color=scol)) +
+           stat_summary(fun="median",
+                        geom="crossbar",
+                        width=0.1,
+                        color="black") +
+           theme_bw() +
+           ylab(ylabel) +
+           theme(axis.title.x=element_blank(),
+                 axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+           scale_fill_manual(values=color_map[[dcol]]) +
+           scale_color_manual(values=color_map[[scol]]) +
+           scale_y_log10()
+    }
+```
+
+
+
+## Counts for splice junctions {.tabset}
+
+Log-normalized pseudobulk counts are compared across the disease conditions. Junctions 
+with zero counts across all samples are excluded.
+
+```{r junction_count_dist, results='asis', fig.width=10}
+
+# --------------------------------------------------------------------------------
+# This chunk displays individual junction counts across all disease conditions
+# --------------------------------------------------------------------------------
+
+condition_reorder <- c('AD', 'Control', 'FTD')
+
+for (name in names(norm_list)) {
+    cat('\n\n###', name, '{.tabset}\n\n')
     df <- norm_list[[name]]
-    
     for (ce in ce_targets) {
-        cat('###', ce, '\n\n')
+        cat('\n\n####', ce, '\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ]
+        ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
+                                       levels=condition_reorder)
 
         if (nrow(ce_df) > 0) {
 
-            cat('#### Comparison\n\n')
-            # Plot
-            p <- ggplot(ce_df, aes_string(x=disease_col, y='counts', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                geom_boxplot(fill="white", width=0.1) +
-                theme_bw() +
+            p <- count_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='log-normalized junction conts') +
                 facet_wrap(. ~ junction,
-                           scales="free_y") +
-                           # labeller=labeller(junction=label_wrap_gen(width=15, multi_line=TRUE))) +
-                ylab('log-normalized junction counts') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]])
+                           scales="free_y")
 
             print(p)
-            cat('\n\n')
-
-            # Statistical analysis using wilcoxon rank sum test on differences
-            pval_vec <- calc_pval(dataframe=ce_df,
-                                  response_col="counts",
-                                  stat="wilcox",
-                                  explanatory_col=disease_col,
-                                  split_col="junction")
-
-            pval_df <- data.frame(junction=names(pval_vec),
-                                  pvalue=pval_vec,
-                                  FDR=p.adjust(pval_vec, method="BH")) %>%
-                remove_rownames()
-
-            print(knitr::kable(pval_df))
-            cat('\n\n')
-            cat('#### Counts\n\n')
-            # Display mean and median counts for each junction
-            stat_df <- split(ce_df, df$junction) %>%
-                map_df(function(df_i) df_i %>%
-                       group_by_at(vars(disease_col, 'junction')) %>%
-                       summarize(junction=junction,
-                                 N=n(),
-                                 average_counts=mean(counts),
-                                 median_counts=median(counts)) %>%
-                       unique()) %>%
-                as.data.frame()
-            print(knitr::kable(stat_df))
-            cat('\n\n')
-            # Save the full stat table
-            csv_path <- paste0(out_dir, "/", name, "_", ce, "_junction_counts.csv")
-            write.csv(ce_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
         } else {
-            cat("\n\nPlots/tables not generated..\n\n")
+            cat("\n\nCount not displayed!\n\n")
         }
-    } 
+    }
 }
 ```
 
-# Counts for CEs {.tabset}
+## Counts for CEs {.tabset}
 
-Log-normalized pseudobulk counts are compared between disease conditions across the datasets.
-P-values and FDR values were calculated using the two-tailed Wilcoxon Rank Sum test and BH
-method, respectively. Junctions with zero counts across all samples are excluded.
+Log-normalized counts are aggregated on whether it results in CE generation.
 
-```{r ce_comparisons, results='asis', fig.width=8}
+
+```{r ce_count_dist, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk compares CE counts
+# This chunk displays CE or non-CE junction counts across all disease conditions
 # --------------------------------------------------------------------------------
 
-for (name in names(res_list)) {
-    cat('##', name, '{.tabset}\n\n')
-    # Extract input data frame
+for (name in names(norm_list)) {
+    cat('\n\n###', name, '{.tabset}\n\n')
     df <- norm_list[[name]]
-    
+
     for (ce in ce_targets) {
-        cat('###', ce, '\n\n')
+        cat('\n\n####', ce, '\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
-            group_by_at(vars(sample_col, "exon_detection", disease_col)) %>%
+            group_by_at(vars(sample_col,
+                             "exon_detection",
+                             disease_col,
+                             study_col)) %>%
             summarize(counts=sum(counts))
+        ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
+                                       levels=condition_reorder)
 
         if (nrow(ce_df) > 0) {
 
-            cat('#### Comparison\n\n')
             # Plot
-            p <- ggplot(ce_df, aes_string(x=disease_col, y='counts', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                geom_boxplot(fill="white", width=0.1) +
-                theme_bw() +
-                facet_wrap(. ~ exon_detection, scales="free_y") +
-                ylab('log-normalized counts for junctions with or without CEs') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]])
+            p <- count_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='log-normalized counts for junctions with or without CEs') +
+                facet_wrap(. ~ exon_detection,
+                           scales="free_y")
 
             print(p)
-            cat('\n\n')
-
-            # Statistical analysis using wilcoxon rank sum test on differences
-            pval_vec <- calc_pval(dataframe=ce_df,
-                                  response_col="counts",
-                                  explanatory_col=disease_col,
-                                  stat="wilcox",
-                                  split_col="exon_detection")
-            pval_df <- data.frame(exon_detected=names(pval_vec),
-                                  pvalue=pval_vec,
-                                  FDR=p.adjust(pval_vec, method="BH")) %>%
-                remove_rownames()
-
-            print(knitr::kable(pval_df))
-            cat('\n\n')
-            cat('#### Counts\n\n')
-            # Display mean and median counts for each junction
-            stat_df <- split(ce_df, df$exon_detection) %>%
-                map_df(function(df_i) df_i %>%
-                       group_by_at(vars(disease_col, 'exon_detection')) %>%
-                       summarize(exon_detection=exon_detection,
-                                 N=n(),
-                                 average_counts=mean(counts),
-                                 median_counts=median(counts)) %>%
-                       unique()) %>%
-                as.data.frame() %>%
-                arrange(exon_detection)
-            print(knitr::kable(stat_df))
-            cat('\n\n')
-            # Save the full stat table
-            csv_path <- paste0(out_dir, "/", name, "_", ce, "_CE_counts.csv")
-            write.csv(ce_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
         } else {
-            cat("\n\nPlots/tables not generated..\n\n")
+            cat("\n\nCount not displayed!\n\n")
         }
-    } 
+    }
 }
+
 ```
 
-# CE/non-CE ratios {.tabset}
+## CE/non-CE ratios {.tabset}
 
 The counts for junctions with CEs are divided by the counts for junctions without CEs. Note that samples 
 not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
-(e.g. STMN2) within a subset (e.g. Mathys_ExNeu1).
+(e.g. STMN2) within a subset (e.g. ExNeu1).
+
 
 
 ```{r ce_ratio, results='asis', fig.width=6}
 
 # --------------------------------------------------------------------------------
-# This chunk compares CE/non-CE counts
+# This chunk compares CE/non-CE counts across all disease conditions
 # --------------------------------------------------------------------------------
 
-for (name in names(res_list)) {
-    cat('##', name, '{.tabset}\n\n')
+for (name in names(mat_list)) {
+    cat('###', name, '{.tabset}\n\n')
     # Extract input data frame
     df <- norm_list[[name]]
     
     for (ce in ce_targets) {
-        cat('###', ce, '\n\n')
+        cat('####', ce, '{.tabset}\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
-            group_by_at(vars(sample_col, "exon_detection", disease_col)) %>%
+            group_by_at(vars(sample_col,
+                             "exon_detection",
+                             study_col,
+                             disease_col)) %>%
             summarize(counts=sum(counts))
+        ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
+                                       levels=condition_reorder)
 
         e_detection <- unique(ce_df$exon_detection)
         if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
@@ -1063,83 +1044,52 @@ for (name in names(res_list)) {
                 as.data.frame() %>%
                 unique()
 
-            cat('\n\n#### Comparison\n\n')
             # Plot
-            p <- ggplot(ce_df, aes_string(x=disease_col, y='ratio', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                geom_boxplot(fill="white", width=0.1) +
-                theme_bw() +
-                ylab('Count ratios (CE / non-CE)') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_y_log10()
-
+            p <- ratio_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='Count ratios (CE / non-CE)')
             print(p)
+
             cat('\n\n')
 
-            # Statistical analysis using t-test on differences
-            stat_label <- "wilcox"
-            pval_vec <- calc_pval(dataframe=ce_df,
-                                  response_col="ratio",
-                                  explanatory_col=disease_col,
-                                  split_col="metric",
-                                  stat=stat_label)
-
-            cat(paste0('\n\n- P-value: ', pval_vec, ' (two-tailed ', stat_label, ')\n\n'))
-
-            cat('\n\n#### Ratio\n\n')
-            # Display mean and median counts for each junction
-            stat_df <- ce_df %>%
-                group_by_at(vars(disease_col)) %>%
-                summarize(N=n(),
-                          average_ratio=mean(ratio),
-                          median_ratio=median(ratio)) %>%
-                unique()
-
-            print(knitr::kable(stat_df))
-            cat('\n\n')
-
-            # Save the full stat table
-            csv_path <- paste0(out_dir, "/", name, "_", ce, "_CE_over_nonCE.csv")
-            write.csv(ce_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
         } else {
-            cat("\n\nRatio not calculated!\n\n")
+            cat("\n\nRatio not displayed!\n\n")
         }
-
     }
 }
 
 ```
 
-# CE/all-junctions ratios {.tabset}
+## CE/all-junctions ratios {.tabset}
 
 The counts for junctions with CEs are divided by the counts for all extracted junctions. Note that samples 
 not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
 to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
-(e.g. STMN2) within a subset (e.g. Mathys_ExNeu1).
+(e.g. STMN2) within a subset (e.g. ExNeu1).
 
 ```{r ce_over_all, results='asis', fig.width=6}
 
 # --------------------------------------------------------------------------------
-# This chunk compares CE/non-CE counts
+# This chunk compares CE/all counts
 # --------------------------------------------------------------------------------
 
-for (name in names(res_list)) {
-    cat('##', name, '{.tabset}\n\n')
+for (name in names(mat_list)) {
+    cat('###', name, '{.tabset}\n\n')
     # Extract input data frame
     df <- norm_list[[name]]
     
     for (ce in ce_targets) {
-        cat('###', ce, '\n\n')
+        cat('####', ce, '\n\n')
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
-            group_by_at(vars(sample_col, "exon_detection", disease_col)) %>%
+            group_by_at(vars(sample_col,
+                             "exon_detection",
+                             study_col,
+                             disease_col)) %>%
             summarize(counts=sum(counts))
+        ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
+                                       levels=condition_reorder)
 
         e_detection <- unique(ce_df$exon_detection)
         if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
@@ -1165,35 +1115,341 @@ for (name in names(res_list)) {
                 as.data.frame() %>%
                 unique()
 
-            cat('\n\n#### Comparison\n\n')
             # Plot
-            p <- ggplot(ce_df, aes_string(x=disease_col, y='ratio', fill=disease_col)) +
-                geom_violin(trim=FALSE) +
-                geom_boxplot(fill="white", width=0.1) +
-                theme_bw() +
-                ylab('Count ratios (CE / all-junctions)') +
-                theme(axis.title.x=element_blank(),
-                      axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_y_log10()
+            p <- ratio_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='Count ratios (CE / all-junctions)')
 
             print(p)
             cat('\n\n')
 
-            # Statistical analysis using t-test on differences
-            stat_label <- "wilcox"
-            pval_vec <- calc_pval(dataframe=ce_df,
-                                  response_col="ratio",
-                                  explanatory_col=disease_col,
-                                  split_col="metric",
-                                  stat=stat_label)
+        } else {
+            cat("\n\nRatio not displayed!\n\n")
+        }
 
-            cat(paste0('\n\n- P-value: ', pval_vec, ' (two-tailed ', stat_label, ')\n\n'))
+    }
+}
 
-            cat('\n\n#### Ratio\n\n')
+```
+
+# Pairwise Wilcoxon Rank Sum test {.tabset}
+
+We perform pairwise differential tests comparing each disease group to control. Because the dataset
+does not meet the normality assumption, we use a two-tailed Wilcoxon Rank Sum test (Mann-Whitney U),
+followed by the BH method. CSV files containing p-values and individual counts are linked below each
+result table. Note that contrasts with many zero counts can failed, returning missing values (`NaN`).
+
+
+```{r prep_wilcox_test}
+
+# --------------------------------------------------------------------------------
+# This chunk sets up a pairwise t- or wilcoxon test
+# --------------------------------------------------------------------------------
+
+# Function to calculate p-values using t-test or wilcox test
+calc_pval <- function(dataframe, response_col, explanatory_col, split_col, stat="ttest") {
+
+    # Specify a design formula
+    formula_str <- paste(response_col, "~", explanatory_col)
+    sapply(unique(dataframe[[split_col]]), function(j) {
+        df_i <- dataframe[dataframe[[split_col]] == j,]
+        tryCatch(
+            { 
+                if (stat == "ttest") {
+                    t.test(as.formula(formula_str), data=df_i)$p.value
+                } else if (stat == "wilcox") {
+                    wilcox.test(as.formula(formula_str), data=df_i, exact=FALSE)$p.value
+                } else {
+                    stop("Wrong statistics!")
+                }
+            },
+            error = function(e) { 
+                NA 
+            })
+        }
+    )
+}
+
+# Function to subset and clean a count data frame
+subset_clean_counts <- function(dataframe, disease_label) {
+    dataframe[dataframe[[disease_col]] %in% c('Control', disease_label),] %>%
+        group_by_at(vars(sample_col,
+                         "exon_detection",
+                         "gene_spliced",
+                         disease_col)) %>%
+        summarize(counts=sum(counts))
+}
+
+# Function to run a count division
+# denom="nonce" (divide by non-CE junctions) or "all" (divide by all junctions)
+calculate_ratios <- function(dataframe, denom="nonce") {
+
+    # Prep input for a boxplot
+    dataframe <- dataframe %>%
+        pivot_wider(names_from=exon_detection, values_from=counts) %>%
+        # Impute missing values with zero
+        mutate_if(is.numeric, function(x) ifelse(is.na(x), 0, x))
+
+    # Add a column for all counts
+    dataframe[["all junctions"]] <- rowSums(dataframe[, e_detection])
+
+    # Remove samples if they have zero counts for all exon_detection groups
+    dataframe <- dataframe[rowSums(dataframe[, e_detection]) > 0,] %>%
+        # Add a pseudocount of nonzero_min to all numeric entries
+        mutate_if(is.numeric, function(x) x + 0.1 * nonzero_min) %>%
+        as.data.frame() %>%
+        unique()
+
+    # Add a new column calculating division
+    denom_col <- ifelse(denom == "nonce",
+                        "junction detected without CE",
+                        "all junctions")
+    dataframe[['ratio']] <- dataframe[["CE detected"]] / dataframe[[denom_col]]
+    # Add a new column as a placeholder in case not needing to split the data frame
+    dataframe[['metric']] <- 'Ratio'
+
+    return(dataframe)
+}
+
+
+# Extract disease labels to be tested in the current dataset
+diseases <- factor_groups[[disease_col]]
+diseases <- diseases[diseases != "Control"]
+```
+
+
+## Counts for splice junctions {.tabset}
+
+```{r wilcox_junction_counts, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk performs a t- or wilcoxon test at on individual junction counts
+# --------------------------------------------------------------------------------
+
+for (name in names(norm_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve input
+    df <- norm_list[[name]]
+    for (d in diseases) {
+        contr_label <- paste0(d, "_vs_Control")
+        cat('####', contr_label, '\n\n')
+        if (d %in% df[[disease_col]]) {
+            cat('##### Comparisons\n\n')
+            # Subset the input data frame 
+            df_subset <- df[df[[disease_col]] %in% c('Control', d),]
+            # Calculate p-values
+            pval <- calc_pval(dataframe=df_subset,
+                              response_col='counts',
+                              explanatory_col=disease_col,
+                              stat='wilcox',
+                              split_col='junction')
+            # Add FDR
+            pval_df <- data.frame(junction=names(pval),
+                                  pvalue=pval,
+                                  FDR=p.adjust(pval, method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+
+            # Save the p-value table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_junction_comparisons.csv")
+            write.csv(pval_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+            cat('##### Counts\n\n')
             # Display mean and median counts for each junction
-            stat_df <- ce_df %>%
-                group_by_at(vars(disease_col)) %>%
+            stat_df <- split(df_subset, df_subset$junction) %>%
+                map_df(function(df_i) df_i %>%
+                       group_by_at(vars(disease_col, 'junction')) %>%
+                       summarize(junction=junction,
+                                 N=n(),
+                                 average_counts=mean(counts),
+                                 median_counts=median(counts)) %>%
+                       unique()) %>%
+                as.data.frame()
+            print(knitr::kable(stat_df))
+            cat('\n\n')
+            # Save the stat table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_junction_counts.csv")
+            write.csv(stat_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+
+        } else {
+            cat("\n\nContrast unavailable!\n\n")
+        }
+    }
+}
+
+```
+
+## Counts for CEs {.tabset}
+
+```{r wilcox_ce_counts, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk performs a t- or wilcoxon test on junction counts associated with CEs or non-CEs
+# --------------------------------------------------------------------------------
+
+for (name in names(norm_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve input
+    df <- norm_list[[name]]
+    for (d in diseases) {
+        contr_label <- paste0(d, "_vs_Control")
+        cat('####', contr_label, '\n\n')
+        if (d %in% df[[disease_col]]) {
+            cat('##### Comparisons\n\n')
+            # Subset the input data frame 
+            df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
+
+            # Calculate p-values
+            pval_list <- split(df_subset, df_subset[['gene_spliced']])
+            pval_df <- map(names(pval_list), function(g) {
+                vec <- calc_pval(dataframe=pval_list[[g]],
+                    response_col='counts',
+                    explanatory_col=disease_col,
+                    stat='wilcox',
+                    split_col='exon_detection')
+                data.frame(gene=g, junction=names(vec), pvalue=vec) }) %>%
+                bind_rows() %>%
+                mutate(FDR=p.adjust(pvalue, method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+
+            # Save the p-value table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_CE_comparisons.csv")
+            write.csv(pval_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+
+            cat('##### Counts\n\n')
+            # Display mean and median counts for each junction
+            stat_list <- split(df_subset, df_subset[['gene_spliced']])
+            stat_df <- map(names(stat_list), ~stat_list[[.x]] %>%
+                group_by_at(vars(disease_col, 'exon_detection')) %>%
+                summarize(gene=.x,
+                          exon_detection=exon_detection,
+                          N=n(),
+                          average_counts=mean(counts),
+                          median_counts=median(counts)) %>%
+                unique()) %>%
+                bind_rows() %>%
+                as.data.frame() %>%
+                arrange(gene, exon_detection)
+            print(knitr::kable(stat_df))
+            cat('\n\n')
+            # Save the stat table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_CE_counts.csv")
+            write.csv(stat_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+
+        } else {
+            cat("\n\nContrast unavailable!\n\n")
+        }
+    }
+}
+
+```
+
+
+## CE/non-CE ratios {.tabset}
+
+```{r wilcox_ratios_ce_nonce, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk performs a t- or wilcoxon test on count ratios between CE and non-CEs
+# --------------------------------------------------------------------------------
+
+for (name in names(norm_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve input
+    df <- norm_list[[name]]
+    for (d in diseases) {
+        contr_label <- paste0(d, "_vs_Control")
+        cat('####', contr_label, '\n\n')
+        if (d %in% df[[disease_col]]) {
+            cat('##### Comparisons\n\n')
+            # Subset the input data frame 
+            df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
+
+            # Calculate p-values
+            ratio_list <- split(df_subset, df_subset[['gene_spliced']])
+            pval_list <- list()
+            df_list <- list()
+            for (gene in names(ratio_list)) {
+                gene_df <- ratio_list[[gene]]
+                e_detection <- unique(gene_df[['exon_detection']])
+                if (length(e_detection) > 1 & sum(gene_df$counts) > 0) {
+                    # Calculate the nonzero min value
+                    nonzero_min <- min(gene_df$counts[gene_df$counts > 0])
+
+                    # Add a division
+                    gene_df <- calculate_ratios(dataframe=gene_df, denom="nonce")
+
+                    pval_list[[gene]] <- calc_pval(dataframe=gene_df,
+                                                   response_col="ratio",
+                                                   explanatory_col=disease_col,
+                                                   split_col="metric",
+                                                   stat='wilcox') 
+                    df_list[[gene]] <- gene_df
+                }
+            }
+            pval_df <- data.frame(gene=names(pval_list),
+                                  pvalue=unlist(pval_list),
+                                  FDR=p.adjust(unlist(pval_list), method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+
+            # Save the p-value table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_CE_over_nonCE_comparisons.csv")
+            write.csv(pval_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+
+            cat('##### Ratios\n\n')
+            # Display mean and median counts for each junction
+            stat_df <- df_list %>%
+                bind_rows() %>%
+                mutate(gene=gene_spliced) %>%
+                group_by_at(vars('gene', disease_col)) %>%
                 summarize(N=n(),
                           average_ratio=mean(ratio),
                           median_ratio=median(ratio)) %>%
@@ -1201,18 +1457,118 @@ for (name in names(res_list)) {
 
             print(knitr::kable(stat_df))
             cat('\n\n')
-            # Save the full stat table
-            csv_path <- paste0(out_dir, "/", name, "_", ce, "_CE_over_all.csv")
-            write.csv(ce_df,
+
+            # Save the stat table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_CE_over_nonCE_ratios.csv")
+            write.csv(stat_df,
                       csv_path,
                       row.names=FALSE,
                       quote=FALSE)
             link_table(csv_path)
 
         } else {
-            cat("\n\nRatio not calculated!\n\n")
+            cat("\n\nContrast unavailable!\n\n")
         }
+    }
+}
 
+```
+
+## CE/all-junctions ratios {.tabset}
+
+```{r wilcox_ratios_ce_all, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk performs a t- or wilcoxon test on count ratios between CE and all junctions
+# --------------------------------------------------------------------------------
+
+for (name in names(norm_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Retrieve input
+    df <- norm_list[[name]]
+    for (d in diseases) {
+        contr_label <- paste0(d, "_vs_Control")
+        cat('####', contr_label, '\n\n')
+        if (d %in% df[[disease_col]]) {
+            cat('##### Comparisons\n\n')
+            # Subset the input data frame 
+            df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
+
+            # Calculate p-values
+            ratio_list <- split(df_subset, df_subset[['gene_spliced']])
+            pval_list <- list()
+            df_list <- list()
+            for (gene in names(ratio_list)) {
+                gene_df <- ratio_list[[gene]]
+                e_detection <- unique(gene_df[['exon_detection']])
+                if (length(e_detection) > 1 & sum(gene_df$counts) > 0) {
+                    # Calculate the nonzero min value
+                    nonzero_min <- min(gene_df$counts[gene_df$counts > 0])
+
+                    # Add a division
+                    gene_df <- calculate_ratios(dataframe=gene_df, denom="all")
+
+                    pval_list[[gene]] <- calc_pval(dataframe=gene_df,
+                                                   response_col="ratio",
+                                                   explanatory_col=disease_col,
+                                                   split_col="metric",
+                                                   stat='wilcox') 
+                    df_list[[gene]] <- gene_df
+                }
+            }
+            pval_df <- data.frame(gene=names(pval_list),
+                                  pvalue=unlist(pval_list),
+                                  FDR=p.adjust(unlist(pval_list), method="BH")) %>%
+                remove_rownames()
+
+            print(knitr::kable(pval_df))
+            cat('\n\n')
+
+            # Save the p-value table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_CE_over_all_comparisons.csv")
+            write.csv(pval_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+
+            cat('##### Ratios\n\n')
+            # Display mean and median counts for each junction
+            stat_df <- df_list %>%
+                bind_rows() %>%
+                mutate(gene=gene_spliced) %>%
+                group_by_at(vars('gene', disease_col)) %>%
+                summarize(N=n(),
+                          average_ratio=mean(ratio),
+                          median_ratio=median(ratio)) %>%
+                unique()
+
+            print(knitr::kable(stat_df))
+            cat('\n\n')
+
+            # Save the stat table as a csv file
+            csv_path <- paste0(out_dir, "/",
+                               name,
+                               "_",
+                               contr_label,
+                               "_CE_over_all_ratios.csv")
+            write.csv(stat_df,
+                      csv_path,
+                      row.names=FALSE,
+                      quote=FALSE)
+            link_table(csv_path)
+
+        } else {
+            cat("\n\nContrast unavailable!\n\n")
+        }
     }
 }
 
@@ -1251,50 +1607,6 @@ write.table(df,
 link_table(bed_path)
 ```
  
-## Exons
-
-Filtered exons for genes of interest are saved as a BED file for data exploration in IGV.
-
-
-```{r create_exon_bed, results='asis', cache=TRUE}
-
-# --------------------------------------------------------------------------------
-# This chunk preps a BED file for all exons in the GTF file
-# --------------------------------------------------------------------------------
-
-# Import GTF annotation
-gtf <- import(gtf_path)
-
-# Filter genes of interest and exons
-gtf <- gtf[gtf$type == "exon" & mcols(gtf)$gene_name %in% 
-           ce_targets]
-
-# Prep a data frame having a BED format for the filtered coordinates
-df <- data.frame(
-    seqnames = as.character(seqnames(gtf)),
-    start = start(gtf) - 1,
-    end = end(gtf),
-    name = mcols(gtf)$gene_name,
-    score = ".",
-    strand = as.character(strand(gtf))
-    )
-
-# Break of any missing values are found
-if (any(is.na(df))) {
-    stop("BED file cannot include missing values!")
-}
-
-# Save as a BED file
-bed_path <- file.path(out_dir, "exons.bed")
-write.table(df,
-            bed_path,
-            col.names=FALSE,
-            row.names=FALSE,
-            quote=FALSE,
-            sep="\t")
-
-link_table(bed_path)
-```
 
 
 # Session info

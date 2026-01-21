@@ -14,6 +14,9 @@ r-nmf
 r-rsvd
 r-ggally
 r-future
+r-upsetr
+r-cowplot 
+bioconductor-annotationhub
 bioconductor-mast
 bioconductor-limma
 bioconductor-scater
