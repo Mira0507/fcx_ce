@@ -223,6 +223,9 @@ the number/proportion of cells containing junctions with and without
 CE detection, the relationship between gene expression and CE detection,
 and visualization of cells by junction type in a UMAP embedding.
 
+- `workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd`: single-cell
+exploratory analysis on all neuron subtypes.
+
 
 ### Differential analysis
 
@@ -252,3 +255,7 @@ for details on zinbwave:
 [Van den Berge et al., 2018](https://link.springer.com/article/10.1186/s13059-018-1406-4) ,
 [Risso et al., 2018](https://www.nature.com/articles/s41467-017-02554-5),
 [zinbwave-DESeq2 workflow](https://github.com/mikelove/zinbwave-deseq2/blob/master/zinbwave-deseq2.Rmd)
+
+- `workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd`: pseudobulk analysis 
+on all neuron subtypes. All statistical testings were performed using a two-tailed 
+Wilcoxon Rank Sum test. This script includes optimized visualization for manuscript.
