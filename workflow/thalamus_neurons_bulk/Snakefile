@@ -106,7 +106,7 @@ rule all:
                outdir=config['outdir'],
                sample=set(meta_df[config['index_col']]),
                celltype=set(meta_df[config['celltype_col']])),
-        expand("{outdir}/bam/group/{group}__{celltype}_sorted.bam",
+        expand("{outdir}/bam/group_filtered/{group}__{celltype}_sorted_filtered.bam",
                outdir=config['outdir'],
                group=group_dic.keys(),
                celltype=set(meta_df[config['celltype_col']]))
@@ -226,4 +226,26 @@ rule create_group_celltype_bam:
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
+        """
+rule filter_group_celltype_bam:
+    """
+    This rule filters reads in bam files that intersect with those
+    analyzed in the single-cell downstream analysis
+    """
+    input:
+        bam = "{outdir}/bam/group/{group}__{celltype}_sorted.bam",
+        bed = config['sc_bed']
+    output:
+        bam = "{outdir}/bam/group_filtered/{group}__{celltype}_sorted_filtered.bam",
+        bai = "{outdir}/bam/group_filtered/{group}__{celltype}_sorted_filtered.bam.bai"
+    resources:
+        mem_mb = 1024 * 20,
+        disk_mb = 1024 * 10,
+        runtime = 60 * 1
+    threads: 4
+    shell:
+        """
+        bedtools intersect -abam {input.bam} -b {input.bed} -f 0.9 -r > {output.bam}
+        samtools index {output.bam}
+        sleep 10m
         """
