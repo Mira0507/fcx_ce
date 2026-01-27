@@ -1970,3 +1970,22 @@ fcx_ce
         workflow/thalamus_neurons_sc/results/bam$ rm -rf cell
 
 
+2026-01-26
+----------
+
+@Mira0507
+
+- ``bedtools`` installed in ``env``; 
+  ``requirements.txt`` and ``env.archived.yaml`` updated
+
+- Update bulk CE Snakemake
+    - files:
+        - ``workflow/thalamus_neurons_bulk/config/config_v2.yaml``
+        - ``workflow/thalamus_neurons_bulk/Snakefile``
+    - notes:
+        - add a new rule ``filter_group_celltype_bam``,
+          post-filtering reads which intersect with those 
+          analyzed in the downstream quantitative analyses
+        - this update is aimed to generate Sashimi plot input bam files
+          consisting of the splice junctions that are also analyzed
+          in the downstream quantitative analyses

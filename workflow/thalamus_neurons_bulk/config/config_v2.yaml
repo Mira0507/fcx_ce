@@ -5,6 +5,9 @@ sampletable: "../../input/thalamus_excitatory/combined_thalamus_metadata.csv"
 # NOTE: Specify the reference fasta used when running `cellranger count`
 fasta: "../../input/thalamus_excitatory/genome.fa"
 
+# Path to junctions analyzed in single-cell downstream analysis
+sc_bed: "../thalamus_neurons_sc/downstream/sc-pseudobulk/junctions.bed"
+
 # Metadata column for aggregating reads
 all_cols: 
   - 'status'
