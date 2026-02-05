@@ -26,3 +26,5 @@ bioconductor-genomicfeatures
 bioconductor-txdbmaker
 bioconductor-zinbwave
 bioconductor-scran
+bioconductor-gviz
+bioconductor-rsamtools
