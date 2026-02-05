@@ -131,11 +131,17 @@ study_col <- 'study'
 # Specify CE target genes
 ce_targets <- config_yaml[['genes']]
 
+# Pseudocount factor
+# NOTE: this number is multiplied by the minimum number of non-zero 
+#       junction counts when calculating ratios between cryptic and non-cryptic,
+#       as well as between cryptic and all junctions
+pseudo_p <- 0.1
+
 # Specify the proportion of y-value to be added to the max data point
 ylim_factor <- 0.8
 ```
 
-Loading input data {.tabset}
+# Loading input data {.tabset}
 
 The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
 genes:
@@ -714,7 +720,7 @@ for (name in names(mat_list)) {
             # Remove samples if they have zero counts for all exon_detection groups
             ce_df <- ce_df[rowSums(ce_df[, e_detection]) > 0,] %>%
                 # Add a pseudocount of nonzero_min to all numeric entries
-                mutate_if(is.numeric, function(x) x + 0.1 * nonzero_min) %>%
+                mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
                 # Calculate CE/non-CE counts
                 mutate(ratio=`CE detected` / `junction detected without CE`,
                        metric="Ratio") %>%
@@ -768,7 +774,7 @@ to avoid errors when dividing values. The non-zero minimum value was calculated 
 # --------------------------------------------------------------------------------
 # This chunk compares CE/all counts
 # --------------------------------------------------------------------------------
-
+stop()
 ratio_list <- list()
 for (name in names(mat_list)) {
     # Extract input data frame
@@ -802,12 +808,15 @@ for (name in names(mat_list)) {
             # Remove samples if they have zero counts for all exon_detection groups
             ce_df <- ce_df[ce_df[['all junctions']] > 0,] %>%
                 # Add a pseudocount of nonzero_min to all numeric entries
-                mutate_if(is.numeric, function(x) x + 0.1 * nonzero_min) %>%
+                mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
                 # Calculate CE/non-CE counts
                 mutate(ratio=`CE detected` / `all junctions`,
                        metric="Ratio") %>%
                 as.data.frame() %>%
                 unique()
+
+            tsv <- file.path(out_dir, paste0(name, "_", ce, "_ratio.tsv"))
+            write.table(ce_df, tsv, quote=FALSE, row.names=FALSE, sep="\t")
 
             ratio_list[[name]][[ce]] <- ce_df
         }
@@ -918,7 +927,7 @@ calculate_ratios <- function(dataframe, denom="nonce") {
     # Remove samples if they have zero counts for all exon_detection groups
     dataframe <- dataframe[rowSums(dataframe[, e_detection]) > 0,] %>%
         # Add a pseudocount of nonzero_min to all numeric entries
-        mutate_if(is.numeric, function(x) x + 0.1 * nonzero_min) %>%
+        mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
         as.data.frame() %>%
         unique()
 
