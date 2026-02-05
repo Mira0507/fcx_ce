@@ -138,7 +138,7 @@ ce_targets <- config_yaml[['genes']]
 pseudo_p <- 0.1
 
 # Specify the proportion of y-value to be added to the max data point
-ylim_factor <- 0.8
+ylim_factor <- 0.3
 ```
 
 # Loading input data {.tabset}
@@ -621,6 +621,12 @@ for (name in names(norm_list)) {
                         width=w,
                         height=h,
                         ggplotly=FALSE)
+
+            p_path <- file.path(
+                out_dir,
+                paste0(name, '_', ce, '_individual_junctions.pdf'))
+            ggsave(p_path, p, device="pdf", width=w, height=h)
+            link_plot(p_path)
         } else {
             cat("\n\nCount not displayed!\n\n")
         }
@@ -668,6 +674,11 @@ for (name in names(norm_list)) {
                 ylim(min_y, max_y + max_y * 0.2)
 
             print(p)
+            p_path <- file.path(
+                out_dir,
+                paste0(name, '_', ce, '_junction_categories.pdf'))
+            ggsave(p_path, p, device="pdf")
+            link_plot(p_path)
         } else {
             cat("\n\nCount not displayed!\n\n")
         }
@@ -753,9 +764,15 @@ for (name in names(ratio_list)) {
                     dcol=disease_col,
                     scol=study_col,
                     ylabel='Count Ratios (CE / Non-CE)') + 
-        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
+        ylim(min_y, max_y + max_y)
 
     print(p)
+
+    p_path <- file.path(
+        out_dir,
+        paste0(name, '_ce_over_nonce.pdf'))
+    ggsave(p_path, p, device="pdf")
+    link_plot(p_path)
     cat('\n\n')
     }
 }
@@ -774,7 +791,7 @@ to avoid errors when dividing values. The non-zero minimum value was calculated 
 # --------------------------------------------------------------------------------
 # This chunk compares CE/all counts
 # --------------------------------------------------------------------------------
-stop()
+
 ratio_list <- list()
 for (name in names(mat_list)) {
     # Extract input data frame
@@ -815,9 +832,6 @@ for (name in names(mat_list)) {
                 as.data.frame() %>%
                 unique()
 
-            tsv <- file.path(out_dir, paste0(name, "_", ce, "_ratio.tsv"))
-            write.table(ce_df, tsv, quote=FALSE, row.names=FALSE, sep="\t")
-
             ratio_list[[name]][[ce]] <- ce_df
         }
     }
@@ -843,9 +857,14 @@ for (name in names(ratio_list)) {
                     dcol=disease_col,
                     scol=study_col,
                     ylabel='Count Ratios (CE / All-junctions)') + 
-        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
+        ylim(min_y, max_y + max_y * ylim_factor)
 
     print(p)
+    p_path <- file.path(
+        out_dir,
+        paste0(name, '_ce_over_alljunction.pdf'))
+    ggsave(p_path, p, device="pdf")
+    link_plot(p_path)
     cat('\n\n')
     }
 }
