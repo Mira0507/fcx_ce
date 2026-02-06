@@ -571,6 +571,13 @@ set_min_max <- function(input_list) {
     c(min=min(vec), max=max(vec))
 }
 
+# Function to clean input label
+clean_label <- function(input_label) {
+    ifelse(str_detect(input_label, "\\:"),
+           str_replace(input_label, "\\:", "_"), input_label
+    )
+}
+
 ```
 
 ## Counts of splice junctions {.tabset}
@@ -622,9 +629,11 @@ for (name in names(norm_list)) {
                         height=h,
                         ggplotly=FALSE)
 
+            # Save and link the plot
+            lab <- clean_label(name)
             p_path <- file.path(
                 out_dir,
-                paste0(name, '_', ce, '_individual_junctions.pdf'))
+                paste0(lab, '_', ce, '_individual_junctions.pdf'))
             ggsave(p_path, p, device="pdf", width=w, height=h)
             link_plot(p_path)
         } else {
@@ -674,9 +683,11 @@ for (name in names(norm_list)) {
                 ylim(min_y, max_y + max_y * 0.2)
 
             print(p)
+            # Save and link the plot
+            lab <- clean_label(name)
             p_path <- file.path(
                 out_dir,
-                paste0(name, '_', ce, '_junction_categories.pdf'))
+                paste0(lab, '_', ce, '_junction_categories.pdf'))
             ggsave(p_path, p, device="pdf")
             link_plot(p_path)
         } else {
@@ -757,25 +768,31 @@ for (name in names(ratio_list)) {
     # Extract input data frame
     cat('\n\n###', name, '{.tabset}\n\n')
     for (ce in names(ratio_list[[name]])) {
-    cat('\n\n####', ce, '\n\n')
-    ce_df <- ratio_list[[name]][[ce]]
-    # Plot
-    p <- ratio_plot(input_df=ce_df,
-                    dcol=disease_col,
-                    scol=study_col,
-                    ylabel='Count Ratios (CE / Non-CE)') + 
-        ylim(min_y, max_y + max_y)
+        ce_df <- ratio_list[[name]][[ce]]
+        if (!is.null(ce_df)) {
+            cat('\n\n####', ce, '\n\n')
+            # Plot
+            p <- ratio_plot(input_df=ce_df,
+                            dcol=disease_col,
+                            scol=study_col,
+                            ylabel='Count Ratios (CE / Non-CE)') + 
+                ylim(min_y, max_y)
 
-    print(p)
+            print(p)
 
-    p_path <- file.path(
-        out_dir,
-        paste0(name, '_ce_over_nonce.pdf'))
-    ggsave(p_path, p, device="pdf")
-    link_plot(p_path)
-    cat('\n\n')
+            # Clean the subset label
+            lab <- clean_label(name)
+            # Save and link
+            p_path <- file.path(
+                out_dir,
+                paste0(lab, '_', ce, '_ce_over_nonce.pdf'))
+            ggsave(p_path, p, device="pdf")
+            link_plot(p_path)
+            cat('\n\n')
+        }
     }
 }
+
 
 ```
 
@@ -850,22 +867,29 @@ for (name in names(ratio_list)) {
     # Extract input data frame
     cat('\n\n###', name, '{.tabset}\n\n')
     for (ce in names(ratio_list[[name]])) {
-    cat('\n\n####', ce, '\n\n')
     ce_df <- ratio_list[[name]][[ce]]
-    # Plot
-    p <- ratio_plot(input_df=ce_df,
-                    dcol=disease_col,
-                    scol=study_col,
-                    ylabel='Count Ratios (CE / All-junctions)') + 
-        ylim(min_y, max_y + max_y * ylim_factor)
 
-    print(p)
-    p_path <- file.path(
-        out_dir,
-        paste0(name, '_ce_over_alljunction.pdf'))
-    ggsave(p_path, p, device="pdf")
-    link_plot(p_path)
-    cat('\n\n')
+    if (!is.null(ce_df)) {
+        cat('\n\n####', ce, '\n\n')
+        # Plot
+        p <- ratio_plot(input_df=ce_df,
+                        dcol=disease_col,
+                        scol=study_col,
+                        ylabel='Count Ratios (CE / All-junctions)') + 
+            ylim(min_y, max_y + max_y * ylim_factor)
+
+        print(p)
+
+
+        # Save and link
+        lab <- clean_label(name)
+        p_path <- file.path(
+            out_dir,
+            paste0(lab, '_ce_over_alljunction.pdf'))
+        ggsave(p_path, p, device="pdf")
+        link_plot(p_path)
+        cat('\n\n')
+        }
     }
 }
 ```
