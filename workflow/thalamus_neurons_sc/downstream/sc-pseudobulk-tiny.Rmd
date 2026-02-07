@@ -63,7 +63,7 @@ snakemake_config <- "../config/config.yaml"
 config_yaml <- read_yaml(snakemake_config)
 
 # Path to output directory
-out_dir <- "sc-pseudobulk"
+out_dir <- "sc-pseudobulk-tiny"
 
 # Path to GTF
 gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
@@ -135,10 +135,10 @@ ce_targets <- config_yaml[['genes']]
 # NOTE: this number is multiplied by the minimum number of non-zero 
 #       junction counts when calculating ratios between cryptic and non-cryptic,
 #       as well as between cryptic and all junctions
-pseudo_p <- 0.1
+pseudo_p <- 0.0000001
 
 # Specify the proportion of y-value to be added to the max data point
-ylim_factor <- 0.3
+ylim_factor <- 0.8
 ```
 
 # Loading input data {.tabset}
@@ -571,13 +571,6 @@ set_min_max <- function(input_list) {
     c(min=min(vec), max=max(vec))
 }
 
-# Function to clean input label
-clean_label <- function(input_label) {
-    ifelse(str_detect(input_label, "\\:"),
-           str_replace(input_label, "\\:", "_"), input_label
-    )
-}
-
 ```
 
 ## Counts of splice junctions {.tabset}
@@ -628,14 +621,6 @@ for (name in names(norm_list)) {
                         width=w,
                         height=h,
                         ggplotly=FALSE)
-
-            # Save and link the plot
-            lab <- clean_label(name)
-            p_path <- file.path(
-                out_dir,
-                paste0(lab, '_', ce, '_individual_junctions.pdf'))
-            ggsave(p_path, p, device="pdf", width=w, height=h)
-            link_plot(p_path)
         } else {
             cat("\n\nCount not displayed!\n\n")
         }
@@ -683,13 +668,6 @@ for (name in names(norm_list)) {
                 ylim(min_y, max_y + max_y * 0.2)
 
             print(p)
-            # Save and link the plot
-            lab <- clean_label(name)
-            p_path <- file.path(
-                out_dir,
-                paste0(lab, '_', ce, '_junction_categories.pdf'))
-            ggsave(p_path, p, device="pdf")
-            link_plot(p_path)
         } else {
             cat("\n\nCount not displayed!\n\n")
         }
@@ -730,8 +708,6 @@ for (name in names(mat_list)) {
 
         e_detection <- unique(ce_df$exon_detection)
         if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
-            # Calculate the nonzero min value
-            nonzero_min <- min(ce_df$counts[ce_df$counts > 0])
 
             # Prep input for a boxplot
             ce_df <- ce_df %>%
@@ -741,8 +717,8 @@ for (name in names(mat_list)) {
 
             # Remove samples if they have zero counts for all exon_detection groups
             ce_df <- ce_df[rowSums(ce_df[, e_detection]) > 0,] %>%
-                # Add a pseudocount of nonzero_min to all numeric entries
-                mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
+                # Add a pseudocount to all numeric entries
+                mutate_if(is.numeric, function(x) x + pseudo_p) %>%
                 # Calculate CE/non-CE counts
                 mutate(ratio=`CE detected` / `junction detected without CE`,
                        metric="Ratio") %>%
@@ -768,31 +744,19 @@ for (name in names(ratio_list)) {
     # Extract input data frame
     cat('\n\n###', name, '{.tabset}\n\n')
     for (ce in names(ratio_list[[name]])) {
-        ce_df <- ratio_list[[name]][[ce]]
-        if (!is.null(ce_df)) {
-            cat('\n\n####', ce, '\n\n')
-            # Plot
-            p <- ratio_plot(input_df=ce_df,
-                            dcol=disease_col,
-                            scol=study_col,
-                            ylabel='Count Ratios (CE / Non-CE)') + 
-                ylim(min_y, max_y)
+    cat('\n\n####', ce, '\n\n')
+    ce_df <- ratio_list[[name]][[ce]]
+    # Plot
+    p <- ratio_plot(input_df=ce_df,
+                    dcol=disease_col,
+                    scol=study_col,
+                    ylabel='Count Ratios (CE / Non-CE)') + 
+        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
 
-            print(p)
-
-            # Clean the subset label
-            lab <- clean_label(name)
-            # Save and link
-            p_path <- file.path(
-                out_dir,
-                paste0(lab, '_', ce, '_ce_over_nonce.pdf'))
-            ggsave(p_path, p, device="pdf")
-            link_plot(p_path)
-            cat('\n\n')
-        }
+    print(p)
+    cat('\n\n')
     }
 }
-
 
 ```
 
@@ -827,8 +791,6 @@ for (name in names(mat_list)) {
 
         e_detection <- unique(ce_df$exon_detection)
         if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
-            # Calculate the nonzero min value
-            nonzero_min <- min(ce_df$counts[ce_df$counts > 0])
 
             # Prep input for a boxplot
             ce_df <- ce_df %>%
@@ -841,8 +803,8 @@ for (name in names(mat_list)) {
 
             # Remove samples if they have zero counts for all exon_detection groups
             ce_df <- ce_df[ce_df[['all junctions']] > 0,] %>%
-                # Add a pseudocount of nonzero_min to all numeric entries
-                mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
+                # Add a pseudocount to all numeric entries
+                mutate_if(is.numeric, function(x) x + pseudo_p) %>%
                 # Calculate CE/non-CE counts
                 mutate(ratio=`CE detected` / `all junctions`,
                        metric="Ratio") %>%
@@ -867,29 +829,17 @@ for (name in names(ratio_list)) {
     # Extract input data frame
     cat('\n\n###', name, '{.tabset}\n\n')
     for (ce in names(ratio_list[[name]])) {
+    cat('\n\n####', ce, '\n\n')
     ce_df <- ratio_list[[name]][[ce]]
+    # Plot
+    p <- ratio_plot(input_df=ce_df,
+                    dcol=disease_col,
+                    scol=study_col,
+                    ylabel='Count Ratios (CE / All-junctions)') + 
+        scale_y_log10(limits=c(min_y, max_y + max_y * ylim_factor))
 
-    if (!is.null(ce_df)) {
-        cat('\n\n####', ce, '\n\n')
-        # Plot
-        p <- ratio_plot(input_df=ce_df,
-                        dcol=disease_col,
-                        scol=study_col,
-                        ylabel='Count Ratios (CE / All-junctions)') + 
-            ylim(min_y, max_y + max_y * ylim_factor)
-
-        print(p)
-
-
-        # Save and link
-        lab <- clean_label(name)
-        p_path <- file.path(
-            out_dir,
-            paste0(lab, '_ce_over_alljunction.pdf'))
-        ggsave(p_path, p, device="pdf")
-        link_plot(p_path)
-        cat('\n\n')
-        }
+    print(p)
+    cat('\n\n')
     }
 }
 ```
@@ -969,8 +919,8 @@ calculate_ratios <- function(dataframe, denom="nonce") {
 
     # Remove samples if they have zero counts for all exon_detection groups
     dataframe <- dataframe[rowSums(dataframe[, e_detection]) > 0,] %>%
-        # Add a pseudocount of nonzero_min to all numeric entries
-        mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
+        # Add a pseudocount to all numeric entries
+        mutate_if(is.numeric, function(x) x + pseudo_p) %>%
         as.data.frame() %>%
         unique()
 
@@ -1164,8 +1114,6 @@ for (name in names(norm_list)) {
                 gene_df <- ratio_list[[gene]]
                 e_detection <- unique(gene_df[['exon_detection']])
                 if (length(e_detection) > 1 & sum(gene_df$counts) > 0) {
-                    # Calculate the nonzero min value
-                    nonzero_min <- min(gene_df$counts[gene_df$counts > 0])
 
                     # Add a division
                     gene_df <- calculate_ratios(dataframe=gene_df, denom="nonce")
@@ -1252,8 +1200,6 @@ for (name in names(norm_list)) {
                 gene_df <- ratio_list[[gene]]
                 e_detection <- unique(gene_df[['exon_detection']])
                 if (length(e_detection) > 1 & sum(gene_df$counts) > 0) {
-                    # Calculate the nonzero min value
-                    nonzero_min <- min(gene_df$counts[gene_df$counts > 0])
 
                     # Add a division
                     gene_df <- calculate_ratios(dataframe=gene_df, denom="all")

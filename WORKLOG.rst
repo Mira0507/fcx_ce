@@ -1989,3 +1989,54 @@ fcx_ce
         - this update is aimed to generate Sashimi plot input bam files
           consisting of the splice junctions that are also analyzed
           in the downstream quantitative analyses
+
+
+2026-02-05
+----------
+
+@Mira0507
+
+- Validate the effect of pseudocounts added when calculating junction ratios
+    - conda env: ``menv``
+    - scripts:
+        - ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``:
+          subset-wise nonzero min counts x 0.1 was added to all entries
+          to avoid division error
+        - ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk-0.0001``:
+          subset-wise nonzero min counts x 0.0001 was added to all entries
+          to avoid division error
+        - ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk-tiny``:
+          a constant pseudo-number of 0.0000001 was added to all entiries
+          to avoid division error
+    - notes
+        - decided to keep the same pseudo-counts (subset-wise nonzero min
+          counts x 0.1) and disable y-axis transformation to the log10 scale
+          with ggplot2 in ``sc-pseudobulk.Rmd``
+        - added links to plots saved as pdf
+
+
+2026-02-06
+----------
+
+@Mira0507
+
+- Bugfix to quantitative analysis
+    - conda env: ``menv``
+    - scripts:
+        - ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``:
+
+- Rerun the single-cell Snakemake pipeline to generate
+    - conda env: ``menv``
+    - scripts:
+        - ``workflow/thalamus_neurons_sc/Snakemake``
+    - notes:
+        - aimed to merge bam files per-disease-per-celltype
+        - updated to merge header only once
+
+        .. code-block:: bash
+
+            # Snakefile
+            # input.header = header.sam
+            # params.temp_bam = output bam, unsorted
+            # input.bam = input single-cell bam
+            samtools cat -h {input.header} -o {params.temp_bam} {input.bam}

@@ -104,7 +104,7 @@ def select_input_bam(wildcards):
 def input_group_celltype_bams(wildcards):
     filtered_df = meta_df[
         (meta_df[config['celltype_col']] == wildcards.celltype) &
-        (meta_df[config['key_col']] == wildcards.group)]
+        (meta_df[config['disease_col']] == wildcards.group)]
     bcd = list(set(filtered_df['barcode_sc']))
     return [f"{wildcards.outdir}/bam/cell/{b}_sorted.bam" for b in bcd]
 
@@ -115,7 +115,7 @@ rule all:
     input:
         expand("{outdir}/bam/group/{group}_{celltype}_sorted.bam",
                outdir=config['outdir'],
-               group=list(set(meta_df[config['key_col']])),
+               group=list(set(meta_df[config['disease_col']])),
                celltype=list(set(meta_df[config['celltype_col']]))),
         expand("{outdir}/junction_counts/{analysis}_perind_numers.counts.gz",
                outdir=config['outdir'],
@@ -197,7 +197,8 @@ rule aggr_bams_group_celltype:
     This rule aggregates bam files per group per celltype
     """
     input:
-        bam = input_group_celltype_bams
+        bam = input_group_celltype_bams,
+        header = "{outdir}/header.sam"
     output:
         bam = "{outdir}/bam/group/{group}_{celltype}_sorted.bam",
         bai = "{outdir}/bam/group/{group}_{celltype}_sorted.bam.bai",
@@ -212,7 +213,7 @@ rule aggr_bams_group_celltype:
     shell:
         """
         ulimit -n {params.ncells}
-        samtools merge {params.temp_bam} {input.bam}
+        samtools cat -h {input.header} -o {params.temp_bam} {input.bam}
         samtools sort -@ {threads} {params.temp_bam} -o {output.bam}
         samtools index {output.bam}
         rm {params.temp_bam}
