@@ -2025,7 +2025,8 @@ fcx_ce
     - scripts:
         - ``workflow/thalamus_neurons_sc/downstream/sc-pseudobulk.Rmd``:
 
-- Rerun the single-cell Snakemake pipeline to generate
+- Rerun the single-cell Snakemake pipeline to merge the single-cell bam files
+  for Sashimi plots
     - conda env: ``menv``
     - scripts:
         - ``workflow/thalamus_neurons_sc/Snakemake``
@@ -2040,3 +2041,40 @@ fcx_ce
             # params.temp_bam = output bam, unsorted
             # input.bam = input single-cell bam
             samtools cat -h {input.header} -o {params.temp_bam} {input.bam}
+
+
+2026-02-09
+----------
+
+@Mira0507
+
+- Generate Sashimi plots using the merged bam files
+    - input directory: ``workflow/thalamus_neurons_sc/results/bam/group``
+    - notes
+        - Sashimi plots were generated using IGV manually
+        - number of input single-cell bam files for each output,
+          based on the ``workflow/thalamus_neurons_sc/Snakefile.log``
+
+        .. code-block:: python
+
+            # code: workflow/thalamus_neurons_sc/n_bam.py
+            $ python n_bam.py
+            output: results/bam/group/AD_ExNeu1_sorted.bam  712
+            output: results/bam/group/Control_ExNeu1_sorted.bam     3419
+            output: results/bam/group/FTD_ExNeu1_sorted.bam 1050
+
+            output: results/bam/group/AD_ExNeu2_sorted.bam  7694
+            output: results/bam/group/Control_ExNeu2_sorted.bam     11094
+            output: results/bam/group/FTD_ExNeu2_sorted.bam 2745
+
+            output: results/bam/group/AD_SOX14Neg_sorted.bam        3016
+            output: results/bam/group/Control_SOX14Neg_sorted.bam   4289
+            output: results/bam/group/FTD_SOX14Neg_sorted.bam       429
+
+            output: results/bam/group/AD_SOX14Pos_sorted.bam        2885
+            output: results/bam/group/Control_SOX14Pos_sorted.bam   5236
+            output: results/bam/group/FTD_SOX14Pos_sorted.bam       397
+
+            output: results/bam/group/AD_Mixed_sorted.bam   1004
+            output: results/bam/group/Control_Mixed_sorted.bam      1651
+            output: results/bam/group/FTD_Mixed_sorted.bam  632
