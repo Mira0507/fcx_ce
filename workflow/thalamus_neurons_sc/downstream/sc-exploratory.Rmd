@@ -1136,7 +1136,7 @@ for (celltype in names(py$adata_dic)) {
 
 ```
 
-# Proportion of cells with junction detection {.tabset}
+# Proportion of cells with junction detection
 
 Lastly, we explore various metrics at the single-cell level across samples for each cell subtype 
 and junction target gene. 
