@@ -1253,6 +1253,77 @@ Note that a pseudo-count is added to all values to avoid division errors. The ps
 is defined as the minimum value among all non-zero entries across all cells, within the raw-
 or normalized scale, in the current dataset.
 
+## Cell number effect {.tabset}
+
+We analyze the association between per-sample cell number and the following metrics:
+
+- `junction_counts`
+- `junction_cells`
+- `percell_junctions`
+- `percent_detection`
+
+```{r ncell_validation, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk analyzes the relationship between per-sample cell number and various CE metrics
+# --------------------------------------------------------------------------------
+
+disease_contrasts <- c('AD', 'Control', 'FTD')
+for (celltype in names(ncount_list)) {
+    cat('\n\n###', celltype, '{.tabset}\n\n')
+    for (counttype in names(ncount_list[[celltype]])) {
+        cat('\n\n####', counttype, '{.tabset}\n\n')
+        for (gene in names(ncount_list[[celltype]][[counttype]])) {
+
+            cat('\n\n#####', paste0('CE: ', gene), '{.tabset}\n\n')
+            # Extract subset- and gene-wise data frame
+            input_df <- ncount_list[[celltype]][[counttype]][[gene]]
+
+            # Plot
+            y_metric <- c('junction_counts',
+                          'junction_cells',
+                          'percell_junctions',
+                          'percent_detection')
+
+            for (m in y_metric) {
+                cat('\n\n######', m, '\n\n')
+                p <- ggplot(input_df,
+                            aes_string(x='sample_cells',
+                                       y=m,
+                                       color='general_disease',
+                                       shape='exon_type')) +
+                    geom_point(alpha=0.7, size=3) +
+                    theme_bw() +
+                    facet_wrap(~exon_type) +
+                    scale_color_manual(values=color_map[[disease_col]]) 
+                print(p)
+
+                # Run statistics
+                design <- paste(m, '~ sample_cells')
+                model_list <- split(input_df, input_df[['exon_type']]) %>%
+                    map(~lm(as.formula(design), data=.x) %>% summary)
+
+                cat(paste0('\n\n- Model fitted: **', design, '**\n\n'))
+                summary_df <- data.frame(
+                    exon_type=names(model_list),
+                    R_squared=map(model_list, ~.x$r.squared) %>% unlist,
+                    parameter=map(model_list, ~.x$coefficients[,1]) %>%
+                        map(~.x[2]) %>%
+                        unlist,
+                    p_value=map(model_list, ~.x$coefficients[,4]) %>%
+                        map(~.x[2]) %>% 
+                        unlist) %>%
+                remove_rownames()
+
+                print(knitr::kable(summary_df))
+            }
+        }
+    }
+}
+```
+
+## Plots and tables {.tabset}
+
 
 ```{r ncell_violin, results='asis'}
 
@@ -1262,12 +1333,12 @@ or normalized scale, in the current dataset.
 
 disease_contrasts <- c('AD', 'Control', 'FTD')
 for (celltype in names(ncount_list)) {
-    cat('\n\n##', celltype, '{.tabset}\n\n')
+    cat('\n\n###', celltype, '{.tabset}\n\n')
     for (counttype in names(ncount_list[[celltype]])) {
-        cat('\n\n###', counttype, '{.tabset}\n\n')
+        cat('\n\n####', counttype, '{.tabset}\n\n')
         for (gene in names(ncount_list[[celltype]][[counttype]])) {
 
-            cat('\n\n####', paste0('CE: ', gene), '\n\n')
+            cat('\n\n#####', paste0('CE: ', gene), '\n\n')
             # Extract subset- and gene-wise data frame
             input_df <- ncount_list[[celltype]][[counttype]][[gene]]
 
@@ -1277,7 +1348,7 @@ for (celltype in names(ncount_list)) {
             write.csv(input_df, csv_full, row.names=FALSE, quote=FALSE)
 
             # Plot
-            cat('\n\n##### Plot\n\n')
+            cat('\n\n###### Plot\n\n')
             p <- ggplot(input_df,
                         aes_string(x=disease_col,
                                    y="percent_detection",
@@ -1353,7 +1424,7 @@ for (celltype in names(ncount_list)) {
                 bind_rows() %>%
                 remove_rownames()
 
-            cat('\n\n##### Summary table\n\n')
+            cat('\n\n###### Summary table\n\n')
             print(knitr::kable(stat_df))
             cat('\n\n')
             csv_summary <- file.path(out_dir, paste0(name, "_summary.csv"))
