@@ -143,6 +143,10 @@ color_map <- list(
         # OL="#FDB515",
         # OPC="#ED7020",
         # PVM="#231F20")
+
+# Specify the proportion of y-max added to re-scale the y-axis when plotting 
+# the proportion of CE detection rate
+ymax_added <- 0.3
 ```
 
 # Loading input data {.tabset}
@@ -1242,7 +1246,7 @@ the y-axis summarizes **`percent_detection`**, calculated per sample within each
 
 - **Full** table (accessible via the Excel-readable files ending with `"*_full.csv"`):
     - `sample_cells`: number of cells (barcodes) per sample
-    - `junction_counts`: number of junctions detected for the `exon_type` per sample
+    - `junction_counts`: number of junctions detected for the `exon_type` per sample (either raw or log-normalized)
     - `junction_cells`: number of cells with junction detection corresponding to the `exon_type` 
       per sample
     - `percell_junctions`: number of junctions detected for the `exon_type` per cell
@@ -1253,7 +1257,7 @@ Note that a pseudo-count is added to all values to avoid division errors. The ps
 is defined as the minimum value among all non-zero entries across all cells, within the raw-
 or normalized scale, in the current dataset.
 
-## Cell number effect {.tabset}
+## Cell number bias {.tabset}
 
 We analyze the association between per-sample cell number and the following metrics:
 
@@ -1330,6 +1334,7 @@ for (celltype in names(ncount_list)) {
         }
     }
 }
+
 ```
 
 ## Plots and tables {.tabset}
@@ -1342,6 +1347,7 @@ for (celltype in names(ncount_list)) {
 # --------------------------------------------------------------------------------
 
 disease_contrasts <- c('AD', 'Control', 'FTD')
+
 for (celltype in names(ncount_list)) {
     cat('\n\n###', celltype, '{.tabset}\n\n')
     for (counttype in names(ncount_list[[celltype]])) {
@@ -1351,6 +1357,9 @@ for (celltype in names(ncount_list)) {
             cat('\n\n#####', paste0('CE: ', gene), '\n\n')
             # Extract subset- and gene-wise data frame
             input_df <- ncount_list[[celltype]][[counttype]][[gene]]
+            # Calculate the min and max values for the y-variable
+            min_y <- min(input_df[['percent_detection']])
+            max_y <- max(input_df[['percent_detection']])
 
             # Save the full table
             name <- paste(c(celltype, counttype, gene), collapse="_")
@@ -1378,7 +1387,8 @@ for (celltype in names(ncount_list)) {
                 theme(axis.title.x=element_blank(),
                 axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
                 scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_color_manual(values=color_map[[study_col]]) 
+                scale_color_manual(values=color_map[[study_col]]) +
+                ylim(min_y, max_y + ymax_added * max_y)
 
             print(p)
             cat('\n\n')
@@ -1444,6 +1454,7 @@ for (celltype in names(ncount_list)) {
         }
     }
 }
+
 
 ```
 
