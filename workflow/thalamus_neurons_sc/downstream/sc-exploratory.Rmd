@@ -1201,7 +1201,7 @@ for (celltype in names(py$adata_dic)) {
                            summarize(junction_cells=n())),
                     by=c(disease_col, sample_col, 'exon_type')) %>%
                 mutate(junction_counts=ifelse(is.na(junction_counts), 0, junction_counts),
-                       junction_counts=junction_counts + pseudo_c,
+                       # junction_counts=junction_counts + pseudo_c,
                        junction_cells=ifelse(is.na(junction_cells), 0, junction_cells),
                        percell_junctions=junction_counts / sample_cells,
                        percent_detection=round(junction_cells / sample_cells * 100, 4)) %>%
@@ -1261,6 +1261,16 @@ We analyze the association between per-sample cell number and the following metr
 - `junction_cells`
 - `percell_junctions`
 - `percent_detection`
+
+Individual linear regression models (e.g. `junction_counts ~ sample_cells` or
+$junction\_counts = sample\_cells \times \beta_1 + \beta_0$) were fitted to determine how significantly each metric 
+(e.g. `junction_counts`) was affected by the per-sample cell number for each exon type. The `parameter` and `p_value`
+columns represent $\beta_1$, the magnitude and direction of change, and the likelihood of rejecting
+the null hypothesis, respectively. Additionally, the magnitude of correlation between two variables was summarized 
+using an R-squared value, represented by the `R_squared` column.
+
+Ideally, we'd like to use metrics that are unbiased by per-sample cell number when examining per-cell CE counts
+across samples and disease conditions.
 
 ```{r ncell_validation, results='asis'}
 
