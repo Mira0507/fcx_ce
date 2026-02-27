@@ -1183,7 +1183,7 @@ for (celltype in names(py$adata_dic)) {
             as.data.frame()
 
         # Specify a pseudocount
-        pseudo_c <- pseudoc_list[[counttype]]
+        # pseudo_c <- pseudoc_list[[counttype]]
         junction_genes <- unique(c_df[['junction']])
         gdf_list <- mclapply(junction_genes, function(gene) {
             # Subset the data frame by junction gene
@@ -1246,16 +1246,14 @@ the y-axis summarizes **`percent_detection`**, calculated per sample within each
 
 - **Full** table (accessible via the Excel-readable files ending with `"*_full.csv"`):
     - `sample_cells`: number of cells (barcodes) per sample
-    - `junction_counts`: number of junctions detected for the `exon_type` per sample (either raw or log-normalized)
+    - `junction_counts`: number of junctions detected for the `exon_type` per sample
+      (either raw or log-normalized)
     - `junction_cells`: number of cells with junction detection corresponding to the `exon_type` 
       per sample
     - `percell_junctions`: number of junctions detected for the `exon_type` per cell
     - `percent_detection`: percentage of cells with junction detection associated 
       with the `exon_type` per sample
 
-Note that a pseudo-count is added to all values to avoid division errors. The pseudo-count
-is defined as the minimum value among all non-zero entries across all cells, within the raw-
-or normalized scale, in the current dataset.
 
 ## Cell number bias {.tabset}
 
@@ -1267,16 +1265,17 @@ We analyze the association between per-sample cell number and the following metr
 - `percent_detection`
 
 Individual linear regression models (e.g. `junction_counts ~ sample_cells` or
-$junction\_counts = sample\_cells \times \beta_1 + \beta_0$) were fitted to determine how significantly each metric 
-(e.g. `junction_counts`) was affected by the per-sample cell number for each exon type. The `parameter` and `p_value`
-columns represent $\beta_1$, the magnitude and direction of change, and the likelihood of rejecting
-the null hypothesis, respectively. Additionally, the magnitude of correlation between two variables was summarized 
-using an R-squared value, represented by the `R_squared` column.
+$junction\_counts = sample\_cells \times \beta_1 + \beta_0$) were fitted to determine 
+how significantly each metric (e.g. `junction_counts`) was affected by the per-sample 
+cell number for each exon type. The `parameter` and `p_value` columns represent $\beta_1$,
+the magnitude and direction of change, and the likelihood of rejecting
+the null hypothesis, respectively. Additionally, the magnitude of correlation
+between two variables was summarized using an R-squared value, represented by the `R_squared` column.
 
-Ideally, we'd like to use metrics that are unbiased by per-sample cell number when examining per-cell CE counts
-across samples and disease conditions.
+Ideally, we'd like to use metrics that are unbiased by per-sample cell number when examining per-cell 
+CE counts across samples and disease conditions.
 
-```{r ncell_validation, results='asis'}
+```{r ncell_validation, results='asis', fig.width=6, fig.height=4}
 
 # --------------------------------------------------------------------------------
 # This chunk analyzes the relationship between per-sample cell number and various CE metrics
@@ -1339,14 +1338,45 @@ for (celltype in names(ncount_list)) {
 
 ## Plots and tables {.tabset}
 
+```{r ncell_plot_prep}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares plotting to visualize per-cell junction metrics
+# --------------------------------------------------------------------------------
+
+disease_contrasts <- c('AD', 'Control', 'FTD')
+
+# Function to generate a volcano plot for per-cell CE metrics
+plot_percell_junctions <- function(ycol, ylabel) {
+    ggplot(input_df,
+           aes_string(x=disease_col,
+                      y=ycol,
+                      fill=disease_col)) +
+        geom_violin(trim=TRUE) +
+        theme_bw() +
+        geom_quasirandom(
+            data=input_df,
+            aes_string(x=disease_col, y=ycol, color=study_col),
+            width=0.2) +
+        stat_summary(fun="median",
+             geom="crossbar",
+             width=0.1,
+             color="black") +
+        ylab(ylabel) +
+        facet_wrap(~exon_type, scales="free_y") +
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+        scale_fill_manual(values=color_map[[disease_col]]) +
+        scale_color_manual(values=color_map[[study_col]]) +
+        ylim(min_y, max_y + ymax_added * max_y)
+}
+```
 
 ```{r ncell_violin, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk presents the expression of genes with and without junctions for CE and non-CE
+# This chunk plots per-cell junction metrics
 # --------------------------------------------------------------------------------
-
-disease_contrasts <- c('AD', 'Control', 'FTD')
 
 for (celltype in names(ncount_list)) {
     cat('\n\n###', celltype, '{.tabset}\n\n')
@@ -1357,41 +1387,26 @@ for (celltype in names(ncount_list)) {
             cat('\n\n#####', paste0('CE: ', gene), '\n\n')
             # Extract subset- and gene-wise data frame
             input_df <- ncount_list[[celltype]][[counttype]][[gene]]
-            # Calculate the min and max values for the y-variable
-            min_y <- min(input_df[['percent_detection']])
-            max_y <- max(input_df[['percent_detection']])
-
             # Save the full table
             name <- paste(c(celltype, counttype, gene), collapse="_")
             csv_full <- file.path(out_dir, paste0(name, "_full.csv"))
             write.csv(input_df, csv_full, row.names=FALSE, quote=FALSE)
 
             # Plot
-            cat('\n\n###### Plot\n\n')
-            p <- ggplot(input_df,
-                        aes_string(x=disease_col,
-                                   y="percent_detection",
-                                   fill=disease_col)) +
-                geom_violin(trim=TRUE) +
-                theme_bw() +
-                geom_quasirandom(
-                    data=input_df,
-                    aes_string(x=disease_col, y="percent_detection", color=study_col),
-                    width=0.2) +
-                stat_summary(fun="median",
-                     geom="crossbar",
-                     width=0.1,
-                     color="black") +
-                ylab('% Cells with Junction Detection') +
-                facet_wrap(~exon_type, scales="free_y") +
-                theme(axis.title.x=element_blank(),
-                axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
-                scale_fill_manual(values=color_map[[disease_col]]) +
-                scale_color_manual(values=color_map[[study_col]]) +
-                ylim(min_y, max_y + ymax_added * max_y)
+            for (y_var in c('percell_junctions', 'percent_detection')) {
+                cat('\n\n###### - Plot:', y_var, '\n\n')
+                # Calculate the min and max values for the y-variable
+                min_y <- min(input_df[[y_var]])
+                max_y <- max(input_df[[y_var]])
 
-            print(p)
-            cat('\n\n')
+                # Specify Y-label
+                ylabel <- ifelse(y_var == "percent_detection",
+                                 "% Cells with Junction Detection",
+                                 "Number of Junctions Detected per Cell")
+                p <- plot_percell_junctions(ycol=y_var, ylabel=ylabel)
+                print(p)
+                cat('\n\n')
+            }
 
             df_list <- split(input_df, input_df$exon_type) %>%
                 mclapply(function(i_df) {
@@ -1454,8 +1469,6 @@ for (celltype in names(ncount_list)) {
         }
     }
 }
-
-
 ```
 
 P-values are shown as `NaN` if the number of samples with a percentage greater than 0 is 
@@ -1471,13 +1484,15 @@ Pseudobulk junction count matrices are saved in the following location:
 # This chunk saves single-cell and pseudobulk count matrices for further analysis
 # --------------------------------------------------------------------------------
 
-rds <- list(sc=sc_list,
-            bulk=sp_list,
-            meta=do.call("rbind",
-                         lapply(py$subadata_dic,
-                                function(o) as.data.frame(o[['obs']]) %>%
-                                    rownames_to_column('barcodes')))
-            )
+rds <- list(
+    sc=sc_list,
+    bulk=sp_list,
+    meta=do.call("rbind", 
+                 lapply(py$subadata_dic, function(o) as.data.frame(o[['obs']]) %>% 
+                        rownames_to_column('barcodes'))
+    )
+)
+
 rds_path <- file.path(out_dir, "aggr_matrices.rds")
 saveRDS(rds, rds_path)
 
