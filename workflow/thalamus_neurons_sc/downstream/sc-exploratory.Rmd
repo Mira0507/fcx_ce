@@ -1344,7 +1344,14 @@ for (celltype in names(ncount_list)) {
 # This chunk prepares plotting to visualize per-cell junction metrics
 # --------------------------------------------------------------------------------
 
+# Specify disease order
 disease_contrasts <- c('AD', 'Control', 'FTD')
+
+# Specify per-cell metrics to be plotted along with the axis title
+percell_metrics <- list(
+    percell_junctions='Number of Junctions Detected per Cell',
+    percent_detection='% Cells with Junction Detection'
+)
 
 # Function to generate a volcano plot for per-cell CE metrics
 plot_percell_junctions <- function(ycol, ylabel) {
@@ -1370,6 +1377,21 @@ plot_percell_junctions <- function(ycol, ylabel) {
         scale_color_manual(values=color_map[[study_col]]) +
         ylim(min_y, max_y + ymax_added * max_y)
 }
+
+# Function to run a wilcoxon rank sum test on a specified metric
+disease_pval <- function(dataframe=i_df,
+                         diseases=disease_contrasts,
+                         test_metric) {
+    # Calculate p-values
+    map_dbl(diseases, function(d) { 
+        res <- wilcox.test(
+            x=dataframe[dataframe[[disease_col]] == d, test_metric],
+            y=dataframe[dataframe[[disease_col]] == 'Control', test_metric])
+        return(res$p.value) 
+    }) %>% 
+    formatC(format="e", digits=4) %>% 
+    set_names(diseases)
+}
 ```
 
 ```{r ncell_violin, results='asis'}
@@ -1384,7 +1406,7 @@ for (celltype in names(ncount_list)) {
         cat('\n\n####', counttype, '{.tabset}\n\n')
         for (gene in names(ncount_list[[celltype]][[counttype]])) {
 
-            cat('\n\n#####', paste0('CE: ', gene), '\n\n')
+            cat('\n\n#####', paste0('CE: ', gene), '{.tabset}\n\n')
             # Extract subset- and gene-wise data frame
             input_df <- ncount_list[[celltype]][[counttype]][[gene]]
             # Save the full table
@@ -1392,84 +1414,91 @@ for (celltype in names(ncount_list)) {
             csv_full <- file.path(out_dir, paste0(name, "_full.csv"))
             write.csv(input_df, csv_full, row.names=FALSE, quote=FALSE)
 
+            stat_df_list <- list()
             # Plot
-            for (y_var in c('percell_junctions', 'percent_detection')) {
-                cat('\n\n###### - Plot:', y_var, '\n\n')
+            for (y_var in names(percell_metrics)) {
+                cat('\n\n######', y_var, 'plot\n\n')
                 # Calculate the min and max values for the y-variable
                 min_y <- min(input_df[[y_var]])
                 max_y <- max(input_df[[y_var]])
 
-                # Specify Y-label
-                ylabel <- ifelse(y_var == "percent_detection",
-                                 "% Cells with Junction Detection",
-                                 "Number of Junctions Detected per Cell")
-                p <- plot_percell_junctions(ycol=y_var, ylabel=ylabel)
+                # Plot
+                p <- plot_percell_junctions(
+                    ycol=y_var,
+                    ylabel=percell_metrics[[y_var]])
                 print(p)
                 cat('\n\n')
+                p_path <- file.path(
+                    out_dir,
+                    paste0(celltype, '_', counttype, '_', gene, '_', y_var, '_violin.pdf')
+                    )
+                ggsave(p_path, p, device='pdf')
+                link_plot(p_path)
+
+                df_list <- split(input_df, input_df$exon_type) %>%
+                    mclapply(function(i_df) {
+
+                        # Count the number of samples per disease condition
+                        nsample <- i_df %>%
+                            unique() %>%
+                            group_by_at(vars(disease_col)) %>%
+                            summarize(subset_samples=n(), subset_cells=sum(sample_cells)) %>%
+                            # Add the mean and median percentage of junction detection rate
+                            left_join(i_df %>%
+                                group_by_at(vars(disease_col)) %>%
+                                summarize(
+                                    MEAN_junction_counts=round(mean(junction_counts), 4),
+                                    MEDIAN_junction_counts=round(median(junction_counts), 4),
+                                    MEAN_junction_cells=round(mean(junction_cells), 4),
+                                    MEDIAN_junction_cells=round(median(junction_cells), 4),
+                                    MEAN_percell_junctions=round(mean(percell_junctions), 4),
+                                    MEDIAN_percell_junctions=round(median(percell_junctions), 4),
+                                    MEAN_percent_detection=round(mean(percent_detection), 4),
+                                    MEDIAN_percent_detection=round(median(percent_detection), 4)),
+                                by=disease_col) %>%
+                            unique() %>%
+                            column_to_rownames(disease_col)
+
+                        # Calculate p-values
+                        disease_pvals <- disease_pval(
+                            dataframe=i_df,
+                            test_metric=y_var)
+
+                        # Incorporate the number of samples and p-values into a data frame and print
+                        res_df <- data.frame(
+                            metric=y_var,
+                            disease=names(disease_pvals),
+                            vsControl_pvalue=disease_pvals)
+
+                        # Add calculated metrics to the result data frame
+                        for (met_i in colnames(nsample)) {
+                            res_df[[met_i]] <- nsample[res_df$disease, met_i]
+                        }
+                        return(res_df)
+                        })
+
+                # Merge data from both junction types
+                stat_df <- map(names(df_list),
+                               ~df_list[[.x]] %>% mutate(exon_type=.x)
+                    ) %>%
+                    bind_rows() %>%
+                    remove_rownames()
+                stat_df_list[[y_var]] <- stat_df
             }
 
-            df_list <- split(input_df, input_df$exon_type) %>%
-                mclapply(function(i_df) {
-
-                    # Count the number of samples per disease condition
-                    nsample <- i_df %>%
-                        unique() %>%
-                        group_by_at(vars(disease_col)) %>%
-                        summarize(subset_samples=n(), subset_cells=sum(sample_cells)) %>%
-                        # Add the mean and median percentage of junction detection rate
-                        left_join(i_df %>%
-                            group_by_at(vars(disease_col)) %>%
-                            summarize(
-                                MEAN_junction_counts=round(mean(junction_counts), 4),
-                                MEDIAN_junction_counts=round(median(junction_counts), 4),
-                                MEAN_junction_cells=round(mean(junction_cells), 4),
-                                MEDIAN_junction_cells=round(median(junction_cells), 4),
-                                MEAN_percell_junctions=round(mean(percell_junctions), 4),
-                                MEDIAN_percell_junctions=round(median(percell_junctions), 4),
-                                MEAN_percent_detection=round(mean(percent_detection), 4),
-                                MEDIAN_percent_detection=round(median(percent_detection), 4)),
-                            by=disease_col) %>%
-                        unique() %>%
-                        column_to_rownames(disease_col)
-
-                    # Calculate p-values
-                    disease_pvals <- map_dbl(disease_contrasts, function(d) {
-                        res <- wilcox.test(
-                            x=i_df[i_df[[disease_col]] == d, 'percent_detection'],
-                            y=i_df[i_df[[disease_col]] == 'Control', 'percent_detection'])
-                        return(res$p.value)
-                        }) %>%
-                        formatC(format="e", digits=4) %>%
-                        set_names(disease_contrasts)
-
-                    # Incorporate the number of samples and p-values into a data frame and print
-                    res_df <- data.frame(
-                        disease=names(disease_pvals),
-                        vsControl_pvalue=disease_pvals)
-
-                    # Add calculated metrics to the result data frame
-                    for (met_i in colnames(nsample)) {
-                        res_df[[met_i]] <- nsample[res_df$disease, met_i]
-                    }
-                    return(res_df)
-                    })
-
-            # Merge data from both junction types
-            stat_df <- map(names(df_list), ~df_list[[.x]] %>% mutate(exon_type=.x)) %>%
-                bind_rows() %>%
-                remove_rownames()
-
             cat('\n\n###### Summary table\n\n')
-            print(knitr::kable(stat_df))
+            stat_all_df <- stat_df_list %>% bind_rows()
+            print(knitr::kable(stat_all_df))
             cat('\n\n')
             csv_summary <- file.path(out_dir, paste0(name, "_summary.csv"))
-            write.csv(stat_df, csv_summary, row.names=FALSE, quote=FALSE)
+            write.csv(stat_all_df, csv_summary, row.names=FALSE, quote=FALSE)
             link_table(csv_summary)
             link_table(csv_full)
         }
     }
 }
 ```
+
 
 P-values are shown as `NaN` if the number of samples with a percentage greater than 0 is 
 too small to run statistical testing.
