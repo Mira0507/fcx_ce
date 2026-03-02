@@ -2113,3 +2113,15 @@ fcx_ce
         - plot both percell junctions and proportion of cells with CE/non-CE junctions
           using a custom plotting function
 
+
+2026-03-02
+----------
+
+@Mira0507
+
+
+- Visualize per-cell CE metrics and prep summary tables
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - bugfix to table preparation
