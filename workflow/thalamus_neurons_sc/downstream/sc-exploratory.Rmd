@@ -1140,7 +1140,7 @@ for (celltype in names(py$adata_dic)) {
 
 ```
 
-# Proportion of cells with junction detection
+# Per-cell CE assessment
 
 Lastly, we explore various metrics at the single-cell level across samples for each cell subtype 
 and junction target gene. 
@@ -1227,9 +1227,28 @@ for (celltype in names(py$adata_dic)) {
 
 ```
 
+## Cell number bias {.tabset}
+
+We analyze the association between per-sample cell number and the following metrics:
+
+- `junction_counts`
+- `junction_cells`
+- `percell_junctions`
+- `percent_detection`
+
+Individual linear regression models (e.g. `junction_counts ~ sample_cells` or
+$junction\_counts = sample\_cells \times \beta_1 + \beta_0$) were fitted to determine 
+how significantly each metric (e.g. `junction_counts`) was affected by the per-sample 
+cell number for each exon type. The `parameter` and `p_value` columns represent $\beta_1$,
+the magnitude and direction of change, and the likelihood of rejecting
+the null hypothesis, respectively. Additionally, the magnitude of correlation
+between two variables was summarized using an R-squared value, represented by the `R_squared` column.
+
+Ideally, we'd like to use metrics that are unbiased by per-sample cell number when examining per-cell 
+CE counts across samples and disease conditions.
+
 The following table summarizes the p-values calculated using a two-tailed Wilcoxon Rank Sum test
-on **`percent_detection`** comparing each disease to Control. In the preceding volcano plots,
-the y-axis summarizes **`percent_detection`**, calculated per sample within each subset.
+on **`percell_junctions`** and **`percent_detection`** comparing each disease to Control. 
 
 - **Summary** table (accessible via the Excel-readable files ending with `"*_summary.csv"`):
     - `exon_type`: see [annotation reference](#annotating-input-junctions)
@@ -1253,27 +1272,6 @@ the y-axis summarizes **`percent_detection`**, calculated per sample within each
     - `percell_junctions`: number of junctions detected for the `exon_type` per cell
     - `percent_detection`: percentage of cells with junction detection associated 
       with the `exon_type` per sample
-
-
-## Cell number bias {.tabset}
-
-We analyze the association between per-sample cell number and the following metrics:
-
-- `junction_counts`
-- `junction_cells`
-- `percell_junctions`
-- `percent_detection`
-
-Individual linear regression models (e.g. `junction_counts ~ sample_cells` or
-$junction\_counts = sample\_cells \times \beta_1 + \beta_0$) were fitted to determine 
-how significantly each metric (e.g. `junction_counts`) was affected by the per-sample 
-cell number for each exon type. The `parameter` and `p_value` columns represent $\beta_1$,
-the magnitude and direction of change, and the likelihood of rejecting
-the null hypothesis, respectively. Additionally, the magnitude of correlation
-between two variables was summarized using an R-squared value, represented by the `R_squared` column.
-
-Ideally, we'd like to use metrics that are unbiased by per-sample cell number when examining per-cell 
-CE counts across samples and disease conditions.
 
 ```{r ncell_validation, results='asis', fig.width=6, fig.height=4}
 

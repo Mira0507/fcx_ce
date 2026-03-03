@@ -2123,5 +2123,15 @@ fcx_ce
 - Visualize per-cell CE metrics and prep summary tables
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
-    - notes
-        - bugfix to table preparation
+    - notes: bugfix to table preparation
+
+
+2026-03-03
+----------
+
+@Mira0507
+
+- Analyze per-cell CE metrics and prep summary tables
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes: documentation improved
