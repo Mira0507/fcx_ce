@@ -2027,7 +2027,7 @@ fcx_ce
 
 - Rerun the single-cell Snakemake pipeline to merge the single-cell bam files
   for Sashimi plots
-    - conda env: ``menv``
+    - conda env: ``env``
     - scripts:
         - ``workflow/thalamus_neurons_sc/Snakemake``
     - notes:
@@ -2078,3 +2078,60 @@ fcx_ce
             output: results/bam/group/AD_Mixed_sorted.bam   1004
             output: results/bam/group/Control_Mixed_sorted.bam      1651
             output: results/bam/group/FTD_Mixed_sorted.bam  632
+
+
+2026-02-25
+----------
+
+@Mira0507
+
+- Validate CE metrics to figure out unbiased way to quantitate and visualize
+  per-cell CEs (in progress)
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - aims to find CE metrics that are unbiased by per-sample cell number
+        - the following metrics are tested using a linear regression model
+            - ``junction_counts``
+            - ``junction_cells``
+            - ``percell_junctions``
+            - ``percent_detection``
+        - adding a pseudo-count to every entry reverted
+
+2026-02-26
+----------
+
+@Mira0507
+
+- Validate CE metrics to figure out unbiased way to quantitate and visualize
+  per-cell CEs (in progress)
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - add documentation about the validation approach
+        - replot CE detection rates with y-limits (both min and max)
+        - plot both percell junctions and proportion of cells with CE/non-CE junctions
+          using a custom plotting function
+
+
+2026-03-02
+----------
+
+@Mira0507
+
+
+- Visualize per-cell CE metrics and prep summary tables
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes: bugfix to table preparation
+
+
+2026-03-03
+----------
+
+@Mira0507
+
+- Analyze per-cell CE metrics and prep summary tables
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes: documentation improved
