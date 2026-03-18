@@ -1501,6 +1501,112 @@ for (celltype in names(ncount_list)) {
 P-values are shown as `NaN` if the number of samples with a percentage greater than 0 is 
 too small to run statistical testing.
 
+# Samples with and without CEs {.tabset}
+
+```{r}
+
+ce_colname <- c('detected', 'undetected')
+for (celltype in names(ncount_list)) {
+    cat('\n\n##', celltype, '{.tabset}\n\n')
+    for (counttype in names(ncount_list[[celltype]])) {
+        cat('\n\n###', counttype, '{.tabset}\n\n')
+        for (gene in names(ncount_list[[celltype]][[counttype]])) {
+            cat('\n\n####', paste0('CE: ', gene), '{.tabset}\n\n')
+            # Prep a data frame for samples with and without CE detection
+            input_df <- ncount_list[[celltype]][[counttype]][[gene]] %>%
+                dplyr::filter(exon_type == 'cryptic') %>%
+                mutate(CE=ifelse(junction_cells > 0, "detected", "undetected")) %>%
+                group_by_at(vars(disease_col, 'CE')) %>%
+                summarize(N=n()) %>%
+                pivot_wider(names_from=CE, values_from=N) %>%
+                mutate_at(
+                    ce_colname,
+                    ~ifelse(is.na(.x), 0, .x)) %>%
+                pivot_longer(
+                    cols=ends_with('detected'),
+                    names_to="CE",
+                    values_to="sample_N") %>%
+                mutate(CE=factor(CE, levels=ce_colname))
+
+            p <- ggplot(input_df,
+                        aes_string(x=disease_col, y='CE', fill='CE')) +
+                geom_bar(position='fill', stat='identity') +
+                theme_bw()
+            print(p)
+
+        }
+    }
+}
+
+```
+
+# Samples with and without CEs {.tabset}
+
+The proportion and number of samples with and without CEs are summarized as a barplot 
+across diseases and genes. 
+
+```{r sample_ce_detection, results='asis', fig.width=6, fig.height=4}
+
+ce_colname <- c('detected', 'undetected')
+for (celltype in names(ncount_list)) {
+    cat('\n\n##', celltype, '{.tabset}\n\n')
+    for (counttype in names(ncount_list[[celltype]])) {
+        cat('\n\n###', counttype, '{.tabset}\n\n')
+        for (gene in names(ncount_list[[celltype]][[counttype]])) {
+            cat('\n\n####', paste0('CE: ', gene), '{.tabset}\n\n')
+
+            # Prep a data frame for each sample with and without CE detection
+            input_df <- ncount_list[[celltype]][[counttype]][[gene]] %>%
+                dplyr::filter(exon_type == 'cryptic') %>%
+                mutate(CE=ifelse(junction_cells > 0, "detected", "undetected")) %>%
+                group_by_at(vars(disease_col, 'CE')) %>%
+                summarize(N=n())
+
+            # Add columns for absent detection categories
+            ce_category <- unique(input_df[['CE']])
+            for (ce_i in ce_colname) {
+                if (!ce_i %in% ce_category) {
+                    placeholder_df <- input_df
+                    placeholder_df[['CE']] <- rep(ce_i, nrow(placeholder_df))
+                    placeholder_df[['N']] <- rep(0, nrow(placeholder_df))
+                    input_df <- rbind(input_df, placeholder_df)
+                } 
+            }
+
+            # Plot
+            for (bartype in c('fill', 'stack')) {
+
+                ylabel <- ifelse(bartype == "fill",
+                                 "Case Proportion",
+                                 "Case Count")
+
+                cat('\n\n#####', ylabel, "\n\n")
+                p <- ggplot(input_df,
+                            aes_string(x=disease_col, y='N', fill='CE')) +
+                    geom_bar(width=0.5, position=bartype, stat='identity') +
+                    theme_bw() +
+                    ylab(ylabel) +
+                    theme(axis.title.x=element_blank())
+                print(p)
+
+                # Save and link
+                plot_path <- file.path(
+                    out_dir,
+                    paste0(celltype, "_", counttype, "_", gene, "_", bartype, "_barplot.pdf")
+                )
+                ggsave(plot_path, p, device="pdf")
+                link_plot(plot_path)
+            }
+            cat('\n\n##### Table\n\n')
+            print(knitr::kable(input_df %>% arrange(CE)))
+        }
+    }
+}
+
+```
+
+
+
 # Saving pseudobulk count matrices
 
 Pseudobulk junction count matrices are saved in the following location:
