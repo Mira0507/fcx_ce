@@ -1503,45 +1503,6 @@ too small to run statistical testing.
 
 # Samples with and without CEs {.tabset}
 
-```{r}
-
-ce_colname <- c('detected', 'undetected')
-for (celltype in names(ncount_list)) {
-    cat('\n\n##', celltype, '{.tabset}\n\n')
-    for (counttype in names(ncount_list[[celltype]])) {
-        cat('\n\n###', counttype, '{.tabset}\n\n')
-        for (gene in names(ncount_list[[celltype]][[counttype]])) {
-            cat('\n\n####', paste0('CE: ', gene), '{.tabset}\n\n')
-            # Prep a data frame for samples with and without CE detection
-            input_df <- ncount_list[[celltype]][[counttype]][[gene]] %>%
-                dplyr::filter(exon_type == 'cryptic') %>%
-                mutate(CE=ifelse(junction_cells > 0, "detected", "undetected")) %>%
-                group_by_at(vars(disease_col, 'CE')) %>%
-                summarize(N=n()) %>%
-                pivot_wider(names_from=CE, values_from=N) %>%
-                mutate_at(
-                    ce_colname,
-                    ~ifelse(is.na(.x), 0, .x)) %>%
-                pivot_longer(
-                    cols=ends_with('detected'),
-                    names_to="CE",
-                    values_to="sample_N") %>%
-                mutate(CE=factor(CE, levels=ce_colname))
-
-            p <- ggplot(input_df,
-                        aes_string(x=disease_col, y='CE', fill='CE')) +
-                geom_bar(position='fill', stat='identity') +
-                theme_bw()
-            print(p)
-
-        }
-    }
-}
-
-```
-
-# Samples with and without CEs {.tabset}
-
 The proportion and number of samples with and without CEs are summarized as a barplot 
 across diseases and genes. 
 
