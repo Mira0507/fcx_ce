@@ -2135,3 +2135,15 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
     - notes: documentation improved
+
+2026-03-18
+----------
+
+@Mira0507
+
+- Analyze per-cell CE metrics and prep summary tables
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
+    - notes
+        - summarized the number of samples with CE detection in a stacked barplot
+        - added tables for the number of samples with and without CE detection
