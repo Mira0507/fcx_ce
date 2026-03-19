@@ -1544,8 +1544,8 @@ for (celltype in names(ncount_list)) {
             for (bartype in c('fill', 'stack')) {
 
                 ylabel <- ifelse(bartype == "fill",
-                                 "Case Proportion",
-                                 "Case Count")
+                                 "Sample Proportion",
+                                 "Sample Count")
 
                 cat('\n\n#####', ylabel, "\n\n")
                 p <- ggplot(input_df,
