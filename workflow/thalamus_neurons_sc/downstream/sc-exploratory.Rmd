@@ -1516,10 +1516,16 @@ for (celltype in names(ncount_list)) {
         for (gene in names(ncount_list[[celltype]][[counttype]])) {
             cat('\n\n####', paste0('CE: ', gene), '{.tabset}\n\n')
 
-            # Prep a data frame for each sample with and without CE detection
+            # Clean per-celltype data frame
             input_df <- ncount_list[[celltype]][[counttype]][[gene]] %>%
-                dplyr::filter(exon_type == 'cryptic') %>%
-                mutate(CE=ifelse(junction_cells > 0, "detected", "undetected")) %>%
+                dplyr::select(
+                    -sample_cells,
+                    -junction_counts,
+                    -percell_junctions,
+                    -percent_detection,
+                    -study) %>%
+                pivot_wider(names_from=exon_type, values_from=junction_cells) %>%
+                mutate(CE=ifelse(cryptic > 0, "detected", "undetected")) %>%
                 group_by_at(vars(disease_col, 'CE')) %>%
                 summarize(N=n())
 
@@ -1565,8 +1571,6 @@ for (celltype in names(ncount_list)) {
 }
 
 ```
-
-
 
 # Saving pseudobulk count matrices
 
