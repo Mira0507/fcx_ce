@@ -1,0 +1,481 @@
+---
+title: "Single cell exploratory analysis on cryptic exons (CEs)"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed for exploratory analysis on CE at the single-cell level.
+
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(ggbeeswarm)
+library(reticulate)
+library(parallel)
+library(yaml)
+library(RColorBrewer)
+library(plotly)
+library(rtracklayer)
+library(GenomicRanges)
+library(GenomicFeatures)
+
+# Additional options
+set.seed(2570)
+source('../config/helpers.R')
+use_condaenv("../../../menv")
+
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
+
+pd <- reticulate::import("pandas")
+```
+
+```{python ppackages}
+import anndata as ad
+import scanpy as sc
+import pandas as pd
+import numpy as np
+import subprocess
+import os
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrix
+mtx_path <- "../results/junction_counts/thalamus_neurons_reannotated_perind_numers.counts.gz"
+
+# Path to metadata table
+meta_path <- "../results/barcodes.tsv"
+
+# Path to GTF
+gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
+
+# Path to Snakemake config
+snakemake_config <- "../config/config.yaml"
+
+# Paths to AnnData
+adata_paths <- read_yaml(snakemake_config)[['adata']] %>%
+    map(~paste0("../", .x))
+
+# Path to output directory
+out_dir <- "sc-exploratory"
+
+# Create directories if missing
+for (p in c(out_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    renamed_annotation_cell_type_post_outlier_removal=c( 
+        'ExNeu1',
+        'ExNeu2',
+        'SOX14_Pos_InNeu',
+        'SOX14_Neg_InNeu',
+        'Mixed'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c(
+        'Control-Marsan',
+        'Control-Biogen',
+        'Control-Mathys',
+        'FTD-Marsan',
+        'FTD-Biogen',
+        'AD-Mathys')
+)
+
+# Specify column names to subset barcodes
+# NOTE: Set to NULL if unnecessary
+celltype_col <- 'annotation_04142026'
+disease_col <- 'general_disease'
+subset_col <- list(disease_celltype=c(disease_col, celltype_col))
+sample_col <- 'SampleID'
+study_col <- 'study'
+
+# Specify genes explored in the current analysis
+genes <- read_yaml(snakemake_config)[['genes']] 
+
+# Specify HEX color code
+color_map <- list(
+    general_disease=c(
+        Control="#6666FF",
+        FTD="#669900",
+        AD="#FF6600"),
+    study=c(
+        Marsan="#FF00FF",
+        Biogen="#00FFFF",
+        Mathys="#BFBFBF"),
+    cell_type=c(
+        ExNeuRNF22neg="#90C6E2",
+        ExNeuRNF22pos="#547CB2", 
+        InNeuSOX14pos="",
+        InNeuSOX14neg=""))
+        # Astrocyte="#ABD158",
+        # BVC="#74858C",
+        # CP="#D5C18E",
+        # InNeu1="#21409A",
+        # InNeu2="#262262",
+        # Lymphocyte="#68151F",
+        # Microglia="#D24A75",
+        # OL="#FDB515",
+        # OPC="#ED7020",
+        # PVM="#231F20")
+
+# Specify the proportion of y-max added to re-scale the y-axis when plotting 
+# the proportion of CE detection rate
+ymax_added <- 0.3
+```
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
+genes:
+
+```{r genes_tested}
+print(genes)
+```
+
+These counts were compiled into a junction-by-barcode matrix for differential testing.
+
+
+```{python import_adata}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input data and add the junction matrix to AnnData
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+# Import AnnData objects
+adata_dic = {celltype: ad.read_h5ad(path) for celltype, path in r.adata_paths.items()}
+
+# Import junction matrix and metadata
+counts = pd.read_csv(r.mtx_path, sep=" ")
+
+```
+
+# Annotating input junctions
+
+The following junctions were detected in the input single-cell datasets. Splice junctions 
+are annotated as summarized below:
+
+* Known start and end coordinates of all exons are labeled as _boundaries_.
+
+* The _splice_type_ annotation is defined as follows:
+    * _non-cryptic_: both the start and end coordinates of the junction match the _boundaries_.
+    * _cryptic_start_: only the end coordinate of the junction matches the _boundaries_.
+    * _cryptic_end_: only the start coordinate of the junction matches the _boundaries_.
+    * _cryptic_both_: neither the start nor the end coordinates of the junction match the _boundaries_.
+
+* The _exon_type_ annotation is defined as follows:
+    * _non-cryptic-annotated_: both the start and end of the junction are at annotated positions
+    * _non-cryptic-novel_: neither coordinate of the junction is within an intron AND either position is
+      at non-annotated positions
+    * _cryptic_: one or both of the start and end coordinates of the junction is within intron regions
+
+<img src="junction_exon.png" width="600">
+
+Refer to the following annotation table, which includes a toy junction at `chr8:79611214:79636812`.
+This junction hypothetically ends in an exon.
+
+
+```{r annotate_junctions, results='asis', cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk annotates input junctions
+# --------------------------------------------------------------------------------
+
+# Import GTF annotation
+gtf <- import(gtf_path)
+
+# Build TxDb from GRanges
+txdb <- txdbmaker::makeTxDbFromGRanges(gtf)
+
+# Obtain ranges for introns
+introns <- intronsByTranscript(txdb, use.names=TRUE) %>%
+    unlist(use.names=FALSE)
+
+# Prep a data frame consisting of genomic coordinates for splice start and end sites
+junctions <- data.frame(junctions=rownames(py$counts)) %>%
+    separate(junctions, c('chr', 'start', 'end'), sep=":") %>%
+    mutate_at(c('start', 'end'), as.numeric)
+
+########## THIS IS A TOY COORDINATE WITH ITS END SITE MATCHING EXONIC REGION OF STMN2 ###
+########## COMMENT OUT AFTER VALIDATION! ################################################
+
+junctions <- rbind(junctions,
+                   data.frame(chr='chr8', start=79611214, end=79636812))
+
+########################################################################################
+
+# Convert the data frame into GRanges obj
+junctions_gr <- GRanges(
+    seqnames=junctions$chr,
+    ranges=IRanges(start=junctions$start, end=junctions$end))
+
+# Annotate gene names
+hits <- findOverlaps(junctions_gr, gtf, type= "within")
+annotated <- queryHits(hits)
+junctions[['gene_name']][annotated] <- sapply(
+    subjectHits(hits),
+    function(x) mcols(gtf)$gene_name[x])
+
+# Filter GTF by genes and structure of interest
+gtf <- gtf[gtf$type == "exon" & gtf$gene_name %in% genes]
+
+# Extract annotated splice sites in any direction for genes of interest
+# These splice sites are the start and end coordinates of individual exons
+boundaries <- c(
+    GRanges(seqnames=seqnames(gtf),
+            ranges=IRanges(start=start(gtf), end=start(gtf))),
+    GRanges(seqnames=seqnames(gtf),
+            ranges=IRanges(start=end(gtf), end=end(gtf)))
+) %>%
+as.data.frame() %>%
+dplyr::select(seqnames, start) %>%
+set_names(c('seqnames', 'splice_sites'))
+
+# Add a column indicating the type of splicing based on whether the start 
+# end coordinates of junctions match the annotated splice sites
+junctions[['splice_type']] <- 
+    ifelse(! junctions[['start']] %in% boundaries[['splice_sites']],
+           "cryptic_start",
+    ifelse(! junctions[['end']] %in% boundaries[['splice_sites']],
+           "cryptic_end",
+    ifelse(! junctions[['start']] %in% boundaries[['splice_sites']] &
+           ! junctions[['end']] %in% boundaries[['splice_sites']],
+           "cryptic_both",
+          "non-cryptic")))
+
+# Add a column indicating the type of exons generated by each junction. This step aims 
+# to identify whether each cryptic splicing generates cryptic exons. For example, cryptic
+# exons are generated when either donor or acceptor site of junctions is within
+# intronic regions.
+junctions[['exon_type']] <- sapply(1:nrow(junctions), function(i) {
+    # Return "non-cryptic" if the splice junction starts and ends at annotated sites
+    etype <- if (junctions[i, 'splice_type'] == 'non-cryptic') {
+        "non-cryptic-annotated"
+    } else {
+        # Build GRanges obj for start and end coordinates
+        start_gr <- GRanges(seqnames=junctions[i, 'chr'],
+                            ranges=IRanges(start=junctions[i, 'start'],
+                                           end=junctions[i, 'start']))
+        end_gr <- GRanges(seqnames=junctions[i, 'chr'],
+                          ranges=IRanges(start=junctions[i, 'end'],
+                                         end=junctions[i, 'end']))
+        # Return "non-cryptic" if none of the coordinates match intronic regions 
+        # and "cryptic" otherwise.
+        etype <- ifelse(overlapsAny(start_gr, introns) | 
+                        overlapsAny(end_gr, introns),
+                        "cryptic",
+                        "non-cryptic-novel")
+    }
+    return(etype) })
+
+DT::datatable(junctions)
+
+# Add a column for junction ids
+junctions[['junction_id']] <- paste(
+    junctions$chr,
+    junctions$start,
+    junctions$end,
+    junctions$gene_name,
+    junctions$exon_type,
+    sep=":"
+) 
+
+# Delete the toy junction
+junctions <- junctions[1:nrow(junctions)-1,]
+```
+
+```{python ann_data}
+
+# --------------------------------------------------------------------------------
+# This chunk prepares subsetted AnnData
+# --------------------------------------------------------------------------------
+
+# Replace index with junction ids
+counts.index = r.junctions['junction_id']
+
+# reticulate::repl_python()
+
+for celltype in adata_dic.keys():
+
+    # Retrieve an AnnData corresponding to the celltype
+    ann = adata_dic[celltype]
+    # Extract obj metadata
+    obs = ann.obs
+    # Impute missing values of the metadata manually
+    obs['study_specific_disease_specific'] = obs['general_disease'].astype(str) + '-' + obs['study'].astype(str)
+
+    # Add new columns required to subset barcodes if necessary
+    if r.subset_col is not None:
+        for key, value in r.subset_col.items():
+            obs[key] = obs[value].astype(str).agg(":".join, axis=1)
+
+    # Replace the input metadata with updated one
+    ann.obs = obs
+    # Add raw and log1p-transformed junction counts to the AnnData
+    ann.obsm['junction_raw'] = counts[obs.index].T
+    ann.obsm['junction_lognorm'] = np.log1p(counts[obs.index].T)
+    # Update the input AnnData
+    adata_dic[celltype] = ann
+
+    # Extract cell barcodes
+    target_cells = list(ann.obs.index)
+    # Slice the junction count matrix based on the extracted barcodes
+    counts_subset = counts[target_cells]
+    # Subset metadata
+    obs_subset = obs.loc[counts_subset.columns, :]
+
+    # Create a new AnnData obj
+    ann_new = ad.AnnData(X=counts_subset.T, obs=obs_subset)
+    ann_new.layers['counts'] = ann_new.X.copy()
+    # Add log1p-transformed values to the AnnData
+    sc.pp.log1p(ann_new)
+    ann_new.layers['lognorm'] = ann_new.X.copy()
+
+    # Specify paths to updated/created AnnData
+    updated_path = f"{r.out_dir}/{celltype}_JUNCTIONS_ADDED.h5ad"
+    new_path = f"{r.out_dir}/{celltype}_JUNCTIONS_ONLY.h5ad"
+    # Save updated/created AnnData
+    ann.write_h5ad(updated_path)
+    ann_new.write_h5ad(new_path)
+
+```
+
+Input AnnData objects for each celltype:
+
+```{r infile_info}
+
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", adata_paths[[name]]))
+}
+
+```
+
+These input objects have been updated to include the following data:
+
+- `AnnData.obsm["junction_raw"]`: raw junction counts
+- `AnnData.obsm["junctions_lognorm"]`: log-normalized junction counts (log1p transformation)
+
+Refer to the following file paths for the updated `AnnData` objects:
+
+```{r outann_info1}
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", out_dir, "/", name, "_JUNCTIONS_ADDED.h5ad"))
+}
+```
+
+In the meantime, new `AnnData` objects have been saved as listed below:
+
+- `AnnData.layers["counts"]`: raw junction counts
+- `AnnData.layers["lognorm"]`: log-normalized junction counts (log1p transformation)
+
+The newly created `AnnData` objects are saved at:
+
+```{r outann_info2}
+for (name in names(adata_paths)) {
+    print(paste0(name, ": ", out_dir, "/", name, "_JUNCTIONS_ONLY.h5ad"))
+}
+```
+
+Note that the `*_JUNCTIONS_ADDED.h5ad` file includes both the transcript and junction counts, while
+the `*_JUNCTIONS_ONLY.h5ad` contains only junction counts. 
+
+The following table shows the number of samples and barcodes for each study- and celltype-specific subset.
+The `N_samples` and `N_barcodes` columns represent the number of samples and barcodes 
+that were initially loaded, respectively.
+
+```{r n_barcodes, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays the number of input barcodes for each subset
+# --------------------------------------------------------------------------------
+
+# Function to extract the number of samples from a list of AnnData obj
+count_n_samples <- function(obj_dic) {
+    sapply(obj_dic, function(obj) obj$obs[[sample_col]]) %>%
+        unlist() %>%
+        unique() %>%
+        length()
+}
+
+# Prep an data frame exploring the number of samples and barcodes for all cells
+n_df <- data.frame(subset="all",
+                   N_samples=count_n_samples(py$adata_dic),
+                   N_barcodes=sapply(py$adata_dic, function(o) nrow(o$obs)) %>% sum
+)
+
+# Specify columns of interest
+cols_interest <- c(
+    celltype_col,
+    disease_col,
+    sample_col,
+    study_col
+)
+
+# Merge all metadata with the columns of interest
+df <- lapply(py$adata_dic, function(o) as.data.frame(o$obs)[, cols_interest])
+df <- do.call("rbind", df)
+
+# Count the number of samples and barcodes present in the current input
+ncells <- split(df, df[[celltype_col]]) %>% 
+    sapply(nrow)
+nsamples <- split(df, df[[celltype_col]]) %>%
+    map_dbl(~.x[, c(celltype_col, sample_col)] %>%
+        unique() %>%
+        nrow())
+n_df <- rbind(n_df,
+              data.frame(subset=paste0("all:", names(ncells)),
+                         N_samples=nsamples,
+                         N_barcodes=ncells) %>%
+              remove_rownames()
+)
+
+# Add rows for dataset-specific celltypes
+for (o in py$adata_dic) {
+    df <- as.data.frame(o$obs)
+    n_list <- split(df, df[[names(subset_col)[1]]]) %>%
+        lapply(nrow)
+    n_df <- rbind(n_df,
+                  data.frame(subset=names(n_list), 
+                             N_samples=count_n_samples(list(o)),
+                             N_barcodes=unlist(n_list)))
+}
+n_df <- n_df %>% remove_rownames()
+
+knitr::kable(n_df)
+```
+
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+
