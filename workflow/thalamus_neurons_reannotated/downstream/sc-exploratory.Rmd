@@ -667,17 +667,22 @@ for (name in names(sp_list)) {
         col_filter=c(names(subset_col)[1], names(factor_groups)))[['df']]
 
     # Print heatmap
-    print(pheatmap::pheatmap(
-        scmat,
-        scale='none',
-        color=colors,
-        annotation_col=heatmap_meta,
-        show_rownames=FALSE,
-        show_colnames=FALSE,
-        cluster_cols=TRUE,
-        border_color=NA
-    )
-    )
+    tryCatch(
+        {
+            print(pheatmap::pheatmap(
+                scmat,
+                scale='none',
+                color=colors,
+                annotation_col=heatmap_meta,
+                show_rownames=FALSE,
+                show_colnames=FALSE,
+                cluster_cols=TRUE,
+                border_color=NA
+            ))
+        },
+        error=function(e) {
+            cat('\n\nDistance not calculated...\n\n')
+        }
     cat('\n\n')
 }
 ```
