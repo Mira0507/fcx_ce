@@ -90,12 +90,11 @@ for (p in c(out_dir)) {
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
-    renamed_annotation_cell_type_post_outlier_removal=c( 
-        'ExNeu1',
-        'ExNeu2',
-        'SOX14_Pos_InNeu',
-        'SOX14_Neg_InNeu',
-        'Mixed'),
+    annotation_04142026=c( 
+        'ExNeu RNF220+',
+        'ExNeu RNF220-',
+        'InNeu SOX14+',
+        'InNeu SOX14-'),
     study=c('Marsan', 'Biogen', 'Mathys'),
     study_specific_disease_specific=c(
         'Control-Marsan',
@@ -643,7 +642,7 @@ clean_metadata <- function(data_frame, col_filter) {
 # --------------------------------------------------------------------------------
 
 for (name in names(sp_list)) {
-    cat('###', name, '{.tabset}\n\n')
+    cat('\n\n###', name, '\n\n')
     # Retrieve the raw count matrix
     scmat <- sc_list[[name]][['raw']]
     # Remove zero-count barcodes
@@ -683,7 +682,7 @@ for (name in names(sp_list)) {
         error=function(e) {
             cat('\n\nDistance not calculated...\n\n')
         }
-    cat('\n\n')
+    )
 }
 ```
 
@@ -754,6 +753,237 @@ for (name in names(sp_list)) {
             cat("\n\nNot enough dimensions for PCA\n\n")
     })
 }
+```
+
+## Junction count distribution {.tabset}
+
+Junction counts are explored per cell across the conditions. These junctions include both annotated
+and cryptic types.
+
+
+```{r junction_count_distribution, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk displays the number of junction counts per cell across the conditions
+# --------------------------------------------------------------------------------
+
+for (name in names(sc_list)) {
+    cat('###', name, '{.tabset}\n\n')
+    # Extract normalized junction count matrix
+    mat <- sc_list[[name]][['norm']]
+    counts_df <- data.frame(barcodes=colnames(mat),
+                            counts=colSums(mat)) %>%
+        remove_rownames()
+    # Prep metadata
+    meta_data <- clean_metadata(
+        as.data.frame(py$subadata_dic[[name]][['obs']]),
+        c(names(subset_col)[1], names(factor_groups)))
+    m_df <- meta_data[['df']] %>%
+        rownames_to_column('barcodes')
+    condition_cols <- meta_data[['cols']]
+
+    # Add metadata columns to the count data frame
+    counts_df <- counts_df %>%
+        left_join(m_df, by="barcodes")
+    for (c in condition_cols) {
+        cat('\n\n####', c, '\n\n')
+        p <- ggplot(counts_df, aes_string(x=c, y='counts', fill=c)) +
+            geom_violin(trim=TRUE) +
+            geom_boxplot(fill="white", width=0.1) +
+            theme_bw() +
+            ylab('Normalized Junction Counts per Cell') +
+            scale_y_log10() +
+            theme(axis.title.x=element_blank(),
+                  axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) 
+
+        if (c %in% names(color_map)) {
+            p <- p + scale_fill_manual(values=color_map[[c]])
+        }
+
+        print(p)
+        cat('\n\n')
+    }
+}
+
+```
+
+# Cells with and without CE
+
+## UMAP {.tabset}
+
+The following UMAPs display individual cells with and without CEs. Refer to the following detection
+criteria:
+
+- *CE detected*: the counts of CEs in the *exon_type* is greater than 0
+- *junction detected without CE*: splice junctions are detected with no CEs
+- *junction undetected*: none of the splice junctions are detected
+
+```{r prep_plotting}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies variables and a function required to generate exploratory plots
+# --------------------------------------------------------------------------------
+
+# Specify plotting options
+exon_levels <- list(factors=c('CE detected',
+                              'junction detected without CE',
+                              'junction undetected'),
+                    colors=c("#6A5ACD",
+                             "#DA70D6",
+                             "grey"))
+names(exon_levels[['colors']]) <- exon_levels[['factors']]
+```
+
+# Expression of genes with and without CEs {.tabset}
+
+The expression of the following genes is compared between cells with and without CEs:
+
+```{r print_genes_expresssed}
+gene_expressed <- c(genes, 'TARDBP')
+print(gene_expressed)
+```
+
+The [Gittings et al. paper](https://doi.org/10.1007/s00401-023-02599-5) suggested that the expression of
+the STMN2 gene is lower in cells where the STMN2 CE is detected. We examine whether the same pattern 
+is observed across the genes of interest in our datasets. Note that cells are excluded if junctions 
+are not detected.
+
+```{r prep_gene_expression, cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk preps to analyzes the expression levels of genes with and without CEs
+# --------------------------------------------------------------------------------
+
+# Prep a data frame including metadata, normalized gene expression levels, 
+# and normalized junction counts
+ad_df <- mclapply(py$adata_dic, function(o) {
+    m_df <- clean_metadata(
+        o[['obs']],
+        c(names(subset_col)[1], names(factor_groups)))[['df']]
+    j_df <- o[['obsm']][['junction_lognorm']]
+    g_df <- o[, gene_expressed][['layers']][['log-norm']] %>%
+        as.matrix() %>%
+        as.data.frame() %>%
+        set_names(gene_expressed)
+    return(do.call("cbind", list(m_df, j_df, g_df)))
+})
+
+ad_df <- do.call("rbind", ad_df) %>%
+    bind_rows() %>%
+    rownames_to_column('barcodes') %>%
+    pivot_longer(cols=starts_with("chr"),
+                 names_to="exon_type",
+                 values_to="junction_counts") %>%
+    pivot_longer(cols=gene_expressed,
+                 names_to="gene",
+                 values_to="gene_exp") %>%
+    as.data.frame() %>%
+    separate(exon_type,
+             c('chr', 'start', 'end', 'junction', 'exon_type'),
+             sep=":") %>%
+    mutate(gene=factor(gene, levels=gene_expressed))
+
+# Break if any missing values are introduced
+if (any(is.na(ad_df))) {
+    stop("Check your missing values in ad_df!")
+}
+```
+
+P-values for the expression differences between cells with and without CEs were calculated 
+using a two-sided Wilcoxon Rank Sum test.
+
+```{r plot_expression, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk presents the expression of genes with and without CEs
+# --------------------------------------------------------------------------------
+
+for (celltype in names(py$adata_dic)) {
+    cat('\n\n##', celltype, '{.tabset}\n\n')
+
+    # Subset the data frame by celltype
+    celltype_extracted <- py$adata_dic[[celltype]][['obs']][[celltype_col]] %>%
+        unique() %>%
+        as.character()
+    sub_df <- ad_df[ad_df[[celltype_col]] == celltype_extracted,]
+    # Prep metadata column names
+    meta_cols <- clean_metadata(
+        sub_df,
+        c(names(subset_col)[1], names(factor_groups)))[['cols']]
+    # Split the data frame by junction genes
+    sub_list <- split(sub_df, sub_df[['junction']]) %>%
+        lapply(function(df) {
+
+            # Clean data frame to count the number of junctions
+            df <- df %>%
+                group_by(barcodes, exon_type) %>%
+                summarize(junction_counts=sum(junction_counts)) %>%
+                pivot_wider(names_from=exon_type, values_from=junction_counts)
+
+            # Break if any missing values are introduced
+            if (any(is.na(df))) {
+                stop("Missing values found!")
+            }
+
+            # Add a column for exon detection type
+            df[['exon_detection']] <- label_exon(df)
+            return(df)
+        }) %>%
+        # Add gene expression counts and metadata to the subsetted data frame
+        mclapply(function(df) df %>%
+               dplyr::select(barcodes, exon_detection) %>%
+               inner_join(ad_df[ c('barcodes', 'gene', 'gene_exp', meta_cols)],
+                          by="barcodes") %>%
+               as.data.frame() %>%
+               # Remove barcodes with zero junction counts
+               dplyr::filter(exon_detection != "junction undetected") %>%
+               unique())
+
+        # Reorder elements in the list
+        sub_list <- sub_list[genes]
+
+    for (junction in names(sub_list)) {
+        cat('\n\n### CE:', junction, '{.tabset}\n\n')
+        # Subset further to include only genes to be explored
+        genes_i <- c(junction, "TARDBP")
+        pdf <- sub_list[[junction]] %>%
+            dplyr::filter(gene %in% genes_i)
+        # Create a boxplot
+        p <- ggplot(pdf, aes(x=exon_detection, y=gene_exp, fill=exon_detection)) +
+            geom_violin(trim=TRUE) +
+            geom_boxplot(fill="white", width=0.1) +
+            theme_bw() +
+            facet_wrap(~gene, scales="free_y") +
+            theme(axis.title.x=element_blank(),
+                  axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+            ylab(paste("Gene Expression (Normalized)")) +
+            scale_fill_manual(values=exon_levels[['colors']])
+        
+        print(p)
+        cat('\n\n')
+
+        # Calculate p-values using wilcox test
+        ncell_df <- pdf %>%
+            group_by(exon_detection, gene) %>%
+            summarize(nCell_tested=n()) %>%
+            unique() %>%
+            arrange(gene)
+        print(knitr::kable(ncell_df))
+        if (length(unique(pdf$exon_detection)) == 2 & 
+            !any(ncell_df$nCell_tested == 1)) {
+            for (g in genes_i) {
+                pval <- wilcox.test(
+                    gene_exp ~ exon_detection,
+                    data=pdf[pdf$gene == g,],
+                    alternative="two.sided")$p.value
+                cat("\n\n*", g, "expression p-value -", pval, "\n\n")
+            }
+        } else {
+            cat("\n\nP-values unavailable...\n\n")
+        }
+    }
+}
+
 ```
 
 # Session info
