@@ -2209,3 +2209,18 @@ fcx_ce
 - Run CE downstream analysis (in progress)
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_reannotated/downstream/sc-exploratory.Rmd``
+
+
+2026-04-21
+----------
+
+@Mira0507
+
+- Run CE downstream analysis (in progress)
+    - conda env: ``menv``
+    - scripts: 
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-exploratory.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - ``sc-exploratory.Rmd`` completed
+        - ``sc-pseudobulk.Rmd`` in progress
