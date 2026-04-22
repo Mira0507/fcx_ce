@@ -1,0 +1,313 @@
+---
+title: "Pseudobulk differential analysis on cryptic exons (CEs)"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed to conduct pseudobulk differential analysis
+on splice junctions with and without CEs.
+
+```{r libraries}
+# Libraries
+library(tidyverse)
+library(ggplot2)
+library(ggbeeswarm)
+library(parallel)
+library(BiocParallel)
+library(yaml)
+library(RColorBrewer)
+library(plotly)
+library(parallel)
+library(rtracklayer)
+library(GenomicRanges)
+library(GenomicFeatures)
+library(zinbwave)
+library(scran)
+
+# Additional options
+set.seed(2570)
+source('../config/helpers.R')
+
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Path to input matrices
+in_rds <- "sc-exploratory/aggr_matrices.rds"
+
+# Path to Snakemake config
+snakemake_config <- "../config/config.yaml"
+
+# Paths to yaml config
+config_yaml <- read_yaml(snakemake_config)
+
+# Path to output directory
+out_dir <- "sc-pseudobulk"
+
+# Path to GTF
+gtf_path <- "../../../input/thalamus_excitatory/genes.gtf.gz"
+
+# Create directories if missing
+for (p in c(out_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
+
+# Specify metadata columns for factors and factor levels
+factor_groups <- list(
+    general_disease=c('Control', 'FTD', 'AD'),
+    annotation_04142026=c( 
+        'ExNeu RNF220+',
+        'ExNeu RNF220-',
+        'InNeu SOX14+',
+        'InNeu SOX14-'),
+    study=c('Marsan', 'Biogen', 'Mathys'),
+    study_specific_disease_specific=c(
+        'Control-Marsan',
+        'Control-Biogen',
+        'Control-Mathys',
+        'FTD-Marsan',
+        'FTD-Biogen',
+        'AD-Mathys')
+)
+
+# Specify HEX color code
+color_map <- list(
+    general_disease=c(
+        # `Control-FTD`="#9999FF",
+        # `Control-AD`="#6666FF",
+        Control="#6666FF",
+        FTD="#669900",
+        AD="#FF6600"),
+    study=c(
+        Marsan="#FF00FF",
+        Biogen="#00FFFF",
+        Mathys="#BFBFBF"),
+    cell_type=c(
+        Astrocyte="#ABD158",
+        BVC="#74858C",
+        CP="#D5C18E",
+        ExNeu1="#90C6E2",
+        ExNeu2="#547CB2",
+        InNeu1="#21409A",
+        InNeu2="#262262",
+        Lymphocyte="#68151F",
+        Microglia="#D24A75",
+        OL="#FDB515",
+        OPC="#ED7020",
+        PVM="#231F20")
+)
+
+# Specify column names to subset barcodes
+# NOTE: Set to NULL if unnecessary
+id_col <- 'SampleID'
+subset_col <- 'study_celltype'
+sample_col <- 'SampleID_celltype'
+celltype_col <- 'annotation_04142026'
+disease_col <- "general_disease"
+study_col <- 'study'
+
+# Specify CE target genes
+ce_targets <- config_yaml[['genes']]
+
+# Pseudocount factor
+# NOTE: this number is multiplied by the minimum number of non-zero 
+#       junction counts when calculating ratios between cryptic and non-cryptic,
+#       as well as between cryptic and all junctions
+pseudo_p <- 0.1
+
+# Specify the proportion of y-value to be added to the max data point
+ylim_factor <- 0.3
+```
+
+# Loading input data {.tabset}
+
+The number of splicing junctions was counted based on cellranger-aligned reads mapped to the following
+genes:
+
+```{r genes_tested}
+print(ce_targets)
+```
+
+Raw junction counts were compiled into a junction-by-barcode matrix for differential testing in the
+previous analysis, [`sc-exploratory.html`](sc-exploratory.html). This matrix was preprocessed
+to aggregate the counts per sample per celltype, along with their associated metadata table.
+These preprocessed matrices and metadata are imported from the following location:
+
+```{r infile_info}
+print(in_rds)
+```
+
+```{r import_adata}
+
+# --------------------------------------------------------------------------------
+# This chunk imports input data saved in the previous single-cell 
+# exploratory analysis. Manually edit the following code if necessary.
+# --------------------------------------------------------------------------------
+
+# Import input RDS file
+obj <- readRDS(in_rds)
+
+# Extract raw count matrices for subsets of interest
+mat_list <-  map(obj[['bulk']], ~.x[['raw']])
+
+# Extract the entire sampletable (Edit manually if necessary)
+sampletable <- obj[['meta']]
+sampletable[[sample_col]] <- paste0(
+    sampletable[[id_col]],
+    "_",
+    sampletable[[celltype_col]])
+sampletable[[subset_col]] <- paste0(
+    sampletable[[study_col]],
+    "_",
+    sampletable[[celltype_col]]
+)
+
+# Ensure to have correct levels for each factor columns
+for (f in names(factor_groups)) {
+    sampletable[[f]] <- factor(sampletable[[f]], levels=factor_groups[[f]])
+    # Break if any of the conversion introduced missing values
+    if (any(is.na(sampletable[[f]]))) {
+        stop(paste0("NAs introduced to the following column:", f))
+    }
+}
+
+# Prep a list of metadata tables for each subset
+coldata_list <- mclapply(mat_list, function(m) { 
+    # Splice the metadata table based on samples in the matrix
+    cdata <- sampletable[sampletable[[sample_col]] %in% colnames(m),
+                         c(sample_col, subset_col, names(factor_groups))] %>%
+        unique()
+    # Break if columns of the matrix and rows of the metadata don't match
+    if (nrow(cdata) != ncol(m)) {
+        stop("Rownames of coldata and colnames of matrix should be the same!")
+    }
+    # Reorder rows of the subsetted metadata table
+    rownames(cdata) <- cdata[[sample_col]]
+    cdata <- cdata[colnames(m),]
+    return(cdata)
+})
+
+```
+
+# Subsets {.tabset}
+
+The subset-wise aggregation was performed as summarized below:
+
+```{r subset_overview, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk explores the number of samples and metadata info across the subsets
+# --------------------------------------------------------------------------------
+
+# Function to summarize the number of samples (N)
+summarize_N <- function(meta_df) {
+
+    # Count the number of samples
+    n_df <- meta_df %>%
+        group_by_at(vars(subset_col, disease_col)) %>%
+        summarize(N=n()) %>%
+        spread(disease_col, N)
+
+    # Replace missing values with zero
+    n_df[is.na(n_df)] <- 0
+    # Add a new column for all N
+    n_df[['all_N']] <- rowSums(n_df[, colnames(n_df)[-1]])
+
+    return(n_df)
+}
+
+for (name in names(coldata_list)) {
+
+    df <- coldata_list[[name]] %>%
+        remove_rownames()
+    cat("##", name, "{.tabset}\n\n")
+    cat("### N\n\n")
+    # Prep the summary table for N
+    n_df <- summarize_N(df)
+
+    # Print tables
+    print(knitr::kable(n_df))
+    cat('\n\n')
+
+    cat("### Full table\n\n")
+    subchunkify(paste0(name, "_subset_N_unfiltered"))
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_unfiltered_sampletable.csv'))
+    write.csv(df,
+              csv_path,
+              row.names=FALSE,
+              quote=FALSE)
+
+    link_table(csv_path)
+    cat('\n\n')
+}
+```
+
+# Pre-filtering nonzero samples {.tabset}
+
+Samples with zero junction counts are removed from each subset. The number of samples before
+and after filtering is summarized below.
+
+
+```{r prefilter_samples, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk filters nonzero-count samples
+# --------------------------------------------------------------------------------
+
+for (name in names(mat_list)) {
+    cat("##", name, "{.tabset}\n\n")
+    # Remove zero-count samples from the count matrix
+    m <- mat_list[[name]]
+    nonzero_samples <- colSums(m) > 0
+    m <- m[, nonzero_samples]
+    mat_list[[name]] <- m
+    # Remove zero-count samples from the metadata table
+    cdata_old <- coldata_list[[name]]
+    cdata_new <- cdata_old[colnames(m),]
+    coldata_list[[name]] <- cdata_new
+    
+    cat("### N\n\n")
+    n_df <- summarize_N(cdata_new)
+    cat("A total of",
+        sum(!nonzero_samples),
+        "samples are removed from the current subset.",
+        "Refer to the following table for remaining samples:")
+    print(knitr::kable(n_df))
+    cat("\n\n")
+
+    cat("### Full table\n\n")
+    subchunkify(paste0(name, "_subset_N_filtered"))
+    csv_path <- file.path(out_dir,
+                          paste0(name, '_filtered_sampletable.csv'))
+    write.csv(df,
+              csv_path,
+              row.names=FALSE,
+              quote=FALSE)
+
+    link_table(csv_path)
+    cat('\n\n')
+}
+
+```
