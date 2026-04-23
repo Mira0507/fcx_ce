@@ -1174,6 +1174,40 @@ write.table(df,
 link_table(bed_path)
 ```
 
+## Exons
+
+The following BED file contains exons extracted from the following input GTF file:
+
+```{r gtf_path}
+print(gtf_path)
+```
+
+```{r extract_exons, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk extracts exons from the input GTF file
+# --------------------------------------------------------------------------------
+
+# Import the input GTF file and filter exons for genes of interest
+gtf <- import(gtf_path) %>%
+    subset(type == "exon" & gene_name %in% ce_targets) %>%
+    as.data.frame() %>%
+    # Remove unwanted columns
+    dplyr::select(seqnames, start, end, gene_name, strand) %>%
+    unique()
+
+# Save and link
+gtf_out <- file.path(out_dir, "exons.bed")
+write.table(
+    gtf, 
+    gtf_out,
+    sep="\t",
+    quote=FALSE,
+    col.names=FALSE,
+    row.names=FALSE)
+
+link_table(gtf_out)
+```
 
 # Session info
 
