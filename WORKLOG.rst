@@ -2158,3 +2158,84 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_sc/downstream/sc-exploratory.Rmd``
     - notes: cleaned code
+
+
+2026-04-15
+----------
+
+@Mira0507
+
+- Copy reannotated ``AnnData`` objects into ``input/thalamus_neurons_reannotated``
+    
+.. code-block:: bash
+
+        $ ls input/thalamus_neurons_reannotated/
+        bam  ExNeuRNF220neg_adata.h5ad  ExNeuRNF220pos_adata.h5ad  InNeuSOX14neg_adata.h5ad  InNeuSOX14pos_adata.h5ad
+
+- Set up a new directory for CE analysis on the reannotated neurons and run
+    - path: ``workflow/thalamus_neurons_reannotated``
+    - files added
+        - ``workflow/thalamus_neurons_reannotated/config/config.yaml``
+        - ``workflow/thalamus_neurons_reannotated/config/helpers.R``
+        - ``workflow/thalamus_neurons_reannotated/Snakefile``
+        - ``workflow/thalamus_neurons_reannotated/WRAPPER_SLURM``
+        - ``workflow/thalamus_neurons_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_neurons_reannotated/n_bam.py``
+    - dryrun
+
+    .. code-block:: bash
+
+        Job stats:
+        job                         count
+        ------------------------  -------
+        aggr_bams_group_celltype       12
+        all                             1
+        count_junctions                 1
+        create_header                   1
+        extract_junctions           44657
+        prep_bam                    44657
+        prep_juncfiles                  1
+        total                       89330
+
+
+2026-04-20
+----------
+
+@Mira0507
+
+- Add junction scheme image:
+  ``workflow/thalamus_neurons_reannotated/downstream/junction_exon.png``
+
+- Run CE downstream analysis (in progress)
+    - conda env: ``menv``
+    - script: ``workflow/thalamus_neurons_reannotated/downstream/sc-exploratory.Rmd``
+
+
+2026-04-21
+----------
+
+@Mira0507
+
+- Run CE downstream analysis (in progress)
+    - conda env: ``menv``
+    - scripts: 
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-exploratory.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk.Rmd``
+    - notes
+        - ``sc-exploratory.Rmd`` completed
+        - ``sc-pseudobulk.Rmd`` in progress
+
+2026-04-22
+----------
+
+- Run CE downstream analysis in progress
+    - conda env: ``menv``
+    - scripts: 
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/config/helpers.Rmd``
+    - notes
+        - new chunks extracting exons from the input GTF file added
+
+- Compress single-cell files
+    - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
+    - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
