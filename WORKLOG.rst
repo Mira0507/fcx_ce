@@ -2224,3 +2224,18 @@ fcx_ce
     - notes
         - ``sc-exploratory.Rmd`` completed
         - ``sc-pseudobulk.Rmd`` in progress
+
+2026-04-22
+----------
+
+- Run CE downstream analysis in progress
+    - conda env: ``menv``
+    - scripts: 
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/config/helpers.Rmd``
+    - notes
+        - new chunks extracting exons from the input GTF file added
+
+- Compress single-cell files
+    - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
+    - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
