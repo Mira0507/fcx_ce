@@ -2239,3 +2239,33 @@ fcx_ce
 - Compress single-cell files
     - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
     - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
+
+
+2026-04-29
+----------
+
+@Mira0507
+
+- Run Snakemake to analyze CEs on glial cells
+    - conda env: ``env``
+    - scripts
+        - ``workflow/thalamus_glials_reannotated/Snakefile``   
+        - ``workflow/thalamus_glials_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_glials_reannotated/leafcutter_cluster_regtools.py``
+    - config files
+        - ``workflow/thalamus_glials_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_glials_reannotated/config/helpers.R``
+
+    .. code-block:: bash
+
+        Job stats:
+        job                         count
+        ------------------------  -------
+        aggr_bams_group_celltype       12
+        all                             1
+        count_junctions                 1
+        create_header                   1
+        extract_junctions           44657
+        prep_bam                    44657
+        prep_juncfiles                  1
+        total                       89330
