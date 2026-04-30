@@ -2248,24 +2248,107 @@ fcx_ce
 
 - Run Snakemake to analyze CEs on glial cells
     - conda env: ``env``
-    - scripts
-        - ``workflow/thalamus_glials_reannotated/Snakefile``   
-        - ``workflow/thalamus_glials_reannotated/WRAPPER_SLURM`` 
-        - ``workflow/thalamus_glials_reannotated/leafcutter_cluster_regtools.py``
-    - config files
-        - ``workflow/thalamus_glials_reannotated/config/config.yaml`` 
-        - ``workflow/thalamus_glials_reannotated/config/helpers.R``
+    - AST
+        - ``workflow/thalamus_ast_reannotated/Snakefile``   
+        - ``workflow/thalamus_ast_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_ast_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_ast_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_ast_reannotated/config/helpers.R``
 
-    .. code-block:: bash
+        .. code-block:: bash
 
-        Job stats:
-        job                         count
-        ------------------------  -------
-        aggr_bams_group_celltype       12
-        all                             1
-        count_junctions                 1
-        create_header                   1
-        extract_junctions           44657
-        prep_bam                    44657
-        prep_juncfiles                  1
-        total                       89330
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           63984
+            prep_bam                    63984
+            prep_juncfiles                  1
+            total                      127975
+    - OPC
+        - ``workflow/thalamus_opc_reannotated/Snakefile``   
+        - ``workflow/thalamus_opc_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_opc_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_opc_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_opc_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           24724
+            prep_bam                    24724
+            prep_juncfiles                  1
+            total                       49455
+
+    - MG
+        - ``workflow/thalamus_mg_reannotated/Snakefile``   
+        - ``workflow/thalamus_mg_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_mg_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_mg_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_mg_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           33052
+            prep_bam                    33052
+            prep_juncfiles                  1
+            total                       66111
+
+    - small subpopulation
+        - ``workflow/thalamus_smallpop_reannotated/Snakefile``   
+        - ``workflow/thalamus_smallpop_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_smallpop_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_smallpop_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_smallpop_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype       12
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           14903
+            prep_bam                    14903
+            prep_juncfiles                  1
+            total                       29822
+
+    - OL
+        - ``workflow/thalamus_ol_reannotated/Snakefile``   
+        - ``workflow/thalamus_ol_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_ol_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_ol_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_ol_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions          149745
+            prep_bam                   149745
+            prep_juncfiles                  1
+            total                      299497
+
