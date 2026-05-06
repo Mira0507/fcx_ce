@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name="cryptic-exon"
 #SBATCH --partition="norm"
-#SBATCH --time=48:00:00
+#SBATCH --time=1=240:00:00
 #SBATCH --mem=20g
 #SBATCH --gres=lscratch:5
 
@@ -37,7 +37,6 @@ fi
     --restart-times 3 \
     --rerun-incomplete \
     --jobname "s.{rulename}.{jobid}.sh" \
-    -j 999 \
     --use-conda \
     --configfile config/config.yaml \
     $PROFILE_CMD \
