@@ -88,7 +88,8 @@ factor_groups <- list(
         'Control-Mathys',
         'FTD-Marsan',
         'FTD-Biogen',
-        'AD-Mathys')
+        'AD-Mathys'),
+    ftd_type=c('GRN', 'Sporadic')
 )
 
 # Specify HEX color code
@@ -126,6 +127,7 @@ sample_col <- 'SampleID_celltype'
 celltype_col <- 'annotation_04142026'
 disease_col <- "general_disease"
 study_col <- 'study'
+ftd_col <- 'ftd_type'
 
 # Specify CE target genes
 ce_targets <- config_yaml[['genes']]
@@ -138,6 +140,9 @@ pseudo_p <- 0.1
 
 # Specify the proportion of y-value to be added to the max data point
 ylim_factor <- 0.3
+
+# Specify Sporadic FTD sample IDs
+sftd_ids <- c('4571-T', '6562-T', '6400-T')
 ```
 
 # Loading input data {.tabset}
@@ -181,6 +186,11 @@ sampletable[[subset_col]] <- paste0(
     sampletable[[study_col]],
     "_",
     sampletable[[celltype_col]]
+)
+sampletable[[ftd_col]] <- ifelse(
+    sampletable[[id_col]] %in% sftd_ids,
+    "Sporadic",
+    "GRN"
 )
 
 # Ensure to have correct levels for each factor columns
@@ -535,6 +545,7 @@ for (name in names(norm_list)) {
             p <- count_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
+                            fcol=ftd_col,
                             ylabel='Log-normalized Junction Counts') +
                 facet_wrap(. ~ junction, ncol=2) +
                 ylim(min_y, max_y + max_y * 0.2)
@@ -588,6 +599,7 @@ for (name in names(norm_list)) {
             group_by_at(vars(sample_col,
                              "exon_detection",
                              disease_col,
+                             ftd_col,
                              study_col)) %>%
             summarize(counts=sum(counts))
         ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
@@ -601,6 +613,7 @@ for (name in names(norm_list)) {
             p <- count_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
+                            fcol=ftd_col,
                             ylabel='Log-normalized Counts for Junctions with or without CEs') +
                 facet_wrap(. ~ exon_detection) +
                 ylim(min_y, max_y + max_y * 0.2)
@@ -645,6 +658,7 @@ for (name in names(mat_list)) {
             group_by_at(vars(sample_col,
                              "exon_detection",
                              study_col,
+                             ftd_col,
                              disease_col)) %>%
             summarize(counts=sum(counts))
         ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
@@ -696,6 +710,7 @@ for (name in names(ratio_list)) {
             p <- ratio_plot(input_df=ce_df,
                             dcol=disease_col,
                             scol=study_col,
+                            fcol=ftd_col,
                             ylabel='Count Ratios (CE / Non-CE)') + 
                 ylim(min_y, max_y)
 
@@ -739,6 +754,7 @@ for (name in names(mat_list)) {
             group_by_at(vars(sample_col,
                              "exon_detection",
                              study_col,
+                             ftd_col,
                              disease_col)) %>%
             summarize(counts=sum(counts))
         ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
@@ -793,6 +809,7 @@ for (name in names(ratio_list)) {
         p <- ratio_plot(input_df=ce_df,
                         dcol=disease_col,
                         scol=study_col,
+                        fcol=ftd_col,
                         ylabel='Count Ratios (CE / All-junctions)') + 
             ylim(min_y, max_y + max_y * ylim_factor)
 

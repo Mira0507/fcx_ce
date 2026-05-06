@@ -70,16 +70,18 @@ summarize_N <- function(meta_df) {
 #' @param input_df data.frame input data frame for plotting
 #' @param dcol string column name specifying disease from the input data frame
 #' @param scol string column name specifying sample ID
+#' @param fcol string column name specifying sample IDs for sporadic FTD
 #' @param ylabel string y-label
 #' @return ggplot output beeswarm plot
-count_plot <- function(input_df, dcol, scol, ylabel) {
+count_plot <- function(input_df, dcol, scol, fcol, ylabel) {
 
     ggplot(input_df,
         aes_string(x=dcol, y='counts', fill=dcol)) +
         geom_violin(trim=TRUE) +
         theme_bw() +
         geom_quasirandom(data=input_df,
-                         aes_string(x=dcol, y='counts', color=scol), width=0.2) +
+                         aes_string(x=dcol, y='counts', color=scol, shape=fcol),
+                         width=0.2, size=3) +
         stat_summary(fun="median",
              geom="crossbar",
              width=0.1,
@@ -96,14 +98,16 @@ count_plot <- function(input_df, dcol, scol, ylabel) {
 #' @param input_df data.frame input data frame for plotting
 #' @param dcol string column name specifying disease from the input data frame
 #' @param scol string column name specifying sample ID
+#' @param fcol string column name specifying sample IDs for sporadic FTD
 #' @param ylabel string y-label
 #' @return ggplot output beeswarm plot
-ratio_plot <- function(input_df, dcol, scol, ylabel) {
+ratio_plot <- function(input_df, dcol, scol, fcol, ylabel) {
 
     ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
         geom_violin(trim=TRUE) +
         geom_quasirandom(data=input_df,
-                         aes_string(x=dcol, y='ratio', color=scol), width=0.2) +
+                         aes_string(x=dcol, y='ratio', color=scol, shape=fcol),
+                         width=0.2, size=3) +
            stat_summary(fun="median",
                         geom="crossbar",
                         width=0.1,
