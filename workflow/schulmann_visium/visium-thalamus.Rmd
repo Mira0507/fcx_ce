@@ -1,0 +1,155 @@
+---
+title: "Visium spatial transcriptomics"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed for exploratory analysis on the Visium dataset from the human thalamus 
+([Schulmann et al.](https://www.biorxiv.org/content/10.1101/2024.09.03.611112v1)).
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(Seurat)
+library(patchwork)
+
+# Additional options
+set.seed(2570)
+source('helpers.R')
+
+# Specify the number of available cores
+n_cores <- future::availableCores()
+options(mc.cores=n_cores)
+```
+
+```{r config}
+
+# --------------------------------------------------------------------------------
+# This chunk specifies input paths and variables in R
+# --------------------------------------------------------------------------------
+
+# Paths to input datasets
+input_path <- "../../input/Schulmann_visium/Visium_thal_seurat.rds"
+ref_path <- ""
+
+# Path to output directory
+out_dir <- "visium-thalamus"
+
+# Specify genes of interest
+gene_list <- list(
+    set1=c('SYT1', 'GAD2', 'SOX14'),
+    set2=c('SYT1', 'SLC17A6', 'RNF220')
+)
+
+# Create directories if missing
+for (p in c(out_dir)) {
+    if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
+}
+```
+
+# Loading input data {.tabset}
+
+```{r import_dataset}
+
+# --------------------------------------------------------------------------------
+# This chunk imports the input dataset
+# --------------------------------------------------------------------------------
+
+# Import visium dataset
+seurat <- readRDS(input_path)
+
+print(paste("Input file path:", input_path))
+print(seurat)
+```
+
+# Genes of interest {.tabset}
+
+The following genes of interest are explored across the image set. Gene not present
+in the current dataset are labeled as 'absent genes'.
+
+```{r genes_of_interest}
+
+# --------------------------------------------------------------------------------
+# This chunk cleans genes of interest
+# --------------------------------------------------------------------------------
+
+# Retrieve the normalized count matrix
+sct_mat <- GetAssayData(seurat, assay="SCT", layer="data")
+
+# Retrieve all gene symbols
+all_genes <- rownames(sct_mat)
+
+# Remove genes of interest if absent and print
+print("Genes of interest:")
+for (name in names(gene_list)) {
+    genes_set <- gene_list[[name]]
+    genes_absent <- genes_set[!genes_set %in% all_genes]
+    genes_present <- setdiff(genes_set, genes_absent)
+    gene_list[[name]] <- genes_present
+    print(paste0("- ", name, ": ", paste0(genes_present, collapse=", ")))
+    print(paste("      (absent genes: ", paste0(genes_absent, collapse=", "), ")"))
+}
+```
+
+Following the methodology of [Schulmann et al.](https://www.biorxiv.org/content/10.1101/2024.09.03.611112v1),
+we utilize normalized expression data generated via the SCTransform method 
+([Hafemeister et al.](https://link.springer.com/article/10.1186/s13059-019-1874-1)).
+
+```{r spatial_featureplot, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk explores the spatial expression of genes of interest
+# --------------------------------------------------------------------------------
+
+for (name in names(gene_list)) {
+    cat('##', name, '{.tabset}\n\n')
+    for (gene in gene_list[[name]]) {
+        cat('###', gene, '\n\n')
+        p <- SpatialFeaturePlot(
+            seurat,
+            features=gene,
+            pt.size.factor=3.5)
+        print(p)
+        plot_path <- file.path(
+            out_dir,
+            paste0(name, '_', gene, '_spatialfeature.pdf'))
+        ggsave(plot_path,
+               p,
+               device="pdf")
+        link_plot(plot_path)
+        cat('\n\n')
+    }
+}
+```
+
+# Deconvolution
+
+```{r}
+
+```
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+
