@@ -2352,3 +2352,51 @@ fcx_ce
             prep_juncfiles                  1
             total                      299497
 
+
+2026-05-06
+----------
+
+@Mira0507
+
+- Add FTD type to the pseudobulk analysis
+    - conda: ``menv``
+    - scripts: 
+        - ``workflow/thalamus_neurons/reannotated/downstream/sc-pseudobulk.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/config/helpers.R``
+
+
+2026-05-11
+----------
+
+@Mira0507
+
+- Extract STMN2 CEs from OPC - completed
+
+.. code-block:: bash
+
+   $ zcat workflow/thalamus_opc_reannotated/results/junction_counts/thalamus_glials_reannotated_perind_numers.counts.gz | wc -l 
+   1
+
+- Compress per-cell barcode bam and bed files 
+
+.. code-block:: bash
+
+    workflow/thalamus_opc_reannotated/results/bed/cell.zip
+    workflow/thalamus_opc_reannotated/results/bam/cell.zip
+    # Deleted:
+    # - workflow/thalamus_opc_reannotated/results/bed/cell/
+    # - workflow/thalamus_opc_reannotated/results/bam/cell/
+
+
+2026-05-14
+----------
+
+@Mira0507
+
+- Install ``r-seurat`` in the ``menv`` environment using Conda
+  (All pre-installed packages unchanged)
+
+- Explore genes of interest in the Schulmann's Visium dataset
+    - conda env: ``menv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - note: preliminary marker gene exploration
