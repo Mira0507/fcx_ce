@@ -29,14 +29,32 @@ library(ggplot2)
 library(plotly)
 library(Seurat)
 library(patchwork)
+library(sceasy)
+library(reticulate)
+```
 
+```{r additional_options}
 # Additional options
 set.seed(2570)
 source('helpers.R')
+use_condaenv("../../menv")
 
 # Specify the number of available cores
 n_cores <- future::availableCores()
-options(mc.cores=n_cores)
+options(future.globals.maxSize=500000 * 1024^2,   # 500G (1000 * 1024^2 = 1G)
+        mc.cores=n_cores,
+        future.rng.onMisuse="ignore")
+
+# Import scanpy in R
+sc <- import("scanpy")
+```
+
+```{python ppackages}
+import anndata as ad
+import scanpy as sc
+import pandas as pd
+import numpy as np
+import os
 ```
 
 ```{r config}
@@ -47,7 +65,12 @@ options(mc.cores=n_cores)
 
 # Paths to input datasets
 input_path <- "../../input/Schulmann_visium/Visium_thal_seurat.rds"
-ref_path <- ""
+h5ad_list <- list(
+    InNeuSOX14neg="../../input/thalamus_neurons_reannotated/InNeuSOX14neg_adata.h5ad",
+    InNeuSOX14pos="../../input/thalamus_neurons_reannotated/InNeuSOX14pos_adata.h5ad",
+    ExNeuRNF220neg="../../input/thalamus_neurons_reannotated/ExNeuRNF220neg_adata.h5ad",
+    ExNeuRNF220pos="../../input/thalamus_neurons_reannotated/ExNeuRNF220pos_adata.h5ad"
+)
 
 # Path to output directory
 out_dir <- "visium-thalamus"
@@ -57,6 +80,12 @@ gene_list <- list(
     set1=c('SYT1', 'GAD2', 'SOX14'),
     set2=c('SYT1', 'SLC17A6', 'RNF220')
 )
+
+# Number of HVGs
+hvgs <- 3000
+
+# Annotation column name
+celltype_col <- "annotation_04142026"
 
 # Create directories if missing
 for (p in c(out_dir)) {
@@ -141,9 +170,109 @@ for (name in names(gene_list)) {
 
 # Deconvolution
 
-```{r}
+We deconvolve spot-level cell subtypes using 
+the [Robust Cell Type Decomposition (RCTD, Cable et al.)](https://www.nature.com/articles/s41587-021-00830-w).
+This analysis is performed using raw counts from annotated in-house datasets listed below:
 
+## Load in-house single-cell datasets
+
+```{python load_inhouse}
+
+# --------------------------------------------------------------------------------
+# This chunk loads in-house AnnData obj
+# --------------------------------------------------------------------------------
+
+# Import input in-house AnnData obj
+adatas = {name: sc.read_h5ad(path) for name, path in r.h5ad_list.items()}
+
+print("Input in-house dataset loaded and concatenated:")
+for name, path in r.h5ad_list.items():
+    print(name, "-", path)
+
+# Concatenate all obj
+adata = ad.concat(
+    list(adatas.values()),
+    keys=list(adatas.keys()),
+    index_unique="_",
+    label="AnnData",
+    join="outer",
+    merge="same")
+
+print(adata)
+
+# Prep features and barcodes as a list for the next step
+all_features = list(adata.var_names)
+all_barcodes = list(adata.obs.index)
 ```
+
+To transfer annotations from the in-house dataset to the Visium dataset, the in-house dataset is converted
+into a Seurat obj.
+
+```{r adata_to_seurat, cache=TRUE}
+
+# --------------------------------------------------------------------------------
+# This chunk converts the AnnData obj to Seurat and normalize
+# --------------------------------------------------------------------------------
+
+# Prep an input count matrix by extracting from the concatenated AnnData
+ad_mat <- t(py$adata[['layers']][['counts']])
+rownames(ad_mat) <- py$all_features
+colnames(ad_mat) <- py$all_barcodes
+
+# Build a new Seurat obj using raw counts
+ad_seurat <- CreateSeuratObject(
+    counts=ad_mat,
+    meta.data=py$adata[['obs']]
+) %>%
+# Filter nonzero-count cells
+subset(nCount_RNA > 0)
+
+print(ad_seurat)
+```
+
+```{r prep_annotated_input}
+
+# Specify ID col
+Idents(ad_seurat) <- celltype_col
+
+# Prep raw counts
+counts <- ad_seurat[['RNA']]$counts
+
+# Prep annotation
+cluster <- as.factor(ad_seurat@meta.data[[celltype_col]])
+names(cluster) <- colnames(ad_seurat)
+
+# Prep nUMI
+nUMI <-ad_seurat@meta.data[['nCount_RNA']]
+names(nUMI) <- colnames(ad_seurat)
+
+reference <- Reference(counts, cluster, nUMI)
+```
+
+```{r dotplots, results='asis', eval=FALSE}
+
+# Prep a list of normalized in-house seurat obj
+ad_seurat_list <- list(
+    # SCTransform
+    SCT=SCTransform(ad_seurat, variable.features.n=hvgs),
+    # CPM-normalize
+    CPM=LogNormalize(ad_seurat, normalization.method="RC", scale.factor=1e6)
+)
+
+print(ad_seurat_list)
+
+for (name in names(ad_seurat_list)) {
+    cat('###', name, 'normalization\n\n')
+    p <- DotPlot(
+        ad_seurat_list[[name]],
+        group.by=celltype_col,
+        features=unique(unlist(gene_list))) +
+        theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
+    primt(p)
+    cat('\n\n')
+}
+```
+
 
 # Session info
 
