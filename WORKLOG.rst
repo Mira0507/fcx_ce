@@ -2400,3 +2400,23 @@ fcx_ce
     - conda env: ``menv``
     - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
     - note: preliminary marker gene exploration
+
+2026-05-15
+----------
+
+@Mira0507
+
+- Install ``r-sceasy`` and ``r-devtools`` in the ``menv`` using Conda 
+  (All pre-installed packages unchanged)
+
+- Create a new Conda env, ``venv``, by calling ``conda create -p ./venv --clone ./menv``
+
+- Deconvolve Schulmann Visium data
+    - conda env: ``menv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - demo workflow: https://satijalab.org/seurat/articles/spatial_vignette#spatial-deconvolution-using-rctd
+        - encountered dependency issues when installing the ``spacexr`` package 
+          for `RCTD <https://www.nature.com/articles/s41587-021-00830-w>`_;
+          this requires changing dependency versions in the ``menv`` env or in a new Conda env cloned
+          from ``menv``.
