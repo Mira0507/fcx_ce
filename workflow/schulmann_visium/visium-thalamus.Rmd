@@ -31,6 +31,7 @@ library(Seurat)
 library(patchwork)
 library(sceasy)
 library(reticulate)
+library(spacexr)
 ```
 
 ```{r additional_options}
@@ -230,23 +231,64 @@ subset(nCount_RNA > 0)
 print(ad_seurat)
 ```
 
-```{r prep_annotated_input}
+```{r prep_rctd}
+
+# --------------------------------------------------------------------------------
+# This chunk preps input for RCTD
+# --------------------------------------------------------------------------------
 
 # Specify ID col
 Idents(ad_seurat) <- celltype_col
 
-# Prep raw counts
+# Prep raw counts from the in-house dataset
 counts <- ad_seurat[['RNA']]$counts
 
-# Prep annotation
+# Prep annotation from the in-house dataset
 cluster <- as.factor(ad_seurat@meta.data[[celltype_col]])
 names(cluster) <- colnames(ad_seurat)
 
-# Prep nUMI
+# Prep nUMI from the in-house dataset
 nUMI <-ad_seurat@meta.data[['nCount_RNA']]
 names(nUMI) <- colnames(ad_seurat)
 
+# Create a new `Reference`
 reference <- Reference(counts, cluster, nUMI)
+
+# Prep raw counts across images from the public dataset
+counts_list <- mclapply(
+    Layers(seurat[['Spatial']]),
+    function(l) GetAssayData(seurat, assay="Spatial", layer=l)) %>%
+    set_names(Images(seurat))
+
+# Prep coordinates across images from the public dataset
+coords_list <- map(
+    Images(seurat),
+    ~GetTissueCoordinates(seurat, image=.x)) %>%
+    map(function(m) {
+        colnames(m) <- c('x', 'y')
+        m[is.na(colnames(m))] <- NULL
+        m
+    }) %>%
+    set_names(Images(seurat))
+
+# Create new `SpatialRNA` obj
+query_list <- mclapply(
+    names(coords_list),
+    function(name) SpatialRNA(coords_list[[name]],
+                              counts_list[[name]],
+                              colSums(counts_list[[name]]))
+) %>%
+set_names(names(coords_list))
+```
+
+```{r run_rctd}
+stop()
+rctd_list <- lapply(
+    names(coords_list),
+    create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+        run.RCTD(doublet_mode="doublet")
+)
+
 ```
 
 ```{r dotplots, results='asis', eval=FALSE}
