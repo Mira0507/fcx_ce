@@ -2410,13 +2410,21 @@ fcx_ce
   (All pre-installed packages unchanged)
 
 - Create a new Conda env, ``venv``, by calling ``conda create -p ./venv --clone ./menv``
+    - ``r-spacexr`` installed in ``venv`` with many dependencies updated
+    - created to run deconvolution 
+      (https://satijalab.org/seurat/articles/spatial_vignette#spatial-deconvolution-using-rctd)
+      using the ``spacexr`` package without dependency issues encountered with ``menv``
+    - exported: ``venv.archived.yaml``
 
-- Deconvolve Schulmann Visium data
-    - conda env: ``menv``
+- Deconvolve Schulmann Visium data (in progress)
+    - conda env: ``venv``
     - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
-    - notes
-        - demo workflow: https://satijalab.org/seurat/articles/spatial_vignette#spatial-deconvolution-using-rctd
-        - encountered dependency issues when installing the ``spacexr`` package 
-          for `RCTD <https://www.nature.com/articles/s41587-021-00830-w>`_;
-          this requires changing dependency versions in the ``menv`` env or in a new Conda env cloned
-          from ``menv``.
+
+- Compressed bam and bed files generated for STMN2 CE analysis in MG
+
+.. code-block:: bash
+
+    cd workflow/thalamus_mg_reannotated/results/bam
+    $ zip -vr cell.zip cell/
+    cd ../bed
+    $ zip -vr cell.zip cell/
