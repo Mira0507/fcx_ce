@@ -148,24 +148,21 @@ we utilize normalized expression data generated via the SCTransform method
 # This chunk explores the spatial expression of genes of interest
 # --------------------------------------------------------------------------------
 
-for (name in names(gene_list)) {
-    cat('##', name, '{.tabset}\n\n')
-    for (gene in gene_list[[name]]) {
-        cat('###', gene, '\n\n')
-        p <- SpatialFeaturePlot(
-            seurat,
-            features=gene,
-            pt.size.factor=3.5)
-        print(p)
-        plot_path <- file.path(
-            out_dir,
-            paste0(name, '_', gene, '_spatialfeature.pdf'))
-        ggsave(plot_path,
-               p,
-               device="pdf")
-        link_plot(plot_path)
-        cat('\n\n')
-    }
+for (gene in unique(unlist(gene_list))) {
+    cat('##', gene, '\n\n')
+    p <- SpatialFeaturePlot(
+        seurat,
+        features=gene,
+        pt.size.factor=3.5)
+    print(p)
+    plot_path <- file.path(
+        out_dir,
+        paste0(gene, '_spatialfeature.pdf'))
+    ggsave(plot_path,
+           p,
+           device="pdf")
+    link_plot(plot_path)
+    cat('\n\n')
 }
 ```
 
@@ -173,20 +170,20 @@ for (name in names(gene_list)) {
 
 We deconvolve spot-level cell subtypes using 
 the [Robust Cell Type Decomposition (RCTD, Cable et al.)](https://www.nature.com/articles/s41587-021-00830-w).
-This analysis is performed using raw counts from annotated in-house datasets listed below:
+This analysis is performed using raw counts from annotated datasets listed below:
 
-## Load in-house single-cell datasets
+## Load annotated single-cell datasets
 
 ```{python load_inhouse}
 
 # --------------------------------------------------------------------------------
-# This chunk loads in-house AnnData obj
+# This chunk loads annotated AnnData obj
 # --------------------------------------------------------------------------------
 
-# Import input in-house AnnData obj
+# Import input annotated AnnData obj
 adatas = {name: sc.read_h5ad(path) for name, path in r.h5ad_list.items()}
 
-print("Input in-house dataset loaded and concatenated:")
+print("Input annotated dataset loaded and concatenated:")
 for name, path in r.h5ad_list.items():
     print(name, "-", path)
 
@@ -206,7 +203,7 @@ all_features = list(adata.var_names)
 all_barcodes = list(adata.obs.index)
 ```
 
-To transfer annotations from the in-house dataset to the Visium dataset, the in-house dataset is converted
+To transfer annotations from the annotated dataset to the Visium dataset, the annotated dataset is converted
 into a Seurat obj.
 
 ```{r adata_to_seurat, cache=TRUE}
@@ -231,7 +228,7 @@ subset(nCount_RNA > 0)
 print(ad_seurat)
 ```
 
-```{r prep_rctd}
+```{r prep_rctd, cache=TRUE, dependson='adata_to_seurat'}
 
 # --------------------------------------------------------------------------------
 # This chunk preps input for RCTD
@@ -240,80 +237,56 @@ print(ad_seurat)
 # Specify ID col
 Idents(ad_seurat) <- celltype_col
 
-# Prep raw counts from the in-house dataset
+# Prep raw counts from the annotated dataset
 counts <- ad_seurat[['RNA']]$counts
 
-# Prep annotation from the in-house dataset
+# Prep annotation from the annotated dataset
 cluster <- as.factor(ad_seurat@meta.data[[celltype_col]])
 names(cluster) <- colnames(ad_seurat)
 
-# Prep nUMI from the in-house dataset
+# Prep nUMI from the annotated dataset
 nUMI <-ad_seurat@meta.data[['nCount_RNA']]
 names(nUMI) <- colnames(ad_seurat)
 
 # Create a new `Reference`
 reference <- Reference(counts, cluster, nUMI)
 
-# Prep raw counts across images from the public dataset
-counts_list <- mclapply(
-    Layers(seurat[['Spatial']]),
-    function(l) GetAssayData(seurat, assay="Spatial", layer=l)) %>%
-    set_names(Images(seurat))
-
-# Prep coordinates across images from the public dataset
-coords_list <- map(
-    Images(seurat),
-    ~GetTissueCoordinates(seurat, image=.x)) %>%
-    map(function(m) {
-        colnames(m) <- c('x', 'y')
-        m[is.na(colnames(m))] <- NULL
-        m
-    }) %>%
-    set_names(Images(seurat))
-
-# Create new `SpatialRNA` obj
-query_list <- mclapply(
-    names(coords_list),
-    function(name) SpatialRNA(coords_list[[name]],
-                              counts_list[[name]],
-                              colSums(counts_list[[name]]))
-) %>%
-set_names(names(coords_list))
+# Prep a list of query across images
+query_list <- mclapply(1:length(Images(seurat)), function(i) {
+    # Extract raw counts per image
+    ct <- GetAssayData(seurat, assay='Spatial', layer=Layers(seurat[['Spatial']])[i])
+    # Extract coordinates per image
+    cd <- GetTissueCoordinates(seurat, image=Images(seurat)[i])
+    # Clean column names for the coordinate table
+    colnames(cd) <- c('x', 'y')
+    cd[is.na(colnames(cd))] <- NULL
+    # Create a new spatial obj
+    obj <- SpatialRNA(coords=cd, counts=ct, colSums(ct))
+    return(obj)
+}) %>%
+# Name the list
+set_names(Images(seurat))
 ```
 
-```{r run_rctd}
-stop()
+```{r run_rctd, cache=TRUE, dependson='prep_rctd'}
+
+# --------------------------------------------------------------------------------
+# This chunk runs RCTD
+# --------------------------------------------------------------------------------
+
 rctd_list <- lapply(
     names(coords_list),
-    create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+    # Create a new RCTD obj
+    rctd <- create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+        # Run RCTD
         run.RCTD(doublet_mode="doublet")
+    rctd@results$results_df
+
 )
 
 ```
 
-```{r dotplots, results='asis', eval=FALSE}
 
-# Prep a list of normalized in-house seurat obj
-ad_seurat_list <- list(
-    # SCTransform
-    SCT=SCTransform(ad_seurat, variable.features.n=hvgs),
-    # CPM-normalize
-    CPM=LogNormalize(ad_seurat, normalization.method="RC", scale.factor=1e6)
-)
-
-print(ad_seurat_list)
-
-for (name in names(ad_seurat_list)) {
-    cat('###', name, 'normalization\n\n')
-    p <- DotPlot(
-        ad_seurat_list[[name]],
-        group.by=celltype_col,
-        features=unique(unlist(gene_list))) +
-        theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
-    primt(p)
-    cat('\n\n')
-}
-```
 
 
 # Session info
