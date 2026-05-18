@@ -2428,3 +2428,13 @@ fcx_ce
     $ zip -vr cell.zip cell/
     cd ../bed
     $ zip -vr cell.zip cell/
+
+2026-05-18
+----------
+
+@Mira0507
+
+- Deconvolve Schulmann Visium data (in progress)
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - RCTD doublet mode added
