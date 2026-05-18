@@ -128,12 +128,10 @@ all_genes <- rownames(sct_mat)
 
 # Remove genes of interest if absent and print
 print("Genes of interest:")
-for (name in names(gene_list)) {
-    genes_set <- gene_list[[name]]
-    genes_absent <- genes_set[!genes_set %in% all_genes]
-    genes_present <- setdiff(genes_set, genes_absent)
-    gene_list[[name]] <- genes_present
-    print(paste0("- ", name, ": ", paste0(genes_present, collapse=", ")))
+gene_set <- unique(unlist(gene_list))
+genes_absent <- genes_set[!genes_set %in% all_genes]
+genes_present <- setdiff(genes_set, genes_absent)
+    print(paste0("- : ", paste0(genes_present, collapse=", ")))
     print(paste("      (absent genes: ", paste0(genes_absent, collapse=", "), ")"))
 }
 ```
@@ -148,7 +146,7 @@ we utilize normalized expression data generated via the SCTransform method
 # This chunk explores the spatial expression of genes of interest
 # --------------------------------------------------------------------------------
 
-for (gene in unique(unlist(gene_list))) {
+for (gene in gene_set) {
     cat('##', gene, '\n\n')
     p <- SpatialFeaturePlot(
         seurat,
@@ -254,14 +252,22 @@ reference <- Reference(counts, cluster, nUMI)
 # Prep a list of query across images
 query_list <- mclapply(1:length(Images(seurat)), function(i) {
     # Extract raw counts per image
-    ct <- GetAssayData(seurat, assay='Spatial', layer=Layers(seurat[['Spatial']])[i])
+    ct <- GetAssayData(
+        seurat,
+        assay='Spatial',
+        layer=Layers(seurat[['Spatial']])[i])
     # Extract coordinates per image
-    cd <- GetTissueCoordinates(seurat, image=Images(seurat)[i])
+    cd <- GetTissueCoordinates(
+        seurat,
+        image=Images(seurat)[i])
     # Clean column names for the coordinate table
     colnames(cd) <- c('x', 'y')
     cd[is.na(colnames(cd))] <- NULL
     # Create a new spatial obj
-    obj <- SpatialRNA(coords=cd, counts=ct, colSums(ct))
+    obj <- SpatialRNA(
+        coords=cd,
+        counts=ct,
+        colSums(ct))
     return(obj)
 }) %>%
 # Name the list
@@ -274,16 +280,26 @@ set_names(Images(seurat))
 # This chunk runs RCTD
 # --------------------------------------------------------------------------------
 
+# Create a list of RCTD obj
 rctd_list <- lapply(
-    names(coords_list),
+    names(query_list),
     # Create a new RCTD obj
-    rctd <- create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+    create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
         # Run RCTD
         run.RCTD(doublet_mode="doublet")
-    rctd@results$results_df
+) %>%
+set_names(names(query_list))
+```
 
-)
+```{r rctd_to_seurat, eval=FALSE}
 
+r1 <- rctd1@results$results_df
+r2 <- rctd2@results$results_df
+
+ss <- seurat@meta.data
+barcodes_all <- colnames(seurat)
+
+barcodes1 <- rownames(r1)
 ```
 
 
