@@ -127,13 +127,12 @@ sct_mat <- GetAssayData(seurat, assay="SCT", layer="data")
 all_genes <- rownames(sct_mat)
 
 # Remove genes of interest if absent and print
-print("Genes of interest:")
 gene_set <- unique(unlist(gene_list))
-genes_absent <- genes_set[!genes_set %in% all_genes]
-genes_present <- setdiff(genes_set, genes_absent)
-    print(paste0("- : ", paste0(genes_present, collapse=", ")))
-    print(paste("      (absent genes: ", paste0(genes_absent, collapse=", "), ")"))
-}
+genes_absent <- gene_set[!gene_set %in% all_genes]
+genes_present <- setdiff(gene_set, genes_absent)
+print(paste0("- Genes of interest: ", paste0(gene_set, collapse=", ")))
+print(paste0("- Genes present: ", paste0(genes_present, collapse=", ")))
+print(paste0("- Genes absent: ", paste0(genes_absent, collapse=", ")))
 ```
 
 Following the methodology of [Schulmann et al.](https://www.biorxiv.org/content/10.1101/2024.09.03.611112v1),
@@ -282,27 +281,70 @@ set_names(Images(seurat))
 
 # Create a list of RCTD obj
 rctd_list <- lapply(
-    names(query_list),
-    # Create a new RCTD obj
-    create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
-        # Run RCTD
-        run.RCTD(doublet_mode="doublet")
-) %>%
-set_names(names(query_list))
+    names(query_list), function(name) {
+        # Create a new RCTD obj
+        create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+            # Run RCTD
+            run.RCTD(doublet_mode="doublet")
+    }) %>%
+    set_names(names(query_list))
 ```
 
-```{r rctd_to_seurat, eval=FALSE}
+## Annotation transfer - doublet mode {.tabset}
 
-r1 <- rctd1@results$results_df
-r2 <- rctd2@results$results_df
+Annotation transfer with the doublet mode option results in the following two cell subtypes:
 
-ss <- seurat@meta.data
-barcodes_all <- colnames(seurat)
+- **first_type**: first predicted celltype
+- **second_type**: second predicted celltype, if exists
 
-barcodes1 <- rownames(r1)
+```{r rctd_to_seurat, results='asis'}
+
+# Add RCTD results to the metadata of Visium obj
+rctd_df <- map_df(rctd_list, ~.x@results$results_df)
+
+# If uncertain, replace the annotation of the second type with "Undetermined"
+anno_cols <- c('first_type', 'second_type')
+anno_levels <- c(unique(ad_seurat@meta.data[[celltype_col]]), "Undetermined")
+for (anno in anno_cols) {
+    rctd_df[[anno]] <- factor(rctd_df[[anno]], levels=anno_levels)
+}
+rctd_df[rctd_df[['spot_class']] == "doublet_uncertain", 'second_type'] <- "Undetermined"
+
+# Add the transferred annotation to the metadata of Visium seurat obj
+seurat <- AddMetaData(seurat, metadata=rctd_df)
+
+# Plot and save
+for (name in Images(seurat)) {
+    cat('###', name, '\n\n')
+    p_list <- mclapply(c('first_type', 'second_type'), function(anno) {
+        SpatialDimPlot(seurat,
+                       group.by=anno,
+                       pt.size.factor=3.5,
+                       images=name) +
+        theme(# legend.position="top",
+              legend.margin=margin(0, 0, 0, 0), 
+              legend.title=element_text(size=8),
+              legend.text=element_text(size=8))
+    })
+    p <- p_list[[1]] | p_list[[2]]
+    print(p)
+    p_path <- file.path(out_dir, paste0(name, '_annotated.pdf'))
+    ggsave(p_path, p, device="pdf")
+    link_plot(p_path)
+}
 ```
 
+```{r save, eval=FALSE}
 
+# --------------------------------------------------------------------------------
+# This chunk saves the Visium Seurat obj with RCTD-transferred annotation
+# --------------------------------------------------------------------------------
+
+out_rds <- file.path(out_dir, "updated_seurat_visium.rds")
+saveRDS(seurat, out_rds)
+
+print(paste("Spatial obj saved:", out_rds))
+```
 
 
 # Session info
@@ -310,6 +352,4 @@ barcodes1 <- rownames(r1)
 ```{r session_info, collapse=FALSE}
 sessionInfo()
 ```
-
-
 
