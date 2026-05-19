@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(warning=FALSE,
                       message=FALSE,
+                      echo=FALSE,
                       cache.lazy=FALSE)
 ```
 
@@ -32,6 +33,8 @@ library(patchwork)
 library(sceasy)
 library(reticulate)
 library(spacexr)
+library(SummarizedExperiment)
+library(SpatialExperiment)
 ```
 
 ```{r additional_options}
@@ -203,6 +206,13 @@ all_barcodes = list(adata.obs.index)
 To transfer annotations from the annotated dataset to the Visium dataset, the annotated dataset is converted
 into a Seurat obj.
 
+## Annotation transfer - doublet mode {.tabset}
+
+Annotation transfer with the doublet mode option computes in the following two cell subtypes:
+
+- **first_type**: first predicted celltype
+- **second_type**: second predicted celltype, if exists
+
 ```{r adata_to_seurat, cache=TRUE}
 
 # --------------------------------------------------------------------------------
@@ -290,14 +300,11 @@ rctd_list <- lapply(
     set_names(names(query_list))
 ```
 
-## Annotation transfer - doublet mode {.tabset}
+```{r vis_rctd_doublet, results='asis'}
 
-Annotation transfer with the doublet mode option results in the following two cell subtypes:
-
-- **first_type**: first predicted celltype
-- **second_type**: second predicted celltype, if exists
-
-```{r rctd_to_seurat, results='asis'}
+# --------------------------------------------------------------------------------
+# This chunk visualizes RCTD results from the doublet mode
+# --------------------------------------------------------------------------------
 
 # Add RCTD results to the metadata of Visium obj
 rctd_df <- map_df(rctd_list, ~.x@results$results_df)
@@ -321,8 +328,7 @@ for (name in Images(seurat)) {
                        group.by=anno,
                        pt.size.factor=3.5,
                        images=name) +
-        theme(# legend.position="top",
-              legend.margin=margin(0, 0, 0, 0), 
+        theme(legend.margin=margin(0, 0, 0, 0), 
               legend.title=element_text(size=8),
               legend.text=element_text(size=8))
     })
@@ -332,6 +338,28 @@ for (name in Images(seurat)) {
     ggsave(p_path, p, device="pdf")
     link_plot(p_path)
 }
+```
+
+## Annotation transfer - celltype proportions {.tabset}
+
+Since two cell subtypes do not adequately represent all transferred celltypes, we assess the proportion of 
+cell subtypes across the annotated celltypes.
+
+```{r run_rctd_multi, cache=TRUE, dependson='run_rctd'}
+
+# --------------------------------------------------------------------------------
+# This chunk runs multi-mode RCTD
+# --------------------------------------------------------------------------------
+
+# Create a list of RCTD obj
+multi_list <- lapply(
+    names(query_list), function(name) {
+        # Create a new RCTD obj
+        create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+            # Run RCTD
+            run.RCTD(doublet_mode="multi")
+    }) %>%
+    set_names(names(query_list))
 ```
 
 ```{r save, eval=FALSE}
