@@ -2434,7 +2434,11 @@ fcx_ce
 
 @Mira0507
 
+- Install ``bioconductor-spatialexperiment`` in ``venv`` using Conda
+  (``venv.archived.yaml`` exported)
+
 - Deconvolve Schulmann Visium data (in progress)
     - conda env: ``venv``
     - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
     - RCTD doublet mode added
+    - RCTD multi mode in progress
