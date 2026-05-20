@@ -244,4 +244,20 @@ calculate_ratios <- function(dataframe, denom="nonce") {
     return(dataframe)
 }
 
-
+# Specify plot configurations
+custom_theme <- function() {
+    ggplot2::theme(
+        panel.grid = ggplot2::element_blank(),
+        axis.line = ggplot2::element_blank(),
+        axis.text.x = ggplot2::element_blank(),
+        axis.text.y = ggplot2::element_blank(),
+        axis.ticks = ggplot2::element_blank(),
+        axis.title.x = ggplot2::element_blank(),
+        axis.title.y = ggplot2::element_blank(),
+        panel.background = ggplot2::element_blank(),
+        plot.background = ggplot2::element_blank(),
+        plot.title = ggplot2::element_text(size = 18, hjust = 0.5),
+        legend.text = ggplot2::element_text(size = 12, colour = "black"),
+        legend.title = ggplot2::element_text(size = 12, colour = "black"),
+    )
+}
