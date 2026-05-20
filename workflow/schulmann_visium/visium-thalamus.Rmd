@@ -362,6 +362,52 @@ multi_list <- lapply(
     set_names(names(query_list))
 ```
 
+```{r celltype_weights, cache=TRUE, dependson=''}
+
+
+# Update the metadata of the Visium Seurat obj to include columns for cell subtypes
+all_celltypes <- levels(reference@cell_types)
+
+# Extract per-celltype weights across coordinates and images
+weights_df <- lapply(multi_list, function(o) {
+
+    # Retrieve coordinate barcodes
+    coords_rctd <- colnames(o@spatialRNA@counts)
+
+    # Create a data frame consisting of weights across cell subtypes
+    weights_rctd <- mclapply(o@results, function(res) {
+
+        # Clean results
+        df_i <- as.data.frame(res$sub_weights) %>%
+            rownames_to_column('celltype') %>%
+            set_names(c('celltype', 'weights')) %>%
+            pivot_wider(names_from='celltype', values_from='weights') %>%
+            as.data.frame()
+
+        # Add columns for celltypes that are missing in each barcode
+        col_placeholder <- setdiff(all_celltypes, colnames(df_i))
+        for (c in col_placeholder) {
+            df_i[[c]] <- 0
+        }
+
+        # Reorder columns
+        df_i <- df_i[, all_celltypes]
+        return(df_i) 
+        }) %>%
+        bind_rows()
+
+    rownames(weights_rctd) <- coords_rctd
+    return(weights_rctd) 
+    }) %>%
+    bind_rows()
+
+# Reorder rows to have them aligned with those in the Seurat obj
+weights_df <- weights_df[colnames(seurat),]
+
+# Update the Seurat obj to include deconvolution results
+seurat@meta.data <- cbind(seurat@meta.data, weights_df)
+```
+
 ```{r save, eval=FALSE}
 
 # --------------------------------------------------------------------------------
