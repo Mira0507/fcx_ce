@@ -323,6 +323,10 @@ rctd_df[rctd_df[['spot_class']] == "doublet_uncertain", 'second_type'] <- "Undet
 # Add the transferred annotation to the metadata of Visium seurat obj
 seurat <- AddMetaData(seurat, metadata=rctd_df)
 
+# Specify colors for individual cell subtypes
+plot_cols <- c(plot_colors, "black")
+names(plot_cols) <- levels(c(rctd_df[['first_type']], rctd_df[['second_df']]))
+
 # Plot and save
 for (name in Images(seurat)) {
     cat('###', name, '\n\n')
@@ -330,10 +334,12 @@ for (name in Images(seurat)) {
         SpatialDimPlot(seurat,
                        group.by=anno,
                        pt.size.factor=3.5,
+                       cols=plot_cols,
                        images=name) +
         theme(legend.margin=margin(0, 0, 0, 0), 
               legend.title=element_text(size=8),
               legend.text=element_text(size=8))
+
     })
     p <- p_list[[1]] | p_list[[2]]
     print(p)
@@ -464,10 +470,10 @@ for (name in Images(seurat)) {
 ```
 
 
-```{r save, eval=FALSE}
+```{r save}
 
 # --------------------------------------------------------------------------------
-# This chunk saves the Visium Seurat obj with RCTD-transferred annotation
+# This chunk saves the Visium Seurat obj with RCTD-transferred annotations
 # --------------------------------------------------------------------------------
 
 out_rds <- file.path(out_dir, "updated_seurat_visium.rds")
