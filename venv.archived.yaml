@@ -355,6 +355,8 @@ dependencies:
   - r-gert=2.1.4=r43h017ce79_0
   - r-ggally=2.4.0=r43hc72bb7e_0
   - r-ggbeeswarm=0.7.2=r43hc72bb7e_2
+  - r-ggforce=0.5.0=r43h93ab643_0
+  - r-ggfun=0.2.0=r43hc72bb7e_0
   - r-ggplot2=3.5.2=r43hc72bb7e_0
   - r-ggrastr=1.0.2=r43hc72bb7e_2
   - r-ggrepel=0.9.6=r43h3697838_1
@@ -527,6 +529,7 @@ dependencies:
   - r-sass=0.4.10=r43h93ab643_0
   - r-scales=1.4.0=r43hc72bb7e_0
   - r-scattermore=1.2=r43h0d4f4ea_3
+  - r-scatterpie=0.2.6=r43hc72bb7e_0
   - r-sceasy=0.0.7=r43hdfd78af_2
   - r-sctransform=0.4.2=r43hc2d650c_0
   - r-selectr=0.4_2=r43hc72bb7e_4
@@ -573,6 +576,7 @@ dependencies:
   - r-timechange=0.3.0=r43ha18555a_1
   - r-tinytex=0.57=r43hc72bb7e_0
   - r-truncnorm=1.0_9=r43h2b5f3a1_4
+  - r-tweenr=2.0.3=r43h0d4f4ea_1
   - r-tzdb=0.5.0=r43h3697838_1
   - r-units=0.8_7=r43h3697838_0
   - r-upsetr=1.4.0=r43hc72bb7e_5
@@ -597,6 +601,7 @@ dependencies:
   - r-xopen=1.0.1=r43hc72bb7e_1
   - r-xtable=1.8_4=r43hc72bb7e_6
   - r-yaml=2.3.10=r43hdb488b9_0
+  - r-yulab.utils=0.2.1=r43hc72bb7e_0
   - r-zip=2.3.3=r43h2b5f3a1_0
   - r-zoo=1.8_14=r43h2b5f3a1_0
   - rav1e=0.8.1=h1fbca29_0
