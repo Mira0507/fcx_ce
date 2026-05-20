@@ -91,6 +91,9 @@ hvgs <- 3000
 # Annotation column name
 celltype_col <- "annotation_04142026"
 
+# Specify colors for plots
+plot_colors <- c('#F4F1DE', '#E07A5F', '#3D405B', '#4ecdc4')
+
 # Create directories if missing
 for (p in c(out_dir)) {
     if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
@@ -362,8 +365,11 @@ multi_list <- lapply(
     set_names(names(query_list))
 ```
 
-```{r celltype_weights, cache=TRUE, dependson=''}
+```{r celltype_weights, cache=TRUE, dependson='run_rctd_multi'}
 
+# --------------------------------------------------------------------------------
+# This chunk extracts and cleans the multi-mode results
+# --------------------------------------------------------------------------------
 
 # Update the metadata of the Visium Seurat obj to include columns for cell subtypes
 all_celltypes <- levels(reference@cell_types)
@@ -407,6 +413,56 @@ weights_df <- weights_df[colnames(seurat),]
 # Update the Seurat obj to include deconvolution results
 seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 ```
+
+```{r vis_rctd_multi, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk preps plots the proportion of cell subtypes computed using the multi-node RCTD
+# --------------------------------------------------------------------------------
+
+# Prep a data frame consisting of x/y coordinates and celltype proportions
+coords <- GetTissueCoordinates(seurat, image='anterior') %>%
+    set_names(c('x', 'y'))
+coords <- cbind(
+    coords,
+    weights_df[rownames(coords), all_celltypes])
+
+names(plot_colors) <- all_celltypes
+
+for (name in Images(seurat)) {
+    cat('###', name, '\n\n')
+
+    # Prep input data frame
+    coords <- GetTissueCoordinates(seurat, image=name) %>%
+        set_names(c('x', 'y'))
+    coords <- cbind(
+        coords,
+        weights_df[rownames(coords), all_celltypes])
+
+    # Plot celltype proportions by coordinate
+    p <- ggplot() +
+        scatterpie::geom_scatterpie(
+            data=coords,
+            cols=all_celltypes,
+            color=NA,
+            aes(x=x, y=y, r=1)) +
+        coord_equal() +
+        custom_theme() +
+        coord_flip() + 
+        scale_x_reverse() +
+        scale_fill_manual(values=plot_colors)
+
+    print(p)
+
+    # Save and link
+    p_path <- file.path(
+        out_dir,
+        paste0(name, '_name_proportion.pdf'))
+    ggsave(p_path, p, device="pdf")
+    link_plot(p_path)
+}
+```
+
 
 ```{r save, eval=FALSE}
 
