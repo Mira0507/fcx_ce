@@ -96,13 +96,13 @@ gene_list <- list(
     set2=c('SYT1', 'SLC17A6', 'RNF220')
 )
 
-# Annotation column name
+# Annotation column names
 celltype_col <- "annotation_04142026"
+celltype_col_glial <- 'renamed_annotation_cell_type_post_outlier_removal'
 
 # Subsampling proportion
 # NOTE: specify 1 to use all barcodes
 sample_prop <- 0.1
-
 
 # Specify colors for plots
 plot_colors <- c('#F4F1DE', '#E07A5F', '#3D405B', '#4ecdc4')
@@ -190,12 +190,6 @@ This analysis is performed using raw counts from annotated datasets listed below
 
 ## Load annotated single-cell datasets
 
-```{r subsampling}
-if (sample_prop < 1) {
-    print(paste0(
-}
-```
-
 ```{python load_inhouse}
 
 # --------------------------------------------------------------------------------
@@ -267,10 +261,20 @@ ad_mat <- t(py$adata[['layers']][['counts']])
 rownames(ad_mat) <- py$all_features
 colnames(ad_mat) <- py$all_barcodes
 
+# Prep metadata
+ad_meta <- py$adata[['obs']]
+if (any(is.na(ad_meta[[celltype_col]]))) {
+    ad_meta[[celltype_col]] <- ifelse(
+        is.na(ad_meta[[celltype_col]]),
+        ad_meta[[celltype_col_glial]],
+        ad_meta[[celltype_col]]
+    )
+}
+
 # Build a new Seurat obj using raw counts
 ad_seurat <- CreateSeuratObject(
     counts=ad_mat,
-    meta.data=py$adata[['obs']]
+    meta.data=ad_meta
 ) %>%
 # Filter nonzero-count cells
 subset(nCount_RNA > 0)
