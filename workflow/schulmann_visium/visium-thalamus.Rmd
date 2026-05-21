@@ -423,13 +423,6 @@ seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 # This chunk preps plots the proportion of cell subtypes computed using the multi-node RCTD
 # --------------------------------------------------------------------------------
 
-# Prep a data frame consisting of x/y coordinates and celltype proportions
-coords <- GetTissueCoordinates(seurat, image='anterior') %>%
-    set_names(c('x', 'y'))
-coords <- cbind(
-    coords,
-    weights_df[rownames(coords), all_celltypes])
-
 names(plot_colors) <- all_celltypes
 
 for (name in Images(seurat)) {
