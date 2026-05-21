@@ -85,9 +85,6 @@ gene_list <- list(
     set2=c('SYT1', 'SLC17A6', 'RNF220')
 )
 
-# Number of HVGs
-hvgs <- 3000
-
 # Annotation column name
 celltype_col <- "annotation_04142026"
 
@@ -469,6 +466,8 @@ for (name in Images(seurat)) {
 }
 ```
 
+# Updated Seurat obj
+
 
 ```{r save}
 
@@ -477,7 +476,7 @@ for (name in Images(seurat)) {
 # --------------------------------------------------------------------------------
 
 out_rds <- file.path(out_dir, "updated_seurat_visium.rds")
-saveRDS(seurat, out_rds)
+saveRDS(seurat, out_rds, compress=FALSE)
 
 print(paste("Spatial obj saved:", out_rds))
 ```
