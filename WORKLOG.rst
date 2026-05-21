@@ -2442,3 +2442,39 @@ fcx_ce
     - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
     - RCTD doublet mode added
     - RCTD multi mode in progress
+
+2026-05-19
+----------
+
+@Mira0507
+
+- Install ``r-scatterpie`` in ``venv`` using Conda 
+  (``venv.archived.yaml`` exported)
+
+- Deconvolve Schulmann Visium data (in progress)
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - RCTD multi mode completed 
+        - RCTD visualization in progress
+
+
+2026-05-20
+----------
+
+@Mira0507
+
+- Deconvolve Schulmann Visium data to annotate neurons
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - RCTD multi mode visualization completed
+        - RCTD doublet mode visualization updated to improve color readability
+        - Updated Visium Seurat obj saved
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+    - note: subsampling 10% of barcodes
+
+
