@@ -2478,3 +2478,24 @@ fcx_ce
     - note: subsampling 10% of barcodes
 
 
+2026-05-21
+----------
+
+@Mira0507
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+    - note:
+        - color-coded cell subtypes for visualization
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes, focusing on neurons
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+    - notes
+        - plot readability was very poor when all neuronal and glial cells were
+          included in ``visium-thalamus-allcells.Rmd``
+        - here, annotation is simplified by renaming all glial cells as "glia"
+          (4 neurons + 1 glia)
+
+
