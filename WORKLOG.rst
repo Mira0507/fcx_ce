@@ -2517,3 +2517,4 @@ fcx_ce
         - code cleaned
         - H&E staining image added
         - images saved as ``.svg`` instead of ``.pdf``
+        - more marker genes added
