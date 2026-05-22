@@ -563,6 +563,7 @@ dependencies:
   - r-stringi=1.8.7=r43h3c328a7_0
   - r-stringr=1.5.2=r43h785f33e_0
   - r-survival=3.8_3=r43h2b5f3a1_0
+  - r-svglite=2.2.1=r43h8ff94db_0
   - r-sys=3.4.3=r43h2b5f3a1_0
   - r-systemfonts=1.2.3=r43h74f4acd_0
   - r-tensor=1.5.1=r43hc72bb7e_0
