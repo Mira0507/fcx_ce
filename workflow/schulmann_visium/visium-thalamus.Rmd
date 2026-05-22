@@ -97,7 +97,9 @@ for (p in c(out_dir)) {
 }
 ```
 
-# Loading input data {.tabset}
+# Loading input data
+
+## Single-cell obj
 
 ```{r import_dataset}
 
@@ -110,6 +112,20 @@ seurat <- readRDS(input_path)
 
 print(paste("Input file path:", input_path))
 print(seurat)
+```
+
+## Staining images
+
+```{r hne_images, results='asis'}
+p <- SpatialFeaturePlot(
+    seurat,
+    features="nCount_Spatial",
+    alpha=c(0, 0)) + 
+    theme(legend.position="none")
+hne_svg <- file.path(out_dir, "HnE_image.svg")
+ggsave(hne_svg, p, device="svg")
+print(p)
+link_plot(hne_svg)
 ```
 
 # Genes of interest {.tabset}
@@ -157,10 +173,10 @@ for (gene in gene_set) {
     print(p)
     plot_path <- file.path(
         out_dir,
-        paste0(gene, '_spatialfeature.pdf'))
+        paste0(gene, '_spatialfeature.svg'))
     ggsave(plot_path,
            p,
-           device="pdf")
+           device="svg")
     link_plot(plot_path)
     cat('\n\n')
 }
@@ -340,8 +356,8 @@ for (name in Images(seurat)) {
     })
     p <- p_list[[1]] | p_list[[2]]
     print(p)
-    p_path <- file.path(out_dir, paste0(name, '_annotated.pdf'))
-    ggsave(p_path, p, device="pdf")
+    p_path <- file.path(out_dir, paste0(name, '_annotated.svg'))
+    ggsave(p_path, p, device="svg")
     link_plot(p_path)
 }
 ```
@@ -453,8 +469,8 @@ for (name in Images(seurat)) {
     # Save and link
     p_path <- file.path(
         out_dir,
-        paste0(name, '_name_proportion.pdf'))
-    ggsave(p_path, p, device="pdf")
+        paste0(name, '_name_proportion.svg'))
+    ggsave(p_path, p, device="svg")
     link_plot(p_path)
 }
 ```

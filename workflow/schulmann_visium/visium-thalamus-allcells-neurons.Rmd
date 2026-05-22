@@ -105,7 +105,10 @@ celltype_col_glial <- 'renamed_annotation_cell_type_post_outlier_removal'
 sample_prop <- 0.1
 
 # Specify colors for plots
-plot_colors <- c('#F4F1DE', '#E07A5F', '#3D405B', '#4ecdc4', '#FFD400')
+plot_colors <- c('#3D405B', '#E07A5F', '#F4F1DE', '#4ecdc4', '#FFD400')
+
+# Collapse all glial celltypes into "Glia"?
+collapse_glia <- TRUE
 
 # Create directories if missing
 for (p in c(out_dir)) {
@@ -113,7 +116,9 @@ for (p in c(out_dir)) {
 }
 ```
 
-# Loading input data {.tabset}
+# Loading input data
+
+## Single-cell obj
 
 ```{r import_dataset}
 
@@ -127,6 +132,21 @@ seurat <- readRDS(input_path)
 print(paste("Input file path:", input_path))
 print(seurat)
 ```
+
+## Staining images
+
+```{r hne_images, results='asis'}
+p <- SpatialFeaturePlot(
+    seurat,
+    features="nCount_Spatial",
+    alpha=c(0, 0)) + 
+    theme(legend.position="none")
+hne_svg <- file.path(out_dir, "HnE_image.svg")
+ggsave(hne_svg, p, device="svg")
+print(p)
+link_plot(hne_svg)
+```
+
 
 # Genes of interest {.tabset}
 
@@ -173,10 +193,10 @@ for (gene in gene_set) {
     print(p)
     plot_path <- file.path(
         out_dir,
-        paste0(gene, '_spatialfeature.pdf'))
+        paste0(gene, '_spatialfeature.svg'))
     ggsave(plot_path,
            p,
-           device="pdf")
+           device="svg")
     link_plot(plot_path)
     cat('\n\n')
 }
@@ -356,31 +376,43 @@ rctd_list <- lapply(
 # Add RCTD results to the metadata of Visium obj
 rctd_df <- map_df(rctd_list, ~.x@results$results_df)
 
-# Convert individual glial cells into "Glia"
+# Convert individual glial cells into "Glia" if specified
 anno_cols <- c('first_type', 'second_type')
-for (name in anno_cols) {
-    rctd_df[[name]] <- map_chr(
-        as.character(rctd_df[[name]]),
-        ~ifelse(str_detect(.x, "Neu"), .x, "Glia"))
+if (collapse_glia) {
+    for (name in anno_cols) {
+        rctd_df[[name]] <- map_chr(
+            as.character(rctd_df[[name]]),
+            ~ifelse(str_detect(.x, "Neu"), .x, "Glia"))
+    }
 }
 
 # Relevel cells
-anno_levels <- unique(unlist(as.list(rctd_df[, anno_cols])))
-anno_levels <- c(anno_levels[anno_levels != "Glia"], "Glia")
+anno_levels <- as.character(unique(cluster))
+anno_levels <- if (collapse_glia) {
+    anno_levels <- ifelse(str_detect(anno_levels, "Neu"), 
+                          anno_levels,
+                          "Glia") %>%
+        unique()
+} else {
+    anno_levels
+}
+
 for (anno in anno_cols) {
     rctd_df[[anno]] <- factor(rctd_df[[anno]], levels=anno_levels)
 }
 
 # If uncertain, replace the annotation of the second type with "Undetermined"
-if (any(rctd_df[['spot_clss']] == 'doublet_uncertain')) {
+if (any(rctd_df[['spot_class']] == 'doublet_uncertain')) {
+    anno_levels <- c(anno_levels, "Undetermined")
+    rctd_df[['second_type']] <- as.character(rctd_df[['second_type']])
     rctd_df[rctd_df[['spot_class']] == "doublet_uncertain", 'second_type'] <- "Undetermined"
+    rctd_df[['second_type']] <- factor(rctd_df[['second_type']], levels=anno_levels)
     # Specify colors for individual cell subtypes
     plot_cols <- c(plot_colors, "black")
-    names(plot_cols) <- c(anno_levels, "Undetermined")
 } else {
     plot_cols <- plot_colors
-    names(plot_cols) <- anno_levels
 }
+names(plot_cols) <- anno_levels
 
 # Add the transferred annotation to the metadata of Visium seurat obj
 seurat <- AddMetaData(seurat, metadata=rctd_df)
@@ -401,8 +433,8 @@ for (name in Images(seurat)) {
     })
     p <- p_list[[1]] | p_list[[2]]
     print(p)
-    p_path <- file.path(out_dir, paste0(name, '_annotated.pdf'))
-    ggsave(p_path, p, device="pdf")
+    p_path <- file.path(out_dir, paste0(name, '_annotated.svg'))
+    ggsave(p_path, p, device="svg")
     link_plot(p_path)
 }
 ```
@@ -487,18 +519,32 @@ seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 for (name in Images(seurat)) {
     cat('###', name, '\n\n')
 
-    # Prep input data frame
+    # Prep input data frame for coordinates
     coords <- GetTissueCoordinates(seurat, image=name) %>%
         set_names(c('x', 'y'))
-    coords <- cbind(
-        coords,
-        weights_df[rownames(coords), all_celltypes])
+
+    # Extract barcodes for the current image
+    barcode_set <- rownames(coords)
+
+    # Sum all glial proportions if specified and subset barcodes
+    glial_cols <- all_celltypes[!str_detect(all_celltypes, "Neu")]
+    neuronal_cols <- all_celltypes[str_detect(all_celltypes, "Neu")]
+    prop_df <- if (collapse_glia) {
+        weights_df[barcode_set, 'Glia'] <- weights_df[barcode_set, glial_cols] %>%
+            rowSums()
+        weights_df[barcode_set, c(neuronal_cols, 'Glia')]
+    } else {
+        weights_df[barcode_set, ]
+    }
+
+    # Add proportions to the coordinate data frame
+    coords <- cbind(coords, prop_df)
 
     # Plot celltype proportions by coordinate
     p <- ggplot() +
         scatterpie::geom_scatterpie(
             data=coords,
-            cols=all_celltypes,
+            cols=colnames(prop_df),
             color=NA,
             aes(x=x, y=y, r=1)) +
         coord_equal() +
@@ -512,8 +558,8 @@ for (name in Images(seurat)) {
     # Save and link
     p_path <- file.path(
         out_dir,
-        paste0(name, '_name_proportion.pdf'))
-    ggsave(p_path, p, device="pdf")
+        paste0(name, '_name_proportion.svg'))
+    ggsave(p_path, p, device="svg")
     link_plot(p_path)
 }
 ```
