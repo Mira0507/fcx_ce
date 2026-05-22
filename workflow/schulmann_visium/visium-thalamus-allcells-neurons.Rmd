@@ -93,7 +93,8 @@ out_dir <- "visium-thalamus-allcells-neurons"
 # Specify genes of interest
 gene_list <- list(
     set1=c('SYT1', 'GAD2', 'SOX14'),
-    set2=c('SYT1', 'SLC17A6', 'RNF220')
+    set2=c('SYT1', 'SLC17A6', 'RNF220'),
+    set3=c('LAMP5', 'BCL11B', 'TUBB3')
 )
 
 # Annotation column names (specify to NULL if unnecessary)
@@ -172,6 +173,9 @@ genes_present <- setdiff(gene_set, genes_absent)
 print(paste0("- Genes of interest: ", paste0(gene_set, collapse=", ")))
 print(paste0("- Genes present: ", paste0(genes_present, collapse=", ")))
 print(paste0("- Genes absent: ", paste0(genes_absent, collapse=", ")))
+
+# Clean gene_set to exclude absent genes
+gene_set <- intersect(gene_set, genes_present)
 ```
 
 Following the methodology of [Schulmann et al.](https://www.biorxiv.org/content/10.1101/2024.09.03.611112v1),
