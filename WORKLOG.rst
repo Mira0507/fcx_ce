@@ -2499,3 +2499,21 @@ fcx_ce
           (4 neurons + 1 glia)
 
 
+
+2026-05-22
+----------
+
+@Mira0507
+
+- Install ``r-svglite`` in ``venv`` using Conda
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes, focusing on neurons
+    - conda env: ``venv``
+    - scripts
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - code cleaned
+        - H&E staining image added
+        - images saved as ``.svg`` instead of ``.pdf``
