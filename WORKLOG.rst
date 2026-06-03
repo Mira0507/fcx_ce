@@ -2239,3 +2239,295 @@ fcx_ce
 - Compress single-cell files
     - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
     - ``workflow/thalamus_neurons_reannotated/results/bed/cell.zip``
+
+
+2026-04-29
+----------
+
+@Mira0507
+
+- Run Snakemake to analyze CEs on glial cells
+    - conda env: ``env``
+    - AST
+        - ``workflow/thalamus_ast_reannotated/Snakefile``   
+        - ``workflow/thalamus_ast_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_ast_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_ast_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_ast_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           63984
+            prep_bam                    63984
+            prep_juncfiles                  1
+            total                      127975
+    - OPC
+        - ``workflow/thalamus_opc_reannotated/Snakefile``   
+        - ``workflow/thalamus_opc_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_opc_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_opc_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_opc_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           24724
+            prep_bam                    24724
+            prep_juncfiles                  1
+            total                       49455
+
+    - MG
+        - ``workflow/thalamus_mg_reannotated/Snakefile``   
+        - ``workflow/thalamus_mg_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_mg_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_mg_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_mg_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           33052
+            prep_bam                    33052
+            prep_juncfiles                  1
+            total                       66111
+
+    - small subpopulation
+        - ``workflow/thalamus_smallpop_reannotated/Snakefile``   
+        - ``workflow/thalamus_smallpop_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_smallpop_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_smallpop_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_smallpop_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype       12
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions           14903
+            prep_bam                    14903
+            prep_juncfiles                  1
+            total                       29822
+
+    - OL
+        - ``workflow/thalamus_ol_reannotated/Snakefile``   
+        - ``workflow/thalamus_ol_reannotated/WRAPPER_SLURM`` 
+        - ``workflow/thalamus_ol_reannotated/leafcutter_cluster_regtools.py``
+        - ``workflow/thalamus_ol_reannotated/config/config.yaml`` 
+        - ``workflow/thalamus_ol_reannotated/config/helpers.R``
+
+        .. code-block:: bash
+
+            Job stats:
+            job                         count
+            ------------------------  -------
+            aggr_bams_group_celltype        3
+            all                             1
+            count_junctions                 1
+            create_header                   1
+            extract_junctions          149745
+            prep_bam                   149745
+            prep_juncfiles                  1
+            total                      299497
+
+
+2026-05-06
+----------
+
+@Mira0507
+
+- Add FTD type to the pseudobulk analysis
+    - conda: ``menv``
+    - scripts: 
+        - ``workflow/thalamus_neurons/reannotated/downstream/sc-pseudobulk.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/config/helpers.R``
+
+
+2026-05-11
+----------
+
+@Mira0507
+
+- Extract STMN2 CEs from OPC - completed
+
+.. code-block:: bash
+
+   $ zcat workflow/thalamus_opc_reannotated/results/junction_counts/thalamus_glials_reannotated_perind_numers.counts.gz | wc -l 
+   1
+
+- Compress per-cell barcode bam and bed files 
+
+.. code-block:: bash
+
+    workflow/thalamus_opc_reannotated/results/bed/cell.zip
+    workflow/thalamus_opc_reannotated/results/bam/cell.zip
+    # Deleted:
+    # - workflow/thalamus_opc_reannotated/results/bed/cell/
+    # - workflow/thalamus_opc_reannotated/results/bam/cell/
+
+
+2026-05-14
+----------
+
+@Mira0507
+
+- Install ``r-seurat`` in the ``menv`` environment using Conda
+  (All pre-installed packages unchanged)
+
+- Explore genes of interest in the Schulmann's Visium dataset
+    - conda env: ``menv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - note: preliminary marker gene exploration
+
+2026-05-15
+----------
+
+@Mira0507
+
+- Install ``r-sceasy`` and ``r-devtools`` in the ``menv`` using Conda 
+  (All pre-installed packages unchanged)
+
+- Create a new Conda env, ``venv``, by calling ``conda create -p ./venv --clone ./menv``
+    - ``r-spacexr`` installed in ``venv`` with many dependencies updated
+    - created to run deconvolution 
+      (https://satijalab.org/seurat/articles/spatial_vignette#spatial-deconvolution-using-rctd)
+      using the ``spacexr`` package without dependency issues encountered with ``menv``
+    - exported: ``venv.archived.yaml``
+
+- Deconvolve Schulmann Visium data (in progress)
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+
+- Compressed bam and bed files generated for STMN2 CE analysis in MG
+
+.. code-block:: bash
+
+    cd workflow/thalamus_mg_reannotated/results/bam
+    $ zip -vr cell.zip cell/
+    cd ../bed
+    $ zip -vr cell.zip cell/
+
+2026-05-18
+----------
+
+@Mira0507
+
+- Install ``bioconductor-spatialexperiment`` in ``venv`` using Conda
+  (``venv.archived.yaml`` exported)
+
+- Deconvolve Schulmann Visium data (in progress)
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - RCTD doublet mode added
+    - RCTD multi mode in progress
+
+2026-05-19
+----------
+
+@Mira0507
+
+- Install ``r-scatterpie`` in ``venv`` using Conda 
+  (``venv.archived.yaml`` exported)
+
+- Deconvolve Schulmann Visium data (in progress)
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - RCTD multi mode completed 
+        - RCTD visualization in progress
+
+
+2026-05-20
+----------
+
+@Mira0507
+
+- Deconvolve Schulmann Visium data to annotate neurons
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - RCTD multi mode visualization completed
+        - RCTD doublet mode visualization updated to improve color readability
+        - Updated Visium Seurat obj saved
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+    - note: subsampling 10% of barcodes
+
+
+2026-05-21
+----------
+
+@Mira0507
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+    - note:
+        - color-coded cell subtypes for visualization
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes, focusing on neurons
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+    - notes
+        - plot readability was very poor when all neuronal and glial cells were
+          included in ``visium-thalamus-allcells.Rmd``
+        - here, annotation is simplified by renaming all glial cells as "glia"
+          (4 neurons + 1 glia)
+
+
+
+2026-05-22
+----------
+
+@Mira0507
+
+- Install ``r-svglite`` in ``venv`` using Conda
+
+- Deconvolve Schulmann Visium dataset to annotate all cell subtypes, focusing on neurons
+    - conda env: ``venv``
+    - scripts
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - code cleaned
+        - H&E staining image added
+        - images saved as ``.svg`` instead of ``.pdf``
+        - more marker genes added
+
+
+2026-06-02
+----------
+
+@Mira0507
+
+- Add the GRN to the spatial featureplot
+    - conda env: ``venv``
+    - scripts
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``

@@ -1235,7 +1235,7 @@ plot_percell_junctions <- function(ycol, ylabel) {
         geom_quasirandom(
             data=input_df,
             aes_string(x=disease_col, y=ycol, color=study_col),
-            width=0.2) +
+            width=0.2, size=3) +
         stat_summary(fun="median",
              geom="crossbar",
              width=0.1,

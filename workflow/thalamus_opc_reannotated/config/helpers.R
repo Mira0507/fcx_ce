@@ -70,18 +70,16 @@ summarize_N <- function(meta_df) {
 #' @param input_df data.frame input data frame for plotting
 #' @param dcol string column name specifying disease from the input data frame
 #' @param scol string column name specifying sample ID
-#' @param fcol string column name specifying sample IDs for sporadic FTD
 #' @param ylabel string y-label
 #' @return ggplot output beeswarm plot
-count_plot <- function(input_df, dcol, scol, fcol, ylabel) {
+count_plot <- function(input_df, dcol, scol, ylabel) {
 
     ggplot(input_df,
         aes_string(x=dcol, y='counts', fill=dcol)) +
         geom_violin(trim=TRUE) +
         theme_bw() +
         geom_quasirandom(data=input_df,
-                         aes_string(x=dcol, y='counts', color=scol, shape=fcol),
-                         width=0.2, size=3) +
+                         aes_string(x=dcol, y='counts', color=scol), width=0.2) +
         stat_summary(fun="median",
              geom="crossbar",
              width=0.1,
@@ -98,16 +96,14 @@ count_plot <- function(input_df, dcol, scol, fcol, ylabel) {
 #' @param input_df data.frame input data frame for plotting
 #' @param dcol string column name specifying disease from the input data frame
 #' @param scol string column name specifying sample ID
-#' @param fcol string column name specifying sample IDs for sporadic FTD
 #' @param ylabel string y-label
 #' @return ggplot output beeswarm plot
-ratio_plot <- function(input_df, dcol, scol, fcol, ylabel) {
+ratio_plot <- function(input_df, dcol, scol, ylabel) {
 
     ggplot(input_df, aes_string(x=dcol, y='ratio', fill=dcol)) +
         geom_violin(trim=TRUE) +
         geom_quasirandom(data=input_df,
-                         aes_string(x=dcol, y='ratio', color=scol, shape=fcol),
-                         width=0.2, size=3) +
+                         aes_string(x=dcol, y='ratio', color=scol), width=0.2) +
            stat_summary(fun="median",
                         geom="crossbar",
                         width=0.1,
@@ -244,20 +240,4 @@ calculate_ratios <- function(dataframe, denom="nonce") {
     return(dataframe)
 }
 
-# Specify plot configurations
-custom_theme <- function() {
-    ggplot2::theme(
-        panel.grid = ggplot2::element_blank(),
-        axis.line = ggplot2::element_blank(),
-        axis.text.x = ggplot2::element_blank(),
-        axis.text.y = ggplot2::element_blank(),
-        axis.ticks = ggplot2::element_blank(),
-        axis.title.x = ggplot2::element_blank(),
-        axis.title.y = ggplot2::element_blank(),
-        panel.background = ggplot2::element_blank(),
-        plot.background = ggplot2::element_blank(),
-        plot.title = ggplot2::element_text(size = 18, hjust = 0.5),
-        legend.text = ggplot2::element_text(size = 12, colour = "black"),
-        legend.title = ggplot2::element_text(size = 12, colour = "black"),
-    )
-}
+
