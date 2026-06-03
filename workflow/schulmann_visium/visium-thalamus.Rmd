@@ -83,7 +83,7 @@ out_dir <- "visium-thalamus"
 gene_list <- list(
     set1=c('SYT1', 'GAD2', 'SOX14'),
     set2=c('SYT1', 'SLC17A6', 'RNF220'),
-    set3=c('LAMP5', 'BCL11B', 'TUBB3')
+    set3=c('LAMP5', 'BCL11B', 'TUBB3', 'GRN')
 )
 
 # Annotation column name
