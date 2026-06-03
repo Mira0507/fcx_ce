@@ -2518,3 +2518,16 @@ fcx_ce
         - H&E staining image added
         - images saved as ``.svg`` instead of ``.pdf``
         - more marker genes added
+
+
+2026-06-02
+----------
+
+@Mira0507
+
+- Add the GRN to the spatial featureplot
+    - conda env: ``venv``
+    - scripts
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
