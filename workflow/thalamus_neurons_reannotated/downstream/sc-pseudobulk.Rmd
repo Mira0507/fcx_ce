@@ -815,14 +815,27 @@ for (name in names(ratio_list)) {
 
         print(p)
 
-
-        # Save and link
+        # Save and link the plot
         lab <- clean_label(name)
         p_path <- file.path(
             out_dir,
             paste0(lab, '_ce_over_alljunction.pdf'))
         ggsave(p_path, p, device="pdf")
         link_plot(p_path)
+        cat('\n\n')
+
+        # Save and link the input table
+        t_path <- file.path(
+            out_dir,
+            paste0(lab, '_ce_over_alljunction.tsv'))
+        write.table(
+            ce_df,
+            t_path,
+            sep="\t",
+            quote=FALSE,
+            col.names=TRUE,
+            row.names=FALSE)
+        link_table(t_path)
         cat('\n\n')
         }
     }
