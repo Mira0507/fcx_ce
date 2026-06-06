@@ -2531,3 +2531,13 @@ fcx_ce
         - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
         - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
         - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+
+2026-06-05
+----------
+
+@Mira0507
+
+- CE downstream analysis in neuronal celltypes updated
+    - conda env: ``mvenv``
+    - script: ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk.Rmd``
+    - note: tables for the CE ratio plots saved
