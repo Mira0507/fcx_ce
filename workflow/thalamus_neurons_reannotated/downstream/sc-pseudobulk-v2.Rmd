@@ -73,6 +73,9 @@ for (p in c(out_dir)) {
     if (! dir.exists(p)) { dir.create(p, recursive=TRUE) }
 }
 
+# Specify target CE
+tdp_target <- 'chr8:79611214:79616822:STMN2:cryptic'
+
 # Specify metadata columns for factors and factor levels
 factor_groups <- list(
     general_disease=c('Control', 'FTD', 'AD'),
@@ -468,7 +471,7 @@ represents a sample and is colored by study. The black horizontal line indicates
 median of each distribution.
 
 ```{r prep_counting}
-stop()
+
 # --------------------------------------------------------------------------------
 # This chunk preps input data frames for plotting
 # --------------------------------------------------------------------------------
@@ -498,6 +501,16 @@ norm_list <- mclapply(names(mat_list), function(name) {
     df[['exon_detection']] <- ifelse(str_detect(df[['junction']], "non-cryptic"),
                                      "junction detected without CE",
                                      "CE detected")
+
+    # Add a column for the association with the TDP43 function for each junction
+    df[['CE_generation']] <- ifelse(
+        str_detect(df[['junction']], tdp_target),
+        "TDP43 dysfunction", ifelse(
+            str_detect(df[['junction']], "\\:cryptic"),
+            "Unknown",
+            "Not CE"
+        )
+    )
 
     return(df)
 
@@ -567,8 +580,8 @@ for (name in names(norm_list)) {
             lab <- clean_label(name)
             p_path <- file.path(
                 out_dir,
-                paste0(lab, '_', ce, '_individual_junctions.pdf'))
-            ggsave(p_path, p, device="pdf", width=w, height=h)
+                paste0(lab, '_', ce, '_individual_junctions.svg'))
+            ggsave(p_path, p, device="svg", width=w, height=h)
             link_plot(p_path)
         } else {
             cat("\n\nCount not displayed!\n\n")
@@ -597,7 +610,7 @@ for (name in names(norm_list)) {
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
             group_by_at(vars(sample_col,
-                             "exon_detection",
+                             "CE_generation",
                              disease_col,
                              ftd_col,
                              study_col)) %>%
@@ -614,8 +627,8 @@ for (name in names(norm_list)) {
                             dcol=disease_col,
                             scol=study_col,
                             fcol=ftd_col,
-                            ylabel='Log-normalized Counts for Junctions with or without CEs') +
-                facet_wrap(. ~ exon_detection) +
+                            ylabel='Log-normalized Junction Counts') +
+                facet_wrap(. ~ CE_generation) +
                 ylim(min_y, max_y + max_y * 0.2)
 
             print(p)
@@ -623,8 +636,8 @@ for (name in names(norm_list)) {
             lab <- clean_label(name)
             p_path <- file.path(
                 out_dir,
-                paste0(lab, '_', ce, '_junction_categories.pdf'))
-            ggsave(p_path, p, device="pdf")
+                paste0(lab, '_', ce, '_junction_categories.svg'))
+            ggsave(p_path, p, device="svg")
             link_plot(p_path)
         } else {
             cat("\n\nCount not displayed!\n\n")
@@ -633,109 +646,12 @@ for (name in names(norm_list)) {
 }
 ```
 
-## CE/non-CE ratios {.tabset}
-
-The counts for junctions with CEs are divided by the counts for junctions without CEs. Note that samples 
-not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
-to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
-(e.g. STMN2) within a subset (e.g. ExNeu1).
-
-```{r ce_ratio}
-
-# --------------------------------------------------------------------------------
-# This chunk compares CE/non-CE counts across all disease conditions
-# --------------------------------------------------------------------------------
-
-ratio_list <- list()
-
-for (name in names(mat_list)) {
-    # Extract input data frame
-    df <- norm_list[[name]]
-    ratio_list[[name]] <- list()
-    for (ce in ce_targets) {
-        # Subset rows for the corresponding CE target gene
-        ce_df <- df[str_detect(df$junction, ce), ] %>%
-            group_by_at(vars(sample_col,
-                             "exon_detection",
-                             study_col,
-                             ftd_col,
-                             disease_col)) %>%
-            summarize(counts=sum(counts))
-        ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
-                                       levels=condition_reorder)
-
-        e_detection <- unique(ce_df$exon_detection)
-        if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
-            # Calculate the nonzero min value
-            nonzero_min <- min(ce_df$counts[ce_df$counts > 0])
-
-            # Prep input for a boxplot
-            ce_df <- ce_df %>%
-                pivot_wider(names_from=exon_detection, values_from=counts) %>%
-                # Impute missing values with zero
-                mutate_if(is.numeric, function(x) ifelse(is.na(x), 0, x))
-
-            # Remove samples if they have zero counts for all exon_detection groups
-            ce_df <- ce_df[rowSums(ce_df[, e_detection]) > 0,] %>%
-                # Add a pseudocount of nonzero_min to all numeric entries
-                mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
-                # Calculate CE/non-CE counts
-                mutate(ratio=`CE detected` / `junction detected without CE`,
-                       metric="Ratio") %>%
-                as.data.frame() %>%
-                unique()
-
-            ratio_list[[name]][[ce]] <- ce_df
-
-        }
-    }
-}
-```
-
-```{r ce_ratio_plot,  results='asis', fig.width=6}
-
-# Extract y-min and y-max from the dataset
-min_max_y <- set_min_max(input_list=ratio_list)
-min_y <- min_max_y['min']
-max_y <- min_max_y['max']
-
-for (name in names(ratio_list)) {
-    # Extract input data frame
-    cat('\n\n###', name, '{.tabset}\n\n')
-    for (ce in names(ratio_list[[name]])) {
-        ce_df <- ratio_list[[name]][[ce]]
-        if (!is.null(ce_df)) {
-            cat('\n\n####', ce, '\n\n')
-            # Plot
-            p <- ratio_plot(input_df=ce_df,
-                            dcol=disease_col,
-                            scol=study_col,
-                            fcol=ftd_col,
-                            ylabel='Count Ratios (CE / Non-CE)') + 
-                ylim(min_y, max_y)
-
-            print(p)
-
-            # Clean the subset label
-            lab <- clean_label(name)
-            # Save and link
-            p_path <- file.path(
-                out_dir,
-                paste0(lab, '_', ce, '_ce_over_nonce.pdf'))
-            ggsave(p_path, p, device="pdf")
-            link_plot(p_path)
-            cat('\n\n')
-        }
-    }
-}
-```
-
 ## CE/all-junctions ratios {.tabset}
 
-The counts for junctions with CEs are divided by the counts for all extracted junctions. Note that samples 
-not containing any junctions are omitted. 1/10 of non-zero minimum value is added to all remaining entries 
-to avoid errors when dividing values. The non-zero minimum value was calculated for each CE target 
-(e.g. STMN2) within a subset (e.g. ExNeu1).
+The counts for junctions with TDP43-affected CEs are divided by the counts for all extracted junctions. 
+Note that samples not containing any junctions are omitted. 1/10 of non-zero minimum value is added 
+to all remaining entries to avoid errors when dividing values. The non-zero minimum value was calculated
+for each CE target (e.g. STMN2) within a subset (e.g. ExNeu SOX14-).
 
 ```{r ce_over_all}
 
@@ -752,7 +668,7 @@ for (name in names(mat_list)) {
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
             group_by_at(vars(sample_col,
-                             "exon_detection",
+                             "CE_generation",
                              study_col,
                              ftd_col,
                              disease_col)) %>%
@@ -760,14 +676,14 @@ for (name in names(mat_list)) {
         ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
                                        levels=condition_reorder)
 
-        e_detection <- unique(ce_df$exon_detection)
+        e_detection <- unique(ce_df$CE_generation)
         if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
             # Calculate the nonzero min value
             nonzero_min <- min(ce_df$counts[ce_df$counts > 0])
 
             # Prep input for a boxplot
             ce_df <- ce_df %>%
-                pivot_wider(names_from=exon_detection, values_from=counts) %>%
+                pivot_wider(names_from=CE_generation, values_from=counts) %>%
                 # Impute missing values with zero
                 mutate_if(is.numeric, function(x) ifelse(is.na(x), 0, x)) %>%
                 as.data.frame()
@@ -779,7 +695,7 @@ for (name in names(mat_list)) {
                 # Add a pseudocount of nonzero_min to all numeric entries
                 mutate_if(is.numeric, function(x) x + pseudo_p * nonzero_min) %>%
                 # Calculate CE/non-CE counts
-                mutate(ratio=`CE detected` / `all junctions`,
+                mutate(ratio=`TDP43 dysfunction` / `all junctions`,
                        metric="Ratio") %>%
                 as.data.frame() %>%
                 unique()
@@ -810,7 +726,7 @@ for (name in names(ratio_list)) {
                         dcol=disease_col,
                         scol=study_col,
                         fcol=ftd_col,
-                        ylabel='Count Ratios (CE / All-junctions)') + 
+                        ylabel='Count Ratios (TDP43-affected CE / All-junctions)') + 
             ylim(min_y, max_y + max_y * ylim_factor)
 
         print(p)
@@ -819,15 +735,15 @@ for (name in names(ratio_list)) {
         lab <- clean_label(name)
         p_path <- file.path(
             out_dir,
-            paste0(lab, '_ce_over_alljunction.pdf'))
-        ggsave(p_path, p, device="pdf")
+            paste0(lab, '_tdpce_over_alljunction.svg'))
+        ggsave(p_path, p, device="svg")
         link_plot(p_path)
         cat('\n\n')
 
         # Save and link the input table
         t_path <- file.path(
             out_dir,
-            paste0(lab, '_ce_over_alljunction.tsv'))
+            paste0(lab, '_tdpce_over_alljunction.tsv'))
         write.table(
             ce_df,
             t_path,
@@ -936,7 +852,10 @@ for (name in names(norm_list)) {
         cat('####', contr_label, '\n\n')
         if (d %in% df[[disease_col]]) {
             # Subset the input data frame 
-            df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
+            df_subset <- subset_clean_counts(
+                dataframe=df,
+                disease_label=d,
+                split_col="CE_generation")
 
             # Calculate p-values
             pval_list <- split(df_subset, df_subset[['gene_spliced']])
@@ -945,7 +864,7 @@ for (name in names(norm_list)) {
                     response_col='counts',
                     explanatory_col=disease_col,
                     stat='wilcox',
-                    split_col='exon_detection')
+                    split_col='CE_generation')
                 data.frame(gene=g, junction=names(vec), pvalue=vec) }) %>%
                 bind_rows() %>%
                 remove_rownames()
@@ -953,7 +872,7 @@ for (name in names(norm_list)) {
             # Display mean and median counts for each junction
             stat_list <- split(df_subset, df_subset[['gene_spliced']])
             stat_df <- map(names(stat_list), ~stat_list[[.x]] %>%
-                group_by_at(vars(disease_col, 'exon_detection')) %>%
+                group_by_at(vars(disease_col, 'CE_generation')) %>%
                 summarize(gene=.x,
                           N=n(),
                           average_counts=mean(counts),
@@ -964,7 +883,7 @@ for (name in names(norm_list)) {
             # Merge two data frames
             res_df <- inner_join(pval_df,
                                  stat_df,
-                                 by=c('gene', 'junction'='exon_detection')) %>%
+                                 by=c('gene', 'junction'='CE_generation')) %>%
                 clean_pval(dcol=disease_col)
             # Clean column order
             res_df <- res_df[, c(disease_col,
@@ -995,97 +914,9 @@ for (name in names(norm_list)) {
 }
 ```
 
-## CE/non-CE ratios {.tabset}
-
-```{r wilcox_ratios_ce_nonce, results='asis'}
-
-# --------------------------------------------------------------------------------
-# This chunk performs a t- or wilcoxon test on count ratios between CE and non-CEs
-# --------------------------------------------------------------------------------
-
-for (name in names(norm_list)) {
-    cat('###', name, '{.tabset}\n\n')
-    # Retrieve input
-    df <- norm_list[[name]]
-    for (d in diseases) {
-        contr_label <- paste0(d, "_vs_Control")
-        cat('####', contr_label, '\n\n')
-        if (d %in% df[[disease_col]]) {
-            # Subset the input data frame 
-            df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
-
-            # Calculate p-values
-            ratio_list <- split(df_subset, df_subset[['gene_spliced']])
-            pval_list <- list()
-            df_list <- list()
-            for (gene in names(ratio_list)) {
-                gene_df <- ratio_list[[gene]]
-                e_detection <- unique(gene_df[['exon_detection']])
-                if (length(e_detection) > 1 & sum(gene_df$counts) > 0) {
-                    # Calculate the nonzero min value
-                    nonzero_min <- min(gene_df$counts[gene_df$counts > 0])
-
-                    # Add a division
-                    gene_df <- calculate_ratios(dataframe=gene_df, denom="nonce")
-
-                    pval_list[[gene]] <- calc_pval(dataframe=gene_df,
-                                                   response_col="ratio",
-                                                   explanatory_col=disease_col,
-                                                   split_col="metric",
-                                                   stat='wilcox') 
-                    df_list[[gene]] <- gene_df
-                }
-            }
-            pval_df <- data.frame(gene=names(pval_list),
-                                  pvalue=unlist(pval_list)) %>%
-                remove_rownames()
-
-            # Display mean and median counts for each junction
-            res_df <- df_list %>%
-                bind_rows() %>%
-                mutate(gene=gene_spliced) %>%
-                group_by_at(vars('gene', disease_col)) %>%
-                summarize(N=n(),
-                          average_ratio=mean(ratio),
-                          median_ratio=median(ratio)) %>%
-                unique() %>%
-                inner_join(pval_df, by='gene') %>%
-                clean_pval(dcol=disease_col)
-
-            # Reorder columns
-            res_df <- res_df[, c(disease_col,
-                                 'gene',
-                                 'N',
-                                 'average_ratio',
-                                 'median_ratio',
-                                 'pvalue',
-                                 'FDR')]
-            print(knitr::kable(res_df))
-            cat('\n\n')
-
-            # Save the stat table as a csv file
-            csv_path <- paste0(out_dir, "/",
-                               name,
-                               "_",
-                               contr_label,
-                               "_CE_over_nonCE_ratios.csv")
-            write.csv(res_df,
-                      csv_path,
-                      row.names=FALSE,
-                      quote=FALSE)
-            link_table(csv_path)
-
-        } else {
-            cat("\n\nContrast unavailable!\n\n")
-        }
-    }
-}
-
-```
-
 ## CE/all-junctions ratios {.tabset}
 
-```{r wilcox_ratios_ce_all, results='asis'}
+```{r wilcox_ratios_ce_all, results='asis', eval=FALSE}
 
 # --------------------------------------------------------------------------------
 # This chunk performs a t- or wilcoxon test on count ratios between CE and all junctions
@@ -1238,6 +1069,8 @@ write.table(
 
 link_table(gtf_out)
 ```
+
+
 
 # Session info
 
