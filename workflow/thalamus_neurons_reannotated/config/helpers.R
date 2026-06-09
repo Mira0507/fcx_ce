@@ -200,11 +200,12 @@ clean_pval <- function(dataframe, dcol, control="Control", padj_method="BH") {
 #'
 #' @param dataframe data.frame input data frame
 #' @param disease_label string for disease label
+#' @param split_col string for splitting junction type
 #' @return data frame with the number of junctions counted per sample within the contrast
-subset_clean_counts <- function(dataframe, disease_label) {
+subset_clean_counts <- function(dataframe, disease_label, split_col="exon_detection") {
     dataframe[dataframe[[disease_col]] %in% c('Control', disease_label),] %>%
         group_by_at(vars(sample_col,
-                         "exon_detection",
+                         split_col,
                          "gene_spliced",
                          disease_col)) %>%
         summarize(counts=sum(counts))
