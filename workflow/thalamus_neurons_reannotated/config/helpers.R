@@ -215,12 +215,13 @@ subset_clean_counts <- function(dataframe, disease_label, split_col="exon_detect
 #'
 #' @param dataframe input data frame
 #' @param denom string "nonce" (divide by non-CE junctions) or "all" (divide by all junctions)
+#' @param split_col string column name to subset rows
 #' @return output data frame with calculated ratios
-calculate_ratios <- function(dataframe, denom="nonce") {
+calculate_ratios <- function(dataframe, denom="nonce", split_col='exon_detection') {
 
     # Prep input for a boxplot
     dataframe <- dataframe %>%
-        pivot_wider(names_from=exon_detection, values_from=counts) %>%
+        pivot_wider(names_from=split_col, values_from=counts) %>%
         # Impute missing values with zero
         mutate_if(is.numeric, function(x) ifelse(is.na(x), 0, x))
 
@@ -234,11 +235,17 @@ calculate_ratios <- function(dataframe, denom="nonce") {
         as.data.frame() %>%
         unique()
 
-    # Add a new column calculating division
+    # Specify column names for denominator and nominator
     denom_col <- ifelse(denom == "nonce",
                         "junction detected without CE",
                         "all junctions")
-    dataframe[['ratio']] <- dataframe[["CE detected"]] / dataframe[[denom_col]]
+    nom_col <- ifelse(
+        split_col == "exon_detection",
+        "CE detected",
+        "TDP43 dysfunction")
+
+    # Add a new column calculating division
+    dataframe[['ratio']] <- dataframe[[nom_col]] / dataframe[[denom_col]]
     # Add a new column as a placeholder in case not needing to split the data frame
     dataframe[['metric']] <- 'Ratio'
 

@@ -131,6 +131,7 @@ celltype_col <- 'annotation_04142026'
 disease_col <- "general_disease"
 study_col <- 'study'
 ftd_col <- 'ftd_type'
+split_col <- 'CE_generation'
 
 # Specify CE target genes
 ce_targets <- config_yaml[['genes']]
@@ -503,7 +504,7 @@ norm_list <- mclapply(names(mat_list), function(name) {
                                      "CE detected")
 
     # Add a column for the association with the TDP43 function for each junction
-    df[['CE_generation']] <- ifelse(
+    df[[split_col]] <- ifelse(
         str_detect(df[['junction']], tdp_target),
         "TDP43 dysfunction", ifelse(
             str_detect(df[['junction']], "\\:cryptic"),
@@ -610,7 +611,7 @@ for (name in names(norm_list)) {
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
             group_by_at(vars(sample_col,
-                             "CE_generation",
+                             split_col,
                              disease_col,
                              ftd_col,
                              study_col)) %>%
@@ -628,7 +629,7 @@ for (name in names(norm_list)) {
                             scol=study_col,
                             fcol=ftd_col,
                             ylabel='Log-normalized Junction Counts') +
-                facet_wrap(. ~ CE_generation) +
+                facet_wrap(as.formula(paste("~", split_col))) +
                 ylim(min_y, max_y + max_y * 0.2)
 
             print(p)
@@ -668,7 +669,7 @@ for (name in names(mat_list)) {
         # Subset rows for the corresponding CE target gene
         ce_df <- df[str_detect(df$junction, ce), ] %>%
             group_by_at(vars(sample_col,
-                             "CE_generation",
+                             split_col,
                              study_col,
                              ftd_col,
                              disease_col)) %>%
@@ -676,14 +677,14 @@ for (name in names(mat_list)) {
         ce_df[[disease_col]] <- factor(ce_df[[disease_col]],
                                        levels=condition_reorder)
 
-        e_detection <- unique(ce_df$CE_generation)
+        e_detection <- unique(ce_df[[split_col]])
         if (length(e_detection) > 1 & sum(ce_df$counts) > 0) {
             # Calculate the nonzero min value
             nonzero_min <- min(ce_df$counts[ce_df$counts > 0])
 
             # Prep input for a boxplot
             ce_df <- ce_df %>%
-                pivot_wider(names_from=CE_generation, values_from=counts) %>%
+                pivot_wider(names_from=split_col, values_from=counts) %>%
                 # Impute missing values with zero
                 mutate_if(is.numeric, function(x) ifelse(is.na(x), 0, x)) %>%
                 as.data.frame()
@@ -855,7 +856,7 @@ for (name in names(norm_list)) {
             df_subset <- subset_clean_counts(
                 dataframe=df,
                 disease_label=d,
-                split_col="CE_generation")
+                split_col=split_col)
 
             # Calculate p-values
             pval_list <- split(df_subset, df_subset[['gene_spliced']])
@@ -864,7 +865,7 @@ for (name in names(norm_list)) {
                     response_col='counts',
                     explanatory_col=disease_col,
                     stat='wilcox',
-                    split_col='CE_generation')
+                    split_col=split_col)
                 data.frame(gene=g, junction=names(vec), pvalue=vec) }) %>%
                 bind_rows() %>%
                 remove_rownames()
@@ -872,7 +873,7 @@ for (name in names(norm_list)) {
             # Display mean and median counts for each junction
             stat_list <- split(df_subset, df_subset[['gene_spliced']])
             stat_df <- map(names(stat_list), ~stat_list[[.x]] %>%
-                group_by_at(vars(disease_col, 'CE_generation')) %>%
+                group_by_at(vars(disease_col, split_col)) %>%
                 summarize(gene=.x,
                           N=n(),
                           average_counts=mean(counts),
@@ -883,7 +884,7 @@ for (name in names(norm_list)) {
             # Merge two data frames
             res_df <- inner_join(pval_df,
                                  stat_df,
-                                 by=c('gene', 'junction'='CE_generation')) %>%
+                                 by=c('gene', 'junction'=split_col)) %>%
                 clean_pval(dcol=disease_col)
             # Clean column order
             res_df <- res_df[, c(disease_col,
@@ -916,7 +917,7 @@ for (name in names(norm_list)) {
 
 ## CE/all-junctions ratios {.tabset}
 
-```{r wilcox_ratios_ce_all, results='asis', eval=FALSE}
+```{r wilcox_ratios_ce_all, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk performs a t- or wilcoxon test on count ratios between CE and all junctions
@@ -931,7 +932,10 @@ for (name in names(norm_list)) {
         cat('####', contr_label, '\n\n')
         if (d %in% df[[disease_col]]) {
             # Subset the input data frame 
-            df_subset <- subset_clean_counts(dataframe=df, disease_label=d)
+            df_subset <- subset_clean_counts(
+                dataframe=df,
+                disease_label=d,
+                split_col=split_col)
 
             # Calculate p-values
             ratio_list <- split(df_subset, df_subset[['gene_spliced']])
@@ -939,19 +943,23 @@ for (name in names(norm_list)) {
             df_list <- list()
             for (gene in names(ratio_list)) {
                 gene_df <- ratio_list[[gene]]
-                e_detection <- unique(gene_df[['exon_detection']])
+                e_detection <- unique(gene_df[[split_col]])
                 if (length(e_detection) > 1 & sum(gene_df$counts) > 0) {
                     # Calculate the nonzero min value
                     nonzero_min <- min(gene_df$counts[gene_df$counts > 0])
 
                     # Add a division
-                    gene_df <- calculate_ratios(dataframe=gene_df, denom="all")
+                    gene_df <- calculate_ratios(
+                        dataframe=gene_df,
+                        denom="all",
+                        split_col=split_col)
 
-                    pval_list[[gene]] <- calc_pval(dataframe=gene_df,
-                                                   response_col="ratio",
-                                                   explanatory_col=disease_col,
-                                                   split_col="metric",
-                                                   stat='wilcox') 
+                    pval_list[[gene]] <- calc_pval(
+                        dataframe=gene_df,
+                        response_col="ratio",
+                        explanatory_col=disease_col,
+                        split_col="metric",
+                        stat='wilcox') 
                     df_list[[gene]] <- gene_df
                 }
             }
@@ -988,7 +996,7 @@ for (name in names(norm_list)) {
                                name,
                                "_",
                                contr_label,
-                               "_CE_over_all_ratios.csv")
+                               "_tdpCE_over_all_ratios.csv")
             write.csv(res_df,
                       csv_path,
                       row.names=FALSE,
