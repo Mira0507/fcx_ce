@@ -2538,6 +2538,27 @@ fcx_ce
 @Mira0507
 
 - CE downstream analysis in neuronal celltypes updated
-    - conda env: ``mvenv``
+    - conda env: ``menv``
     - script: ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk.Rmd``
     - note: tables for the CE ratio plots saved
+
+
+2026-06-09
+----------
+
+@Mira0507
+
+- Install ``r-svglite`` in ``menv`` using Conda
+    - command: ``$ mamba install r-svglite --freeze-installed``)
+    - exported as ``menv.archived.yaml``
+
+- Recalculate CE ratios
+    - conda env: ``menv``
+    - scripts
+        - ``workflow/thalamus_neurons_reannotated/downstream/sc-pseudobulk-v2.Rmd``
+        - ``workflow/thalamus_neurons_reannotated/config/helpers.R``
+    - note
+        - the following functions updated in the ``helpers.R``:
+          ``calculate_ratios`` and ``subset_clean_counts``
+        - CE ratio recalculated as the following:
+          TDP43-affected CEs / all junctions
