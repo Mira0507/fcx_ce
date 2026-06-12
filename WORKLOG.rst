@@ -2562,3 +2562,38 @@ fcx_ce
           ``calculate_ratios`` and ``subset_clean_counts``
         - CE ratio recalculated as the following:
           TDP43-affected CEs / all junctions
+
+
+2026-06-12
+----------
+
+@Mira0507
+
+- Transfer thalamus IF imagings
+    - directory: ``input/if_quantification``
+    - samples
+        - 2 Ctrls
+        - 5 FTD-GRN
+        - 2 FTD-Sporadic
+
+- Run thalamus IF masking
+    - conda env: ``senv`` symlinked from ``squidpy_masking`` 
+    - Pipeline: 
+      https://github.com/Mira0507/squidpy_masking
+    - files added
+        - ``workflow/if_quantification/scripts/snakemake/Snakefile`` 
+        - ``workflow/if_quantification/scripts/snakemake/WRAPPER_SLURM``
+        - ``workflow/if_quantification/scripts/snakemake/build_imagecontainer.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/config/config.yaml``
+        - ``workflow/if_quantification/scripts/snakemake/config/dag.png``
+        - ``workflow/if_quantification/scripts/snakemake/config/dag_qc.png``
+        - ``workflow/if_quantification/scripts/snakemake/config/helpers.R``
+        - ``workflow/if_quantification/scripts/snakemake/config/sampletable.txt``
+        - ``workflow/if_quantification/scripts/snakemake/image_conversion.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/merge_channels.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/native_thresholding.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/post_processing.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/qc_normalization.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/smooth.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/squidpy_segmentation.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/watershed_segmentation.Rmd``
