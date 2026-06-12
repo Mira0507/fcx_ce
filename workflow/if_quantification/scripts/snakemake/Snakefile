@@ -1,0 +1,412 @@
+import os
+import pandas as pd
+
+##### for interactive debugging
+# import yaml
+# with open("config/config.yaml", 'r') as stream:
+# config = yaml.safe_load(stream)
+
+
+# Specify path to config file
+configfile: 'config/config.yaml'
+
+# Prep sampletable
+sample = pd.read_table(config['sampletable']).set_index('samplename', drop=False)
+
+# Filter rows for fluorescence images
+multi_channel = sample[sample['channel'] == "multi"]
+
+# Set up a function determining all input
+def all_input(wildcards):
+    input_list = []
+    # Add TIF converted from VSI if necessary
+    vsi = [image for image in list(sample['input_image']) if ".vsi" in image]
+    if len(vsi) > 0: 
+        input_list.extend(expand("{out_converted}/{name}/converted.ome.tif",
+                                 out_converted=config['out_converted'],
+                                 name=list(sample.index))
+                          )
+
+    # Add more files using normalized intensities
+    if config['norm_method'] != "":
+        if config['thresholding'] == "":
+            input_list.extend(expand("{out_masked}/{name}/native_thresholding.zarr",
+                                     out_masked=config['out_masked'],
+                                     name=list(multi_channel.index))
+                              )
+
+        else: 
+            input_list.extend(expand("{out_masked}/{name}/merge_channels.html",
+                                     out_masked=config['out_masked'],
+                                     name=list(multi_channel.index))
+                              )
+    # Specify QC results
+    else:
+        input_list.extend(expand("{out_masked}/{name}/qc_normalization.zarr",
+                                 out_masked=config['out_masked'],
+                                 name=list(multi_channel.index))
+                          )
+    return input_list
+
+rule all:
+    input:
+        all_input
+
+rule convert:
+    """
+    This rule converts VSI images to OME-TIFF format 
+    using the bftools package
+    """
+    input: 
+        vsi = lambda wildcards: sample.loc[wildcards.name, 'input_image'],
+        rmd = "image_conversion.Rmd"
+    output: 
+        tif = "{out_converted}/{name}/converted.ome.tif",
+        html = "{out_converted}/{name}/image_conversion.html"
+    threads: 1
+    resources:
+        mem_mb = 1024 * 40,
+        disk_mb = 1024 * 20,
+        runtime = 60 * 6
+    params:
+        series = config['ser'],
+        pyramidal = config['pyramidal'],
+        conda_env = config['conda_env']
+    shell:
+        """
+        Rscript -e 'params = list(
+            vsi = "{input.vsi}",
+            tif = "{output.tif}",
+            input_meta_out = "{wildcards.out_converted}/{wildcards.name}/input_metadata.txt",
+            output_meta_out = "{wildcards.out_converted}/{wildcards.name}/output_metadata.txt",
+            ser = "{params.series}",
+            conda_env = "{params.conda_env}",
+            to_pyramidal = "{params.pyramidal}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_converted}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_converted}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule build_imagecontainer:
+    """
+    This rule builds a Squidpy ImageContainer object
+    from an OME-TIFF image input
+    """
+    input:
+        tif = config['out_converted'] + "/{name}/converted.ome.tif",
+        rmd = "build_imagecontainer.Rmd"
+    output:
+        zarr = directory("{out_masked}/{name}/build_imagecontainer.zarr"),
+        html = "{out_masked}/{name}/build_imagecontainer.html",
+    threads: 12
+    resources:
+        mem_mb = 1024 * 400,
+        disk_mb = 1024 * 200,
+        runtime = 60 * 2
+    params:
+        conda_env = config['conda_env'],
+        lyr = config['lyr'],
+        chunksize = config['chunksize'],
+        crop = config['crop_images'],
+        crop_height=config['crop_height'],
+        crop_width=config['crop_width'],
+        crop_size=config['crop_size'],
+        crop_scale=config['crop_scale']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_image = "{input.tif}",
+            output_obj = "{output.zarr}",
+            conda_env = "{params.conda_env}",
+            lyr = "{params.lyr}",
+            chunksize = "{params.chunksize}",
+            crop_images = "{params.crop}",
+            crop_height = "{params.crop_height}",
+            crop_width = "{params.crop_width}",
+            crop_size = "{params.crop_size}",
+            crop_scale = "{params.crop_scale}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule qc_normalization:
+    """
+    This rule performs QC
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/build_imagecontainer.zarr", 
+        rmd = "qc_normalization.Rmd"
+    output:
+        zarr_out = directory("{out_masked}/{name}/qc_normalization.zarr"),
+        html = "{out_masked}/{name}/qc_normalization.html"
+    threads: 12
+    resources:
+        mem_mb = 1024 * 2000,
+        disk_mb = 1024 * 200,
+        runtime = 60 * 24
+    params:
+        conda_env = config['conda_env'],
+        chunksize = config['chunksize'],
+        lyr = config['lyr'],
+        upper_p = config['upper_p'],
+        lower_p = config['lower_p']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            output_obj = "{output.zarr_out}",
+            conda_env = "{params.conda_env}",
+            chunksize = "{params.chunksize}",
+            lower_p = "{params.lower_p}",
+            upper_p = "{params.upper_p}",
+            lyr = "{params.lyr}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule smooth:
+    """
+    This rule conducts gaussian smoothing
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/qc_normalization.zarr",
+        rmd = "smooth.Rmd"
+    output:
+        zarr_out = directory("{out_masked}/{name}/smooth.zarr"),
+        html = "{out_masked}/{name}/smooth.html"
+    threads: 12
+    resources:
+        mem_mb = 1024 * 400,
+        disk_mb = 1024 * 200,
+        runtime = 60 * 2
+    params:
+        conda_env = config['conda_env'],
+        norm_method = config['norm_method'],
+        gaussian = config['gaussian_sigma'],
+        chunksize = config['chunksize'],
+        lyr = config['lyr']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            output_obj = "{output.zarr_out}",
+            conda_env = "{params.conda_env}",
+            norm_method = "{params.norm_method}",
+            chunksize = "{params.chunksize}",
+            lyr = "{params.lyr}",
+            gaussian_sigma = "{params.gaussian}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule suidpy_segmentation:
+    """
+    This rule runs Squidpy's default segmentation using Otsu 
+    thresholding and watershed segmentation
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/smooth.zarr",
+        rmd = "squidpy_segmentation.Rmd"
+    output:
+        zarr_out = directory("{out_masked}/{name}/squidpy_segmentation.zarr"),
+        html = "{out_masked}/{name}/squipy_segmentation.html"
+    threads: 12
+    resources:
+        mem_mb = 1024 * 400,
+        disk_mb = 1024 * 200,
+        runtime = 60 * 2
+    params:
+        conda_env = config['conda_env'],
+        lyr = config['lyr'],
+        chunksize = config['chunksize'],
+        seg_method = config['seg_method'],
+        thr_method = config['thr_method']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            output_obj = "{output.zarr_out}",
+            conda_env = "{params.conda_env}",
+            chunksize = "{params.chunksize}",
+            seg_method = "{params.seg_method}",
+            thr_method = "{params.thr_method}",
+            lyr = "{params.lyr}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule native_thresholding:
+    """
+    This rule runs Otsu thresholding and adaptive thresholding
+    using scikit-image and dask_image
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/squidpy_segmentation.zarr",
+        rmd = "native_thresholding.Rmd"
+    output:
+        zarr_out = directory("{out_masked}/{name}/native_thresholding.zarr"),
+        html = "{out_masked}/{name}/native_thresholding.html"
+    threads: 12
+    resources:
+        mem_mb = 1024 * 200,
+        disk_mb = 1024 * 100,
+        runtime = 60 * 12
+    params:
+        conda_env = config['conda_env'],
+        chunksize = config['chunksize'],
+        lyr = config['lyr'],
+        block_size = config['block_size'],
+        offset = config['offset']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            output_obj = "{output.zarr_out}",
+            chunksize = "{params.chunksize}",
+            conda_env = "{params.conda_env}",
+            offset = "{params.offset}",
+            block_size = "{params.block_size}",
+            lyr = "{params.lyr}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule post_processing:
+    """
+    This rule runs erosion and dilation to clean small noisy speckles
+    using the dask_image package
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/native_thresholding.zarr",
+        rmd = "post_processing.Rmd"
+    output:
+        zarr_out = directory("{out_masked}/{name}/post_processing.zarr"),
+        html = "{out_masked}/{name}/post_processing.html"
+    threads: 12
+    resources:
+        mem_mb = 1024 * 200,
+        disk_mb = 1024 * 100,
+        runtime = 60 * 2
+    params:
+        conda_env = config['conda_env'],
+        chunksize = config['chunksize'],
+        lyr = config['lyr'],
+        thresholding = config['thresholding'],
+        minsize = config['minsize']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            output_obj = "{output.zarr_out}",
+            chunksize = "{params.chunksize}",
+            conda_env = "{params.conda_env}",
+            minsize = "{params.minsize}",
+            thresholding = "{params.thresholding}",
+            lyr = "{params.lyr}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+
+rule watershed_segmentation:
+    """
+    This rule runs watershed segmentation on masked images using native 
+    functions from the scikit-image and dask image packages.
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/post_processing.zarr",
+        rmd = "watershed_segmentation.Rmd"
+    output:
+        zarr_out = directory("{out_masked}/{name}/watershed_segmentation.zarr"),
+        html = "{out_masked}/{name}/watershed_segmentation.html"
+    threads: 12
+    resources:
+        mem_mb = 1024 * 200,
+        disk_mb = 1024 * 100,
+        runtime = 60 * 2
+    params:
+        conda_env = config['conda_env'],
+        chunksize = config['chunksize'],
+        lyr = config['lyr'],
+        downfactor = config['downfactor']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            output_obj = "{output.zarr_out}",
+            chunksize = "{params.chunksize}",
+            conda_env = "{params.conda_env}",
+            downfactor = "{params.downfactor}",
+            lyr = "{params.lyr}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
+
+rule merge_channels:
+    """
+    This rule generates merged images for channels of interest.
+    """
+    input:
+        zarr_in = "{out_masked}/{name}/watershed_segmentation.zarr",
+        rmd = "merge_channels.Rmd"
+    output:
+        html = "{out_masked}/{name}/merge_channels.html"
+    threads: 4
+    resources:
+        mem_mb = 1024 * 100,
+        disk_mb = 1024 * 50,
+        runtime = 60 * 1
+    params:
+        conda_env = config['conda_env'],
+        chunksize = config['chunksize'],
+        lyr = config['lyr'],
+        pseudo_cols = config['pseudo_cols'],
+        merge_list = config['merge_list'],
+        merge_layer = config['merge_layer']
+    shell:
+        """
+        Rscript -e 'params = list(
+            outdir = "{wildcards.out_masked}/{wildcards.name}",
+            input_obj = "{input.zarr_in}",
+            chunksize = "{params.chunksize}",
+            conda_env = "{params.conda_env}",
+            pseudo_cols = "{params.pseudo_cols}",
+            merge_list = "{params.merge_list}",
+            merge_layer = "{params.merge_layer}",
+            lyr = "{params.lyr}");
+        rmarkdown::render("{input.rmd}",
+            output_dir = "{wildcards.out_masked}/{wildcards.name}",
+            intermediates_dir = "{wildcards.out_masked}/{wildcards.name}",
+            params = params,
+            output_file = "{output.html}")'
+        """
