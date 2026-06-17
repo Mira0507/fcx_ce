@@ -67,7 +67,7 @@ rule convert:
     resources:
         mem_mb = 1024 * 40,
         disk_mb = 1024 * 20,
-        runtime = 60 * 6
+        runtime = 60 * 12
     params:
         series = config['ser'],
         pyramidal = config['pyramidal'],
