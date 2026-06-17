@@ -94,7 +94,31 @@ out_dir <- "visium-thalamus-allcells"
 gene_list <- list(
     set1=c('SYT1', 'GAD2', 'SOX14'),
     set2=c('SYT1', 'SLC17A6', 'RNF220'),
-    set3=c('LAMP5', 'BCL11B', 'TUBB3', 'GRN')
+    set3=c('LAMP5', 'BCL11B', 'TUBB3', 'GRN'),
+    set4=c(
+        'ATP1B1',
+        'HSP90AA1',
+        'HSP90AB1',
+        'NEFL',
+        'CLU',
+        'GAPDH',
+        'PSAP',
+        'SERINC1',
+        'TUBA1B',
+        'PRNP',
+        'MEG3',
+        'MALAT1',
+        'NRG3',
+        'MALAT1',
+        'NRG3',
+        'KCNIP4',
+        'NALF1',
+        'PTPRD',
+        'ROBO1',
+        'MAGI2',
+        'FTX',
+        'LRP1B'
+    )
 )
 
 # Annotation column names (specify to NULL if unnecessary)
