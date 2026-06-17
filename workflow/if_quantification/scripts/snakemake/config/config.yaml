@@ -72,8 +72,6 @@ seg_method: "watershed"
 # Specify the `thresh` argument
 thr_method: None
 
-
-
 # Set parameters for adaptive thresholding
 # - block_size: neighborhood size, ~5–15% of the image dimension, odd integer.
 # - offset: a constant added to (or subtracted from) the computed threshold (set to 0 by default)
@@ -86,7 +84,7 @@ offset: None
 # - "otsu": Otsu (global) thresholding generated native functions from scikit-image/dask_image
 # - "adaptive": Adaptive (local) thresholding generated native functions from scikit-image/dask_image
 # - "": No selection. This will pause running the pipeline before the `post_processing` rule.
-thresholding: "adaptive"
+thresholding: ""
 
 # Specify the minimum size of foreground objects to be filtered
 minsize: 20
@@ -99,16 +97,17 @@ downfactor: 4
 # the order of your channels (0-indexing)
 pseudo_cols:
   dapi: dodgerblue  # channel 0
-  iba: orange       # channel 1
+  map: violet       # channel 1
   tdp: limegreen    # channel 2
-  map: violet       # channel 3
-  aldh: lightblue   # channel 4
+  gad: orange       # channel 3
+  # aldh: lightblue   # channel 4
 
 # Specify antibodies of interest to be merged
 merge_list:
   - dapi_tdp
-  - iba_map_aldh
-  - tdp_map
+  - gad_map
+  - dapi_map_tdp
+  - dapi_gad_tdp
   
 # Specify the suffix of image layers saved in Squidpy's `ImageContainer` object
 merge_layer: 'removal'
