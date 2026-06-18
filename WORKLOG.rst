@@ -2597,3 +2597,27 @@ fcx_ce
         - ``workflow/if_quantification/scripts/snakemake/smooth.Rmd``
         - ``workflow/if_quantification/scripts/snakemake/squidpy_segmentation.Rmd``
         - ``workflow/if_quantification/scripts/snakemake/watershed_segmentation.Rmd``
+
+2026-06-17
+----------
+
+@Mira0507
+
+- Plot additional genes of interest on the Visium dataset
+    - conda env: ``venv``
+    - scripts:
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd`` 
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd`` 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+
+- IF masking
+    - conda env: ``senv``
+    - scripts updated
+        - ``workflow/if_quantification/scripts/snakemake/build_imagecontainer.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/qc_normalization.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/config/config.yaml``
+        - ``workflow/if_quantification/scripts/snakemake/Snakefile``
+    - notes
+        - run paused after the ``qc_normalization`` rule
+        - channel info updated in ``Rmd``
+
