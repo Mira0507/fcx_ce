@@ -1,0 +1,109 @@
+---
+title: "Nuclear cleaning & segmentation"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+This workflow is designed for exploratory analysis on CE at the single-cell level.
+
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(reticulate)
+
+# Additional options
+set.seed(2570)
+
+# Specify the number of available cores
+# n_cores <- future::availableCores()
+# options(mc.cores=n_cores)
+```
+
+
+```{r config}
+
+# Path to output directory
+out_dir <- "dapi"
+if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Load configuration
+config <- yaml::read_yaml("config/config.yaml")
+
+# Load helper functions
+source(config[['helper']][['R']])
+source_python(config[['helper']][['py']])
+
+# Specify conda env
+use_condaenv(config[['conda_env']])
+```
+
+```{python ppackages}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import ndimage as ndi
+from skimage import io, measure, morphology, segmentation, feature, color, util
+from skimage.segmentation import watershed
+import dask.array as da
+import squidpy as sq
+import xarray as xr
+import subprocess
+import os
+```
+
+This workflow performs **nuclear cleaning and segmentation** from 
+a **binarized DAPI mask**.
+
+Assumptions:
+
+- the input is already binary or can be safely coerced to binary
+- the current file focuses on **nucleus-only segmentation**
+- morphology cleanup thresholds should be **estimated from the image**, 
+  not fixed arbitrarily
+- segmentation outputs will later feed cytoplasmic compartment construction 
+  and downstream TDP43 localization analysis
+
+# Loading input `ImageContainer`
+
+```{python load_input}
+# reticulate::repl_python()
+stop()
+# ------------------------------------------------------------------------------
+# This chunk imports input image saved as zarr in the previous step
+# ------------------------------------------------------------------------------
+
+# Load the Zarr store into an ImageContainer
+# Set lazy=True to enable Dask-backed lazy loading, which is memory-efficient for large images.
+# You can also specify chunks for Dask if needed.
+img = sq.im.ImageContainer.load(r.config['input_file'], lazy=True)
+img = sq.im.ImageContainer.load(r.config['input_file'], lazy=True, chunks=chunksize)
+
+print(f"The following file has been loaded: {input_obj}")
+print(img)
+```
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+

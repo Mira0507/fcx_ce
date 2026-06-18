@@ -1,0 +1,12 @@
+# Input ImageContainer path
+input_file: "/data/CARD_MPU/users/sohnm/visium_setup/workflows/masking/scripts/snakemake/20260317_results/FTD_IF/post_processing.zarr"
+
+# Path to helper functions
+helper:
+    py: "config/helpers.py"
+    R: "../../../thalamus_neurons_reannotated/config/helpers.R"
+
+# Path to conda env
+conda_env: "../../../../senv"
+
+
