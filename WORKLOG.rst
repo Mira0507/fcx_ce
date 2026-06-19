@@ -2621,3 +2621,28 @@ fcx_ce
         - run paused after the ``qc_normalization`` rule
         - channel info updated in ``Rmd``
 
+
+2026-06-18
+----------
+
+@Mira0507
+
+- Script nuclear segmentation
+    - conda env: ``senv`` (symlinked from ``../squidpy_masking/env``)
+    - files added
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+    - notes
+        - compartment segmentation is designed into the following three scripts
+            - ``dapi.Rmd`` for cleaning and segmentation of nuclei
+            - ``map2.Rmd`` for cleaning and segmentation of cytoplasm
+            - ``dapi_map2.Rmd`` for subtraction (DAPI - MAP2)
+        - input is not prepared yet. just starting with old masked images having both channels
+
+- Add Visium SpatialFeaturePlot for additional genes of interest
+    - conda env: ``venv``
+    - scripts
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
