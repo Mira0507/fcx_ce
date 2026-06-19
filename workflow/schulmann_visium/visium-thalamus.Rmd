@@ -106,7 +106,8 @@ gene_list <- list(
         'ROBO1',
         'MAGI2',
         'FTX',
-        'LRP1B'
+        'LRP1B',
+        'CALB1'
     )
 )
 
