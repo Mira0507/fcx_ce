@@ -46,12 +46,21 @@ if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
 # Load configuration
 config <- yaml::read_yaml("config/config.yaml")
 
+# Input obj path
+input_obj <- config[['input_file']]
+
+# Specify the layer of ImageContainer obj
+sq_layer <- config[['sq_layer']]
+
+# Specify channel
+chan <- config[['channels']][['dapi']]
+
 # Load helper functions
 source(config[['helper']][['R']])
-source_python(config[['helper']][['py']])
 
 # Specify conda env
 use_condaenv(config[['conda_env']])
+source_python(config[['helper']][['py']])
 ```
 
 ```{python ppackages}
@@ -84,7 +93,7 @@ Assumptions:
 
 ```{python load_input}
 # reticulate::repl_python()
-stop()
+
 # ------------------------------------------------------------------------------
 # This chunk imports input image saved as zarr in the previous step
 # ------------------------------------------------------------------------------
@@ -92,11 +101,128 @@ stop()
 # Load the Zarr store into an ImageContainer
 # Set lazy=True to enable Dask-backed lazy loading, which is memory-efficient for large images.
 # You can also specify chunks for Dask if needed.
-img = sq.im.ImageContainer.load(r.config['input_file'], lazy=True)
-img = sq.im.ImageContainer.load(r.config['input_file'], lazy=True, chunks=chunksize)
+img = sq.im.ImageContainer.load(r.input_obj, lazy=True)
 
-print(f"The following file has been loaded: {input_obj}")
-print(img)
+print("Input loaded:\n", r.input_obj)
+print("ImageContainer:\n", img)
+```
+
+# Summarizing initial input summary
+
+We aim to give a first-pass description of object sizes/shapes in the input
+
+```{python input_summary}
+
+# ------------------------------------------------------------------------------
+# This chunk inspects the input image
+# ------------------------------------------------------------------------------
+
+# Retrieve the Dask array with nuclear staining ([y, x, z, channels])
+nuclear_mask = img[r.sq_layer].data[ :, :, 0, r.chan]
+
+# Compute input sizes and shapes
+initial_labels, initial_df = summarize_components(
+    nuclear_mask,
+    connectivity=r.config['connectivity'])
+```
+
+```{python, eval=FALSE}
+cfg = r.config
+
+output_dir = cfg["output_dir"]
+sample_name = cfg["sample_name"]
+ensure_dir(output_dir)
+
+# 1. Load
+binary_mask = load_binary_image(
+    path=cfg["input_path"],
+    loader=cfg["input_loader"],
+    use_dask=bool(cfg["use_dask"]),
+    force_2d=bool(cfg["force_2d"])
+)
+
+# 2. Initial component summary
+initial_labels, initial_df = summarize_components(
+    binary_mask,
+    connectivity=int(cfg["connectivity"])
+)
+
+# 3. Estimate cleanup parameters adaptively
+param_est = estimate_cleanup_parameters(
+    initial_df,
+    min_component_quantile=float(cfg["min_component_quantile"]),
+    area_threshold_quantile=float(cfg["area_threshold_quantile"]),
+    large_object_quantile=float(cfg["large_object_quantile"]),
+    max_reasonable_area_multiplier=float(cfg["max_reasonable_area_multiplier"])
+)
+
+# 4. Clean mask
+cleaned_mask = clean_nuclear_mask(
+    binary_mask,
+    min_size=int(param_est["min_size"]),
+    area_threshold=int(param_est["area_threshold"]),
+    connectivity=int(cfg["connectivity"]),
+    fill_holes=bool(cfg["fill_holes"]),
+    border_clear=bool(cfg["border_clear"])
+)
+
+# 5. Segment
+if bool(cfg["watershed_for_splitting"]):
+    nuclear_labels = split_merged_nuclei(
+        cleaned_mask,
+        sigma=float(cfg["dt_smoothing_sigma"]),
+        peak_footprint=int(cfg["peak_footprint"]),
+        connectivity=int(cfg["connectivity"])
+    )
+else:
+    nuclear_labels = measure.label(cleaned_mask, connectivity=int(cfg["connectivity"]))
+
+# 6. Final feature table
+nuclei_df = regionprops_dataframe(nuclear_labels)
+
+# 7. Add QC flags
+if nuclei_df.shape[0] > 0:
+    large_cutoff = param_est["large_object_cutoff"]
+    nuclei_df["is_large_object_flag"] = nuclei_df["area"] >= large_cutoff
+else:
+    nuclei_df["is_large_object_flag"] = pd.Series(dtype=bool)
+
+# 8. Save outputs
+base = os.path.join(output_dir, sample_name)
+
+if bool(cfg["save_intermediates"]):
+    save_mask(base + "_input_binary_mask.tif", binary_mask)
+    save_mask(base + "_cleaned_nuclear_mask.tif", cleaned_mask)
+
+save_label_tiff(base + "_nuclear_labels.tif", nuclear_labels)
+nuclei_df.to_csv(base + "_nuclear_features.csv", index=False)
+initial_df.to_csv(base + "_initial_component_summary.csv", index=False)
+
+with open(base + "_estimated_parameters.json", "w") as f:
+    json.dump(param_est, f, indent=2)
+
+plot_component_area_hist(initial_df, out_path=base + "_component_area_hist.png")
+plot_segmentation_qc(
+    binary_mask,
+    cleaned_mask,
+    nuclear_labels,
+    out_path=base + "_segmentation_qc.png",
+    max_objects=int(cfg["qc_overlay_max_objects"])
+)
+
+run_summary = {
+    "sample_name": sample_name,
+    "input_shape": tuple(binary_mask.shape),
+    "input_foreground_pixels": int(binary_mask.sum()),
+    "cleaned_foreground_pixels": int(cleaned_mask.sum()),
+    "n_initial_components": int(initial_df.shape[0]),
+    "n_final_nuclei": int(nuclei_df.shape[0]),
+    "estimated_min_size": int(param_est["min_size"]),
+    "estimated_area_threshold": int(param_est["area_threshold"]),
+    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
+}
+
+run_summary
 ```
 
 # Session info

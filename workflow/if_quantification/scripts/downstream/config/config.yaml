@@ -1,5 +1,5 @@
 # Input ImageContainer path
-input_file: "/data/CARD_MPU/users/sohnm/visium_setup/workflows/masking/scripts/snakemake/20260317_results/FTD_IF/post_processing.zarr"
+input_file: "../../../../../squidpy_masking/scripts/snakemake/results/noperm/post_processing.zarr"
 
 # Path to helper functions
 helper:
@@ -9,4 +9,13 @@ helper:
 # Path to conda env
 conda_env: "../../../../senv"
 
+# Squidpy layer to be used
+sq_layer: 'image_adaptive'
 
+# Channels to be analyzed
+channels:
+    dapi: 0
+    tdp43: 2
+
+# Label connectivity
+connectivity: 2
