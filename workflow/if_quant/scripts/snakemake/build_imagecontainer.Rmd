@@ -82,10 +82,9 @@ crop_scale = float(params['crop_scale'])
 We use `tif` image files converted from `vsi`. The following channels correspond to individual IFs.
 
 - **Channel 0**: DAPI
-- **Channel 1**: IBA1
+- **Channel 1**: MAP2
 - **Channel 2**: TDP43
-- **Channel 3**: MAP2
-- **Channel 4**: ALDH1L1
+- **Channel 3**: GAD65
 
 The following image object loaded:
 
