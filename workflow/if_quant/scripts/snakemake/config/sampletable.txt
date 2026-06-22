@@ -1,0 +1,3 @@
+samplename	input_image	channel
+Ctrl_EA1101620	../../../../input/if_quantification/EA1101620_Ctrl/Image_235.vsi	multi
+FTD-GRN_EA1702561	../../../../input/if_quantification/EA1702561_Patient/Image_239.vsi	multi
