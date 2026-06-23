@@ -127,7 +127,6 @@ Assumptions:
 # Loading input `ImageContainer`
 
 ```{python load_input}
-# reticulate::repl_python()
 
 # ------------------------------------------------------------------------------
 # This chunk imports input image saved as zarr in the previous step
@@ -146,7 +145,7 @@ print("ImageContainer:\n", img)
 
 We aim to give a first-pass description of object sizes/shapes in the input
 
-```{python input_summary, cache=TRUE}
+```{python input_summary}
 
 # ------------------------------------------------------------------------------
 # This chunk inspects the input image
@@ -191,6 +190,7 @@ We examine the distribution of connected-component areas from `initial_df`, as s
 # This chunk calculates estimate parameters
 # ------------------------------------------------------------------------------
 
+# reticulate::repl_python()
 param_est = estimate_cleanup_parameters( 
     initial_df,
     min_component_quantile=r.min_component_quantile,
@@ -203,9 +203,48 @@ param_est = estimate_cleanup_parameters(
 - `area_threshold`: size threshold for filling small holes
 - `large_object_cutoff`: flags unusually large objects that may be merged nuclei or artifacts
 
+The distribution of object area is explored using histogram, before and after removing large objects.
+
 ```{r parameters_df, results='asis'}
-knitr::kable(as.data.frame(py$param_est))
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes area distribution and median area
+# ------------------------------------------------------------------------------
+
+# Print estimated parameters
+df <- as.data.frame(py$param_est)
+knitr::kable(df)
+
+# Remove objects that are greater than large object cutoff
+filtered_df <- py$initial_df %>%
+  dplyr::filter(area <= df[['large_object_cutoff']])
+
+df_list <- list(before=py$initial_df, after=filtered_df)
+
+# Set up a function to plot the distribution
+plot_histo <- function(in_df) {
+  ggplot(in_df, aes_string(x='area')) +
+      geom_histogram(binwidth=max(in_df[['area']]) / 50,
+                     fill="lightblue",
+                     color="black") +
+      theme_bw() +
+      xlab('Area') +
+      ylab('Occurence') +
+      geom_vline(xintercept=df[['median_area']],
+                 color="red",
+                 linetype="dashed")
+}
+
+# Visualize data
+for (name in names(df_list)) {
+    cat('##', name, 'filtering at the large obj cutoff\n\n')
+    print(plot_histo(df_list[[name]]))
+    cat('\n\n')
+}
 ```
+
+Note that the red dashed vertical lines indicate median area. 
+
 
 # Cleaning mask
 
@@ -215,7 +254,7 @@ This step performs the following:
 - fills small holes using area_threshold if enabled
 - optionally removes border-touching objects if `border_clear = TRUE`
 
-```{python cleanup_mask, cache=TRUE, dependson='input_summary'}
+```{python cleanup_mask}
 
 # ------------------------------------------------------------------------------
 # This chunk cleans the binary mask
@@ -243,7 +282,7 @@ This step runs the following if watershed is enabled:
 
 We just label connected components directly, otherwise.
 
-```{python nuc_seg, cache=TRUE, dependson='cleanup_mask'}
+```{python nuc_seg}
 
 # ------------------------------------------------------------------------------
 # This chunk runs segmentation optionally
