@@ -55,6 +55,41 @@ sq_layer <- config[['sq_layer']]
 # Specify channel
 chan <- config[['channels']][['dapi']]
 
+# Specify connectivity to determine which neighboring pixels are 
+# considered connected when forming objects
+connectivity <- config[['connectivity']]
+
+# Specify parameters for cleaning
+# Debris-control parameter
+# (treat the smallest tail of objects as the best estimate of likely noise/speckle scale.)
+min_component_quantile <- config[['nuc']][["min_component_quantile"]]
+# small-hole filling parameter
+# (The 25th percentile is more permissive than the 10th percentile,
+# which makes sense because internal holes can be somewhat larger than isolated specks)
+area_threshold_quantile <- config[['nuc']][["area_threshold_quantile"]]
+# merged-object/artifact flagging parameter
+# (isolates the extreme upper tail rather than the center of the size distribution,
+# which is where you’d expect merged nuclei or image artifacts to appear)
+large_object_quantile <- config[['nuc']][["large_object_quantile"]]
+# Safety cap
+# (Without it, one or two giant bizarre objects could push the “large object” 
+# threshold so high that genuinely suspicious large nuclei would no longer be flagged.)
+max_reasonable_area_multiplier <- config[['nuc']][["max_reasonable_area_multiplier"]]
+# Sigma for Guanssian filter preceding watershed
+dt_smoothing_sigma <- config[['nuc']][['dt_smoothing_sigma']]
+# how close two peaks can be before they are treated as one
+# (A larger footprint reduces over-splitting; a smaller one increases sensitivity
+# to local bumps and may split one nucleus into multiple labels.)
+peak_footprint <- config[['nuc']][['peak_footprint']]
+
+# readability and speed of QC visualization
+qc_overlay_max_objects <- config[['nuc']][['qc_overlay_max_objects']]
+
+# Additional TRUE/FALSE options
+fill_holes <- config[['nuc']][['fill_holes']]
+border_clear <- config[['nuc']][['border_clear']]
+watershed_for_splitting <- config[['nuc']][['watershed_for_splitting']]
+
 # Load helper functions
 source(config[['helper']][['R']])
 
@@ -111,20 +146,131 @@ print("ImageContainer:\n", img)
 
 We aim to give a first-pass description of object sizes/shapes in the input
 
-```{python input_summary}
+```{python input_summary, cache=TRUE}
 
 # ------------------------------------------------------------------------------
 # This chunk inspects the input image
 # ------------------------------------------------------------------------------
 
 # Retrieve the Dask array with nuclear staining ([y, x, z, channels])
-nuclear_mask = img[r.sq_layer].data[ :, :, 0, r.chan]
+binary_mask = img[r.sq_layer].data[ :, :, 0, r.chan]
 
 # Compute input sizes and shapes
 initial_labels, initial_df = summarize_components(
-    nuclear_mask,
-    connectivity=r.config['connectivity'])
+    binary_mask,
+    connectivity=r.connectivity)
 ```
+
+Metrics:
+
+- Label: A unique integer assigned to each segmented object so individual nuclei 
+  can be identified and tracked separately.
+- Area: The number of foreground pixels belonging to a segmented object, 
+  representing its size in pixel units.
+- Bounding box: The smallest axis-aligned rectangle that fully contains 
+  the segmented object.
+- Eccentricity: A shape descriptor measuring how elongated an object is, 
+  where 0 is circle-like and values closer to 1 are more ellipse-like or stretched.
+- Solidity: The fraction of the object’s area relative to the area of its convex hull,
+  indicating how solid versus indented or irregular the shape is.
+ Extent: The fraction of the bounding box occupied by the object, reflecting how fully 
+ the object fills its enclosing rectangle.
+
+```{r input_summary_df}
+print(head(py$initial_df))
+print(tail(py$initial_df))
+```
+
+# Estimating cleanup parameters adaptively
+
+We examine the distribution of connected-component areas from `initial_df`, as summarized below:
+
+```{python cleanup_parameters}
+
+# ------------------------------------------------------------------------------
+# This chunk calculates estimate parameters
+# ------------------------------------------------------------------------------
+
+param_est = estimate_cleanup_parameters( 
+    initial_df,
+    min_component_quantile=r.min_component_quantile,
+    area_threshold_quantile=r.area_threshold_quantile,
+    large_object_quantile=r.large_object_quantile,
+    max_reasonable_area_multiplier=r.max_reasonable_area_multiplier)
+```
+
+- `min_size`: smallest plausible object area to keep
+- `area_threshold`: size threshold for filling small holes
+- `large_object_cutoff`: flags unusually large objects that may be merged nuclei or artifacts
+
+```{r parameters_df, results='asis'}
+knitr::kable(as.data.frame(py$param_est))
+```
+
+# Cleaning mask
+
+This step performs the following:
+
+- removes very small foreground objects using min_size
+- fills small holes using area_threshold if enabled
+- optionally removes border-touching objects if `border_clear = TRUE`
+
+```{python cleanup_mask, cache=TRUE, dependson='input_summary'}
+
+# ------------------------------------------------------------------------------
+# This chunk cleans the binary mask
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+cleaned_mask = clean_nuclear_mask(
+    binary_mask,
+    min_size=int(param_est["min_size"]),
+    area_threshold=int(param_est["area_threshold"]),
+    connectivity=r.connectivity,
+    fill_holes=bool(r.fill_holes),
+    border_clear=bool(r.border_clear)
+    )
+```
+
+# Segmenting nuclei
+
+This step runs the following if watershed is enabled:
+
+- computes a distance transform on the cleaned mask
+- smooths it
+- finds local maxima as candidate nucleus centers
+- uses marker-controlled watershed to split touching nuclei
+
+We just label connected components directly, otherwise.
+
+```{python nuc_seg, cache=TRUE, dependson='cleanup_mask'}
+
+# ------------------------------------------------------------------------------
+# This chunk runs segmentation optionally
+# ------------------------------------------------------------------------------
+
+if bool(r.watershed_for_splitting):
+    nuclear_labels = split_merged_nuclei(
+        cleaned_mask,
+        sigma=r.dt_smoothing_sigma,
+        peak_footprint=r.peak_footprint,
+        connectivity=r.connectivity)
+else:
+    nuclear_labels = measure.label(
+        cleaned_mask,
+        connectivity=r.connectivity
+        )
+```
+
+# Building the final feature table
+
+This step computes per-nucleus measurements from the final labeled image. Refer to the following table
+for detailed information:
+
+```{r feature_df, eval=FALSE}
+nuclei_df = regionprops_dataframe(nuclear_labels)
+```
+
 
 ```{python, eval=FALSE}
 cfg = r.config
@@ -133,49 +279,7 @@ output_dir = cfg["output_dir"]
 sample_name = cfg["sample_name"]
 ensure_dir(output_dir)
 
-# 1. Load
-binary_mask = load_binary_image(
-    path=cfg["input_path"],
-    loader=cfg["input_loader"],
-    use_dask=bool(cfg["use_dask"]),
-    force_2d=bool(cfg["force_2d"])
-)
 
-# 2. Initial component summary
-initial_labels, initial_df = summarize_components(
-    binary_mask,
-    connectivity=int(cfg["connectivity"])
-)
-
-# 3. Estimate cleanup parameters adaptively
-param_est = estimate_cleanup_parameters(
-    initial_df,
-    min_component_quantile=float(cfg["min_component_quantile"]),
-    area_threshold_quantile=float(cfg["area_threshold_quantile"]),
-    large_object_quantile=float(cfg["large_object_quantile"]),
-    max_reasonable_area_multiplier=float(cfg["max_reasonable_area_multiplier"])
-)
-
-# 4. Clean mask
-cleaned_mask = clean_nuclear_mask(
-    binary_mask,
-    min_size=int(param_est["min_size"]),
-    area_threshold=int(param_est["area_threshold"]),
-    connectivity=int(cfg["connectivity"]),
-    fill_holes=bool(cfg["fill_holes"]),
-    border_clear=bool(cfg["border_clear"])
-)
-
-# 5. Segment
-if bool(cfg["watershed_for_splitting"]):
-    nuclear_labels = split_merged_nuclei(
-        cleaned_mask,
-        sigma=float(cfg["dt_smoothing_sigma"]),
-        peak_footprint=int(cfg["peak_footprint"]),
-        connectivity=int(cfg["connectivity"])
-    )
-else:
-    nuclear_labels = measure.label(cleaned_mask, connectivity=int(cfg["connectivity"]))
 
 # 6. Final feature table
 nuclei_df = regionprops_dataframe(nuclear_labels)
