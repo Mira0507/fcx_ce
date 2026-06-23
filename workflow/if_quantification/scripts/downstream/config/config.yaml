@@ -4,13 +4,14 @@ input_file: "../../../../../squidpy_masking/scripts/snakemake/results/noperm/pos
 # Path to helper functions
 helper:
     py: "config/helpers.py"
-    R: "../../../thalamus_neurons_reannotated/config/helpers.R"
+    R: "config/helpers.R"
 
 # Path to conda env
 conda_env: "../../../../senv"
 
-# Squidpy layer to be used
+# Squidpy layer to be used for input and output
 sq_layer: 'image_adaptive'
+out_layer: 'cleaned_mask'
 
 # Channels to be analyzed
 channels:

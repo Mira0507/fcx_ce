@@ -46,11 +46,13 @@ if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
 # Load configuration
 config <- yaml::read_yaml("config/config.yaml")
 
-# Input obj path
+# Input & output obj paths
 input_obj <- config[['input_file']]
+output_obj <- file.path(out_dir, "nuclear_seg.zarr")
 
-# Specify the layer of ImageContainer obj
+# Specify the layers of ImageContainer obj for input and output arrays
 sq_layer <- config[['sq_layer']]
+out_layer <- config[['out_layer']]
 
 # Specify channel
 chan <- config[['channels']][['dapi']]
@@ -151,8 +153,12 @@ We aim to give a first-pass description of object sizes/shapes in the input
 # This chunk inspects the input image
 # ------------------------------------------------------------------------------
 
+# Duplicate a layer in the ImageContainer obj
+cleaned_img = img[r.sq_layer]
+img.add_img(cleaned_img, layer=r.out_layer)
+
 # Retrieve the Dask array with nuclear staining ([y, x, z, channels])
-binary_mask = img[r.sq_layer].data[ :, :, 0, r.chan]
+binary_mask = img['cleaned_mask'].data[ :, :, 0, r.chan]
 
 # Compute input sizes and shapes
 initial_labels, initial_df = summarize_components(
@@ -280,7 +286,7 @@ This step runs the following if watershed is enabled:
 - finds local maxima as candidate nucleus centers
 - uses marker-controlled watershed to split touching nuclei
 
-We just label connected components directly, otherwise.
+We label connected components directly, otherwise.
 
 ```{python nuc_seg}
 
@@ -306,38 +312,114 @@ else:
 This step computes per-nucleus measurements from the final labeled image. Refer to the following table
 for detailed information:
 
-```{r feature_df, eval=FALSE}
+- label
+- area
+- centroid
+- bounding box
+- eccentricity
+- solidity
+- extent
+- major/minor axis lengths
+- equivalent diameter
+- perimeter
+
+```{python feature_df}
+
+# ------------------------------------------------------------------------------
+# This chunk runs segmentation optionally
+# ------------------------------------------------------------------------------
+
+# Summarize image properties in a data frame
 nuclei_df = regionprops_dataframe(nuclear_labels)
-```
 
-
-```{python, eval=FALSE}
-cfg = r.config
-
-output_dir = cfg["output_dir"]
-sample_name = cfg["sample_name"]
-ensure_dir(output_dir)
-
-
-
-# 6. Final feature table
-nuclei_df = regionprops_dataframe(nuclear_labels)
-
-# 7. Add QC flags
+# Add QC flags
 if nuclei_df.shape[0] > 0:
     large_cutoff = param_est["large_object_cutoff"]
     nuclei_df["is_large_object_flag"] = nuclei_df["area"] >= large_cutoff
 else:
     nuclei_df["is_large_object_flag"] = pd.Series(dtype=bool)
 
-# 8. Save outputs
-base = os.path.join(output_dir, sample_name)
+print(nuclei_df.head())
+print(nuclei_df.tail())
 
-if bool(cfg["save_intermediates"]):
-    save_mask(base + "_input_binary_mask.tif", binary_mask)
-    save_mask(base + "_cleaned_nuclear_mask.tif", cleaned_mask)
+run_summary = {
+    "input_shape": tuple(binary_mask.shape),
+    "input_foreground_pixels": int(binary_mask.sum()),
+    "cleaned_foreground_pixels": int(cleaned_mask.sum()),
+    "n_initial_components": int(initial_df.shape[0]),
+    "n_final_nuclei": int(nuclei_df.shape[0]),
+    "estimated_min_size": int(param_est["min_size"]),
+    "estimated_area_threshold": int(param_est["area_threshold"]),
+    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
+}
 
-save_label_tiff(base + "_nuclear_labels.tif", nuclear_labels)
+for key,value in run_summary.items(): print(key, "=", value)
+```
+
+
+
+```{python add_to_img}
+
+# ------------------------------------------------------------------------------
+# This chunk adds the cleaned masked array back to the ImageContainer obj
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Add the cleaned mask array to the ImageContainer obj
+img.add_img(cleaned_mask, layer=r.out_layer)
+
+# Delete unnecessary layers
+layers_del = [l for l in list(img) if l not in ['image', r.sq_layer, r.out_layer]]
+print("The following layers are deleted: ", layers_del)
+for l in layers_del:
+    del img[l]
+```
+
+# Visualizing cleaned nuclear segmentation {.tabset}
+
+- Input: `r sq_layer`
+- Output: `r out_layer`
+
+```{r vis_images, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk is used to prepare visualizing processed images
+# ------------------------------------------------------------------------------
+
+# Visualize binary images across the channels
+for (layer in c(sq_layer, out_layer)) {
+    cat("## Channel", chan, "&", layer, "Layer\n\n")
+    # Command to show image
+    t_deparsed_1 <- paste0("img.show('", layer, "', channel=", chan, ", cmap='gray')")
+     t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/nuclear_channel_", chan,  ".png', dpi=1000)")
+    t_deparsed_3 <- "plt.close()"
+    t_deparsed <- c(t_deparsed_1, t_deparsed_2, t_deparsed_3)
+    subchunkify(name=paste0("nuclear_", chan), t_deparsed=t_deparsed)
+
+    link_output(paste0("nuclear_channel_", chan, ".png"))
+    cat('\n\n')
+}
+```
+
+# Saving the `ImageContainer` object
+
+Output images are saved as the following object:
+
+```{python save_zarr, eval=FALSE}
+
+# ------------------------------------------------------------------------------
+# This chunk saves updated ImageContainer as Zarr
+# ------------------------------------------------------------------------------
+
+img.save(r.output_obj)
+print(r.output_obj)
+```
+
+
+
+```{python, eval=FALSE}
+
+
 nuclei_df.to_csv(base + "_nuclear_features.csv", index=False)
 initial_df.to_csv(base + "_initial_component_summary.csv", index=False)
 
@@ -353,19 +435,7 @@ plot_segmentation_qc(
     max_objects=int(cfg["qc_overlay_max_objects"])
 )
 
-run_summary = {
-    "sample_name": sample_name,
-    "input_shape": tuple(binary_mask.shape),
-    "input_foreground_pixels": int(binary_mask.sum()),
-    "cleaned_foreground_pixels": int(cleaned_mask.sum()),
-    "n_initial_components": int(initial_df.shape[0]),
-    "n_final_nuclei": int(nuclei_df.shape[0]),
-    "estimated_min_size": int(param_est["min_size"]),
-    "estimated_area_threshold": int(param_est["area_threshold"]),
-    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
-}
 
-run_summary
 ```
 
 # Session info
