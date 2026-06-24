@@ -106,6 +106,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage as ndi
 from skimage import io, measure, morphology, segmentation, feature, color, util
+from matplotlib.colors import ListedColormap
 from skimage.segmentation import watershed
 import dask.array as da
 import squidpy as sq
@@ -186,7 +187,7 @@ print(head(py$initial_df))
 print(tail(py$initial_df))
 ```
 
-# Estimating cleanup parameters adaptively
+# Estimating cleanup parameters adaptively {.tabset}
 
 We examine the distribution of connected-component areas from `initial_df`, as summarized below:
 
@@ -234,7 +235,7 @@ plot_histo <- function(in_df) {
                      fill="lightblue",
                      color="black") +
       theme_bw() +
-      xlab('Area') +
+      xlab('Area (Pixels)') +
       ylab('Occurence') +
       geom_vline(xintercept=df[['median_area']],
                  color="red",
@@ -353,7 +354,8 @@ run_summary = {
     "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
 }
 
-for key,value in run_summary.items(): print(key, "=", value)
+for key,value in run_summary.items():
+    print(key, "=", value)
 ```
 
 
@@ -380,10 +382,38 @@ for l in layers_del:
 - Input: `r sq_layer`
 - Output: `r out_layer`
 
-```{r vis_images, results='asis'}
+Unique pixels at each array are visualized using the following pseudocolors:
+
+```{python vis_prep}
 
 # ------------------------------------------------------------------------------
 # This chunk is used to prepare visualizing processed images
+# ----------------------------------------------------------------------------
+
+# Specify a colormap used for unique pixels
+color_map = {r.sq_layer: 'dodgerblue', r.out_layer: 'orange'}
+for key, value in color_map.items(): 
+    print(key, "=", value)
+
+# Specify a function to visualize unique pixels
+def display_merge(layer_list):
+
+    # Stack binary images
+    for l in layer_list:
+        ar = img[l].data[:, :, 0, r.chan]
+        plt.imshow(ar,
+                   cmap=ListedColormap([(1, 1, 1, 0), color_map[l]]),
+                   alpha=0.5)
+    plt.xticks([])
+    plt.yticks([])
+    plt.savefig(f"{r.out_dir}/unique_pixels.png", dpi=600)
+    plt.show()
+```
+
+```{r vis_images, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes input and output masking
 # ------------------------------------------------------------------------------
 
 # Visualize binary images across the channels
@@ -391,21 +421,61 @@ for (layer in c(sq_layer, out_layer)) {
     cat("## Channel", chan, "&", layer, "Layer\n\n")
     # Command to show image
     t_deparsed_1 <- paste0("img.show('", layer, "', channel=", chan, ", cmap='gray')")
-     t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/nuclear_channel_", chan,  ".png', dpi=1000)")
+    t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/nuclear_channel_", chan,  ".png', dpi=600)")
     t_deparsed_3 <- "plt.close()"
     t_deparsed <- c(t_deparsed_1, t_deparsed_2, t_deparsed_3)
     subchunkify(name=paste0("nuclear_", chan), t_deparsed=t_deparsed)
 
-    link_output(paste0("nuclear_channel_", chan, ".png"))
+    link_output(paste0(out_dir, "/nuclear_channel_", chan, ".png"))
     cat('\n\n')
 }
+
+# Overlay images before and after cleaning
+cat("## Unique pixels\n\n")
+t_deparsed <- paste0("display_merge(list(color_map.keys()))\n")
+subchunkify(name="unique_pixels", t_deparsed=t_deparsed)
+link_output(paste0(out_dir, "/unique_pixels.png"))
+```
+
+# Summary tables
+
+Excel-readable tables are linked in the following table:
+
+```{r summary_tables, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk saves and links output summary tables
+# ------------------------------------------------------------------------------
+
+df_list <- list(
+    input_summary=py$initial_df,
+    nuclear_summary=py$nuclei_df,
+    parameter_summary=py$param_est
+)
+
+path_df <- data.frame(table=names(df_list), link="")
+
+for (name in names(df_list)) {
+    tsv <- file.path(out_dir, paste0(name, ".tsv"))
+    write.table(df_list[[name]],
+                tsv,
+                quote=FALSE,
+                row.names=FALSE,
+                col.names=TRUE)
+    path_df[path_df$table == name, 'link'] <- tsv
+}
+
+knitr::kable(
+    path_df %>%
+        mutate(link=paste0("[", link, "](", link, ")"))
+)
 ```
 
 # Saving the `ImageContainer` object
 
 Output images are saved as the following object:
 
-```{python save_zarr, eval=FALSE}
+```{python save_zarr, cache=TRUE}
 
 # ------------------------------------------------------------------------------
 # This chunk saves updated ImageContainer as Zarr
