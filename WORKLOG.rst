@@ -2646,3 +2646,48 @@ fcx_ce
         - ``workflow/schulmann_visium/visium-thalamus.Rmd``
         - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
         - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+
+2026-06-22
+----------
+
+@Mira0507
+
+- Rerun masking using updated Snakemake
+    - conda env: ``senv``
+    - scripts added
+        - ``workflow/if_quant/scripts/snakemake/Snakefile``
+        - ``workflow/if_quant/scripts/snakemake/WRAPPER_SLURM``
+        - ``workflow/if_quant/scripts/snakemake/build_imagecontainer.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/config/config.yaml``
+        - ``workflow/if_quant/scripts/snakemake/config/helpers.R``
+        - ``workflow/if_quant/scripts/snakemake/config/sampletable.txt``
+        - ``workflow/if_quant/scripts/snakemake/image_conversion.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/merge_channels.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/native_thresholding.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/post_processing.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/qc_normalization.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/smooth.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/squidpy_segmentation.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/watershed_segmentation.Rmd``
+    - notes
+        - This update is designed to optimize chunksize to have 1/n of 
+          user-specified n in the ``config.yaml``
+        - currently, it's set to 8, which means the chunk size will be 1/8 
+          of either width (width < height) or height (width > height).
+
+- Continue scripting nuclear segmentation using toy images
+    - conda env: ``env``
+    - scripts updated:
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+
+2026-06-23
+----------
+
+@Mira0507
+
+- Continue scripting nuclear segmentation using toy images
+    - conda env: ``env``
+    - scripts updated:
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
