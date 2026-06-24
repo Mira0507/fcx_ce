@@ -151,34 +151,6 @@ def regionprops_dataframe(label_img):
     )
     return pd.DataFrame(props)
 
-
-def save_mask(path, arr):
-    # uint8 is convenient for masks
-    io.imsave(path, util.img_as_ubyte(arr > 0), check_contrast=False)
-
-
-def save_label_tiff(path, lbl):
-    # save labels as uint16 when possible
-    out = np.asarray(lbl)
-    if out.max() <= np.iinfo(np.uint16).max:
-        out = out.astype(np.uint16)
-    else:
-        out = out.astype(np.uint32)
-    io.imsave(path, out, check_contrast=False)
-
-
-def plot_component_area_hist(component_df, out_path=None):
-    fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
-    if component_df.shape[0] > 0:
-        ax.hist(component_df["area"], bins=50)
-    ax.set_title("Connected-component area distribution", fontsize=14)
-    ax.set_xlabel("Component area (pixels)", fontsize=12)
-    ax.set_ylabel("Count", fontsize=12)
-    if out_path is not None:
-        fig.savefig(out_path, dpi=200)
-    plt.close(fig)
-
-
 def plot_segmentation_qc(binary_mask, cleaned_mask, label_img, out_path=None, max_objects=500):
     fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
