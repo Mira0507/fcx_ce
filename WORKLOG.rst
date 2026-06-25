@@ -2691,3 +2691,18 @@ fcx_ce
     - scripts updated:
         - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
         - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+
+
+2026-06-25
+----------
+
+@Mira0507
+
+- Proceed with the next steps thresholding images
+    - scripts updated
+        - ``workflow/if_quant/scripts/snakemake/Snakefile`` 
+        - ``workflow/if_quant/scripts/snakemake/WRAPPER_SLURM`` 
+        - ``workflow/if_quant/scripts/snakemake/config/config.yaml``
+    - note:
+        - percent normalization used
+        - minor changes to allocate large computational resources in ``Snakefile``
