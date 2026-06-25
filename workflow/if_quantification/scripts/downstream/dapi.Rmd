@@ -159,7 +159,7 @@ cleaned_img = img[r.sq_layer]
 img.add_img(cleaned_img, layer=r.out_layer)
 
 # Retrieve the Dask array with nuclear staining ([y, x, z, channels])
-binary_mask = img['cleaned_mask'].data[ :, :, 0, r.chan]
+binary_mask = img['cleaned_mask'].data[:, :, 0, r.chan]
 
 # Compute input sizes and shapes
 initial_labels, initial_df = summarize_components(
@@ -421,12 +421,12 @@ for (layer in c(sq_layer, out_layer)) {
     cat("## Channel", chan, "&", layer, "Layer\n\n")
     # Command to show image
     t_deparsed_1 <- paste0("img.show('", layer, "', channel=", chan, ", cmap='gray')")
-    t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/nuclear_channel_", chan,  ".png', dpi=600)")
+    t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/", layer, "_channel_", chan,  ".png', dpi=600)")
     t_deparsed_3 <- "plt.close()"
     t_deparsed <- c(t_deparsed_1, t_deparsed_2, t_deparsed_3)
-    subchunkify(name=paste0("nuclear_", chan), t_deparsed=t_deparsed)
+    subchunkify(name=paste0(layer, "_", chan), t_deparsed=t_deparsed)
 
-    link_output(paste0(out_dir, "/nuclear_channel_", chan, ".png"))
+    link_output(paste0(out_dir, "/", layer, "_channel_", chan, ".png"))
     cat('\n\n')
 }
 
@@ -486,27 +486,6 @@ print(r.output_obj)
 ```
 
 
-
-```{python, eval=FALSE}
-
-
-nuclei_df.to_csv(base + "_nuclear_features.csv", index=False)
-initial_df.to_csv(base + "_initial_component_summary.csv", index=False)
-
-with open(base + "_estimated_parameters.json", "w") as f:
-    json.dump(param_est, f, indent=2)
-
-plot_component_area_hist(initial_df, out_path=base + "_component_area_hist.png")
-plot_segmentation_qc(
-    binary_mask,
-    cleaned_mask,
-    nuclear_labels,
-    out_path=base + "_segmentation_qc.png",
-    max_objects=int(cfg["qc_overlay_max_objects"])
-)
-
-
-```
 
 # Session info
 
