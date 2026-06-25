@@ -52,7 +52,7 @@ upper_p: 99
 # - "clahe": CLAHE-mediated local contrast enhancement
 # - "lognorm": log1p normalization
 # - "percnorm": percentile rescaling
-norm_method: ""
+norm_method: "percnorm"
 
 # Specify signal values to be tested for Gaussian smoothing
 # Sigma represents the variance for normal distribution
@@ -92,7 +92,7 @@ offset: None
 # - "otsu": Otsu (global) thresholding generated native functions from scikit-image/dask_image
 # - "adaptive": Adaptive (local) thresholding generated native functions from scikit-image/dask_image
 # - "": No selection. This will pause running the pipeline before the `post_processing` rule.
-thresholding: "adaptive"
+thresholding: ""
 
 # Specify the minimum size of foreground objects to be filtered
 minsize: 20
