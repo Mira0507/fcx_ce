@@ -47,7 +47,7 @@ if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
 config <- yaml::read_yaml("config/config.yaml")
 
 # Input & output obj paths
-input_obj <- config[['input_file']]
+input_obj <- '../../../../../squidpy_masking/scripts/snakemake/results/noperm/post_processing.zarr'
 output_obj <- file.path(out_dir, "nuclear_seg.zarr")
 
 # Specify the layers of ImageContainer obj for input and output arrays
@@ -159,7 +159,7 @@ cleaned_img = img[r.sq_layer]
 img.add_img(cleaned_img, layer=r.out_layer)
 
 # Retrieve the Dask array with nuclear staining ([y, x, z, channels])
-binary_mask = img['cleaned_mask'].data[:, :, 0, r.chan]
+binary_mask = img[r.out_layer].data[:, :, 0, r.chan]
 
 # Compute input sizes and shapes
 initial_labels, initial_df = summarize_components(
@@ -368,7 +368,7 @@ for key,value in run_summary.items():
 
 # reticulate::repl_python()
 # Add the cleaned mask array to the ImageContainer obj
-img.add_img(cleaned_mask, layer=r.out_layer)
+img[r.out_layer].data[:, :, 0, r.chan] = cleaned_mask
 
 # Delete unnecessary layers
 layers_del = [l for l in list(img) if l not in ['image', r.sq_layer, r.out_layer]]
@@ -475,7 +475,7 @@ knitr::kable(
 
 Output images are saved as the following object:
 
-```{python save_zarr, cache=TRUE}
+```{python save_zarr}
 
 # ------------------------------------------------------------------------------
 # This chunk saves updated ImageContainer as Zarr
