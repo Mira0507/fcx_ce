@@ -151,30 +151,4 @@ def regionprops_dataframe(label_img):
     )
     return pd.DataFrame(props)
 
-def plot_segmentation_qc(binary_mask, cleaned_mask, label_img, out_path=None, max_objects=500):
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
-    axes[0].imshow(binary_mask, cmap="gray")
-    axes[0].set_title("Input binary DAPI", fontsize=14)
-    axes[0].axis("off")
-
-    axes[1].imshow(cleaned_mask, cmap="gray")
-    axes[1].set_title("Cleaned nuclear mask", fontsize=14)
-    axes[1].axis("off")
-
-    # optionally simplify very dense overlays
-    lbl_show = label_img.copy()
-    unique_labels = np.unique(lbl_show)
-    unique_labels = unique_labels[unique_labels != 0]
-    if unique_labels.size > max_objects:
-        keep = set(unique_labels[:max_objects])
-        lbl_show = np.where(np.isin(lbl_show, list(keep)), lbl_show, 0)
-
-    overlay = color.label2rgb(lbl_show, image=cleaned_mask, bg_label=0, alpha=0.35)
-    axes[2].imshow(overlay)
-    axes[2].set_title("Segmentation overlay", fontsize=14)
-    axes[2].axis("off")
-
-    if out_path is not None:
-        fig.savefig(out_path, dpi=200)
-    plt.close(fig)
