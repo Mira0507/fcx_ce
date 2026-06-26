@@ -2687,7 +2687,7 @@ fcx_ce
 @Mira0507
 
 - Continue scripting nuclear segmentation using toy images
-    - conda env: ``env``
+    - conda env: ``senv``
     - scripts updated:
         - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
         - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
@@ -2706,3 +2706,27 @@ fcx_ce
     - note:
         - percent normalization used
         - minor changes to allocate large computational resources in ``Snakefile``
+
+2026-06-26
+----------
+
+@Mira0507
+
+- Image segmentation/quantification helper functions changed
+    - scripts:
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.R`` (added)
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.R`` (updated)
+
+- Nuclear segmentation bugfix
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+    - note: channels not for DAPI were lost. fixed (see below)
+
+    .. code-block:: r
+
+        img.add_img(cleaned_mask, layer=r.out_layer) # WRONG
+        img[r.out_layer].data[:, :, 0, r.chan] = cleaned_mask # CORRECT
+
+- Cytoplasmic segmenation in progress
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/map2.Rmd``
