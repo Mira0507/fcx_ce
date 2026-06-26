@@ -1,6 +1,3 @@
-# Input ImageContainer path
-input_file: "../../../../../squidpy_masking/scripts/snakemake/results/noperm/post_processing.zarr"
-
 # Path to helper functions
 helper:
     py: "config/helpers.py"
@@ -17,6 +14,7 @@ out_layer: 'cleaned_mask'
 channels:
     dapi: 0
     tdp43: 2
+    map2: 3
 
 # Label connectivity
 connectivity: 2
