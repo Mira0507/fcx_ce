@@ -179,7 +179,7 @@ Metrics:
   where 0 is circle-like and values closer to 1 are more ellipse-like or stretched.
 - Solidity: The fraction of the object’s area relative to the area of its convex hull,
   indicating how solid versus indented or irregular the shape is.
- Extent: The fraction of the bounding box occupied by the object, reflecting how fully 
+- Extent: The fraction of the bounding box occupied by the object, reflecting how fully 
  the object fills its enclosing rectangle.
 
 ```{r input_summary_df}
@@ -206,11 +206,14 @@ param_est = estimate_cleanup_parameters(
     max_reasonable_area_multiplier=r.max_reasonable_area_multiplier)
 ```
 
-- `min_size`: smallest plausible object area to keep
-- `area_threshold`: size threshold for filling small holes
-- `large_object_cutoff`: flags unusually large objects that may be merged nuclei or artifacts
+- `min_size`: Lower bound for removing tiny disconnected debris objects
+- `area_threshold`: Maximum hole size that may be filled if `fill_holes = TRUE`
+- `large_object_cutoff`: Upper-tail threshold used to flag unusually large objects for review
+- `median_area`: Useful descriptive summary of the connected-component distribution
 
-The distribution of object area is explored using histogram, before and after removing large objects.
+Note that the red dashed vertical lines indicate median area. The “after” histogram is shown 
+only to make the distribution easier to read after excluding extreme large objects from plotting;
+it does not mean those large objects are removed from segmentation.
 
 ```{r parameters_df, results='asis'}
 
@@ -227,20 +230,6 @@ filtered_df <- py$initial_df %>%
   dplyr::filter(area <= df[['large_object_cutoff']])
 
 df_list <- list(before=py$initial_df, after=filtered_df)
-
-# Set up a function to plot the distribution
-plot_histo <- function(in_df) {
-  ggplot(in_df, aes_string(x='area')) +
-      geom_histogram(binwidth=max(in_df[['area']]) / 50,
-                     fill="lightblue",
-                     color="black") +
-      theme_bw() +
-      xlab('Area (Pixels)') +
-      ylab('Occurence') +
-      geom_vline(xintercept=df[['median_area']],
-                 color="red",
-                 linetype="dashed")
-}
 
 # Visualize data
 for (name in names(df_list)) {
@@ -268,7 +257,7 @@ This step performs the following:
 # ------------------------------------------------------------------------------
 
 # reticulate::repl_python()
-cleaned_mask = clean_nuclear_mask(
+cleaned_mask = clean_input_mask(
     binary_mask,
     min_size=int(param_est["min_size"]),
     area_threshold=int(param_est["area_threshold"]),
@@ -324,6 +313,10 @@ for detailed information:
 - equivalent diameter
 - perimeter
 
+The `is_large_object_flag` column is included for QC only. It can help identify large connected 
+regions that may represent biologically real extended neuronal structure, merged signal, or 
+segmentation artifacts.
+
 ```{python feature_df}
 
 # ------------------------------------------------------------------------------
@@ -357,8 +350,6 @@ run_summary = {
 for key,value in run_summary.items():
     print(key, "=", value)
 ```
-
-
 
 ```{python add_to_img}
 
@@ -440,6 +431,10 @@ link_output(paste0(out_dir, "/unique_pixels.png"))
 # Summary tables
 
 Excel-readable tables are linked in the following table:
+
+- input summary: object statistics before cleanup
+- nuclear summary: object statistics after cleanup and connected-component labeling
+- parameter summary: adaptive thresholds estimated from the image
 
 ```{r summary_tables, results='asis'}
 
