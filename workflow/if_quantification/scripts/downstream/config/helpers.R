@@ -30,3 +30,23 @@ subchunkify <- function(name, t_deparsed, width=12, height=12) {
 link_output <- function(p) {
     cat("\n\n- Link: [", p, "](", p, ")\n\n")
 }
+
+#' Create histogram 
+#'
+#' This function creates histogram to explore the distribution of area
+#'
+#' @param in_df data frame returned by the summarize_components function in Python
+#'
+#' @return ggplot
+plot_histo <- function(in_df) {
+  ggplot(in_df, aes_string(x='area')) +
+      geom_histogram(binwidth=max(in_df[['area']]) / 50,
+                     fill="lightblue",
+                     color="black") +
+      theme_bw() +
+      xlab('Area (Pixels)') +
+      ylab('Occurence') +
+      geom_vline(xintercept=df[['median_area']],
+                 color="red",
+                 linetype="dashed")
+}
