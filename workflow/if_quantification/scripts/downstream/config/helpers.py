@@ -71,7 +71,7 @@ def estimate_cleanup_parameters(component_df,
     }
 
 
-def clean_nuclear_mask(mask,
+def clean_input_mask(mask,
                        min_size,
                        area_threshold,
                        connectivity=2,
