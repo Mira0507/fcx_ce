@@ -39,9 +39,7 @@ nuc:
     # (Without it, one or two giant bizarre objects could push the “large object” 
     # threshold so high that genuinely suspicious large nuclei would no longer be flagged.)
     max_reasonable_area_multiplier: 4.0
-    #
     watershed_for_splitting: true
-
     dt_smoothing_sigma: 1.0
     # how close two peaks can be before they are treated as one
     # (A larger footprint reduces over-splitting; a smaller one increases sensitivity
@@ -49,3 +47,19 @@ nuc:
     peak_footprint: 9
     # readability and speed of QC visualization
     qc_overlay_max_objects: 500
+
+# Cytoplasmic segmentation parameters
+cyt:
+    # Debris-control parameter
+    min_component_quantile: 0.10
+    # Small-hole filling parameter
+    area_threshold_quantile: 0.25
+    # Upper-tail cutoff to flag excessively large MAP2 objects
+    large_object_quantile: 0.95
+    # Safety cap for large-object threshold
+    max_reasonable_area_multiplier: 5
+    # Readability and speed of QC visualization
+    qc_overlay_max_objects: 300
+    # Additional TRUE/FALSE options
+    fill_holes: true
+    border_clear: false
