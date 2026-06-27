@@ -2712,10 +2712,11 @@ fcx_ce
 
 @Mira0507
 
-- Image segmentation/quantification helper functions changed
-    - scripts:
+- Image segmentation/quantification helper functions and configuration changed
+    - files:
         - ``workflow/if_quantification/scripts/downstream/config/helpers.R`` (added)
         - ``workflow/if_quantification/scripts/downstream/config/helpers.R`` (updated)
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml`` (updated)
 
 - Nuclear segmentation bugfix
     - conda env: ``senv``
