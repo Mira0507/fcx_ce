@@ -2731,3 +2731,15 @@ fcx_ce
 - Cytoplasmic segmenation in progress
     - conda env: ``senv``
     - script: ``workflow/if_quantification/scripts/downstream/map2.Rmd``
+
+
+2026-06-29
+----------
+
+@Mira0507
+
+- Cytoplasmic segmenation in progress
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/map2.Rmd``
+    - note: reran after bugfix
+
