@@ -268,13 +268,8 @@ This step labels connected MAP2-positive objects after cleanup.
 # This chunk labels cleaned cytoplasmic objects
 # ------------------------------------------------------------------------------
 
-cyto_labels = measure.label(
-    cleaned_mask,
-    connectivity=r.connectivity
-)
-
-print(cyto_labels.head())
-print(cyto_labels.tail())
+# reticulate::repl_python()
+cyto_labels = measure.label(cleaned_mask, connectivity=r.connectivity)
 ```
 
 # Building the final feature table
@@ -423,7 +418,7 @@ Excel-readable tables are linked in the following table:
 
 df_list <- list(
     input_summary=py$initial_df,
-    cytoplasmic_summary=py$cytoplasmic_df,
+    cytoplasmic_summary=py$cytoplasm_df,
     parameter_summary=py$param_est
 )
 
@@ -458,8 +453,6 @@ Output images are saved as the following object:
 img.save(r.output_obj)
 print(r.output_obj)
 ```
-
-
 
 # Session info
 
