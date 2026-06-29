@@ -28,3 +28,5 @@ results*/
 *visium-thalamus/
 *sc-pseudobulk-v2/
 *dapi/
+*map2/
+*.Rhistory
