@@ -64,7 +64,7 @@ cyt:
     fill_holes: true
     border_clear: false
 
-tdp43:
+target:
     min_component_quantile: 0.05
     area_threshold_quantile: 0.25
     large_object_quantile: 0.99
