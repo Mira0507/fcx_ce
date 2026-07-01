@@ -2743,3 +2743,12 @@ fcx_ce
     - script: ``workflow/if_quantification/scripts/downstream/map2.Rmd``
     - note: reran after bugfix
 
+
+2026-07-01
+----------
+
+@Mira0507
+
+- TDP43 quantification in progress
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
