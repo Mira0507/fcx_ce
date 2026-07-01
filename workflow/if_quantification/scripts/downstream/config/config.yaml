@@ -63,3 +63,16 @@ cyt:
     # Additional TRUE/FALSE options
     fill_holes: true
     border_clear: false
+
+tdp43:
+    min_component_quantile: 0.05
+    area_threshold_quantile: 0.25
+    large_object_quantile: 0.99
+    max_reasonable_area_multiplier: 5
+    apply_cleanup: true
+    fill_holes: false
+    border_clear: false
+
+integration:
+    assignment_overlap_min_pixels: 1
+    assignment_max_distance: 50
