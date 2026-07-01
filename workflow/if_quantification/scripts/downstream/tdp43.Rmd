@@ -60,20 +60,23 @@ channels <- map(
     ~config[['channels']][[.x]]) %>%
     set_names(names(config[['channels']]))
 
+# Specify channel names
+chan_names <- list(nuc="dapi", cyt="map2", target="tdp43")
+
 # Specify connectivity to determine which neighboring pixels are 
 # considered connected when forming objects
 connectivity <- config[['connectivity']]
 
 # Conservative cleanup settings for binarized TDP43
-tdp43_min_component_quantile <- config[['tdp43']][['min_component_quantile']]
-tdp43_area_threshold_quantile <- config[['tdp43']][['area_threshold_quantile']]
-tdp43_large_object_quantile <- config[['tdp43']][['large_object_quantile']]
-tdp43_max_reasonable_area_multiplier <- config[['tdp43']][['max_reasonable_area_multiplier']]
+target_min_component_quantile <- config[['target']][['min_component_quantile']]
+target_area_threshold_quantile <- config[['target']][['area_threshold_quantile']]
+target_large_object_quantile <- config[['target']][['large_object_quantile']]
+target_max_reasonable_area_multiplier <- config[['target']][['max_reasonable_area_multiplier']]
 
 # TRUE/FALSE options for TDP43 handling
-tdp43_apply_cleanup <- config[['tdp43']][['apply_cleanup']]
-tdp43_fill_holes <- config[['tdp43']][['fill_holes']]
-tdp43_border_clear <- config[['tdp43']][['border_clear']]
+target_apply_cleanup <- config[['target']][['apply_cleanup']]
+target_fill_holes <- config[['target']][['fill_holes']]
+target_border_clear <- config[['target']][['border_clear']]
 
 # Optional nucleus-to-MAP2 assignment settings
 assignment_overlap_min_pixels <- config[['integration']][['assignment_overlap_min_pixels']]
@@ -167,8 +170,8 @@ whether minimal cleanup is needed.
 # This chunk summarizes the input TDP43 mask
 # ------------------------------------------------------------------------------
 # reticulate::repl_python()
-tdp_initial_labels, tdp_initial_df = summarize_components(
-    arr_dic['tdp43'],
+target_initial_labels, target_initial_df = summarize_components(
+    arr_dic[r.chan_names['target']],
     connectivity=r.connectivity)
 ```
 
@@ -188,8 +191,8 @@ Metrics:
  the object fills its enclosing rectangle.
 
 ```{r input_summary_df}
-print(head(py$initial_df))
-print(tail(py$initial_df))
+print(head(py$target_initial_df))
+print(tail(py$target_initial_df))
 ```
 
 # Estimating conservative TDP43 cleanup parameters {.tabset}
@@ -202,12 +205,12 @@ These parameters are used only if `tdp43_apply_cleanup = TRUE`.
 # This chunk estimates conservative cleanup parameters for TDP43
 # ------------------------------------------------------------------------------
 
-tdp_param_est = estimate_cleanup_parameters(
-    tdp_initial_df,
-    min_component_quantile=r.tdp43_min_component_quantile,
-    area_threshold_quantile=r.tdp43_area_threshold_quantile,
-    large_object_quantile=r.tdp43_large_object_quantile,
-    max_reasonable_area_multiplier=r.tdp43_max_reasonable_area_multiplier)
+target_param_est = estimate_cleanup_parameters(
+    target_initial_df,
+    min_component_quantile=r.target_min_component_quantile,
+    area_threshold_quantile=r.target_area_threshold_quantile,
+    large_object_quantile=r.target_large_object_quantile,
+    max_reasonable_area_multiplier=r.target_max_reasonable_area_multiplier)
 ```
 
 - `min_size`: Lower bound for removing tiny disconnected debris objects
@@ -223,13 +226,13 @@ The distribution of object area is explored using histograms, before and after r
 # This chunk visualizes area distribution and median area
 # ------------------------------------------------------------------------------
 
-df <- as.data.frame(py$tdp_param_est)
+df <- as.data.frame(py$target_param_est)
 knitr::kable(df)
 
-filtered_df <- py$tdp_initial_df %>%
+filtered_df <- py$target_initial_df %>%
   dplyr::filter(area <= df[['large_object_cutoff']])
 
-df_list <- list(before=py$tdp_initial_df, after=filtered_df)
+df_list <- list(before=py$target_initial_df, after=filtered_df)
 
 for (name in names(df_list)) {
     cat('##', name, 'filtering at the large obj cutoff\n\n')
@@ -256,19 +259,55 @@ This step is optional. If enabled, it should only:
 # This chunk applies optional conservative cleanup to TDP43
 # ------------------------------------------------------------------------------
 
-if bool(r.tdp43_apply_cleanup):
+if bool(r.target_apply_cleanup):
     tdp_clean = clean_input_mask(
-        tdp,
-        min_size=int(tdp_param_est["min_size"]),
-        area_threshold=int(tdp_param_est["area_threshold"]),
+        arr_dic[r.chan_names['target']],
+        min_size=int(target_param_est["min_size"]),
+        area_threshold=int(target_param_est["area_threshold"]),
         connectivity=r.connectivity,
-        fill_holes=bool(r.tdp43_fill_holes),
-        border_clear=bool(r.tdp43_border_clear)
+        fill_holes=bool(r.target_fill_holes),
+        border_clear=bool(r.target_border_clear)
     )
 else:
     tdp_clean = tdp.copy()
 
 print("TDP43 cleaned foreground pixels =", int(tdp_clean.sum()))
+```
+
+# Building compartment masks
+
+We define:
+
+- `nuclear_mask` = DAPI-positive nuclear mask
+- `cytoplasmic_mask` = MAP2-positive extra-nuclear mask
+- `target_nuclear_mask` = TDP43 overlapping nucleus
+- `target_cytoplasmic_mask` = TDP43 overlapping extra-nuclear MAP2 region
+- `target_other_mask` = TDP43 outside both primary compartments
+
+```{python compartment_masks}
+
+# ------------------------------------------------------------------------------
+# This chunk constructs compartment masks
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+nuclear_mask = arr_dic[r.chan_names['nuc']]
+cytoplasmic_mask = np.logical_and(
+    arr_dic[r.chan_names['cyt']],
+    np.logical_not(nuclear_mask))
+
+target_nuclear_mask = np.logical_and(target_clean, nuclear_mask)
+target_cytoplasmic_mask = np.logical_and(target_clean, cytoplasmic_mask)
+target_other_mask = np.logical_and(
+    target_clean,
+    np.logical_not(np.logical_or(nuclear_mask, cytoplasmic_mask))
+)
+
+print("Nuclear pixels =", int(nuclear_mask.sum()))
+print("Cytoplasmic pixels =", int(cytoplasmic_mask.sum()))
+print("TDP43 nuclear pixels =", int(target_nuclear_mask.sum()))
+print("TDP43 cytoplasmic pixels =", int(target_cytoplasmic_mask.sum()))
+print("TDP43 other pixels =", int(target_other_mask.sum()))
 ```
 
 # Session info
