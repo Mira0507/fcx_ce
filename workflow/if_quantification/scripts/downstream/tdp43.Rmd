@@ -1,0 +1,281 @@
+---
+title: "Compartment integration & TDP43 overlap quantification"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+It integrates previously cleaned/segmented DAPI and MAP2 masks and quantifies binarized TDP43
+occupancy across nuclear and extra-nuclear compartments.
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(reticulate)
+
+# Additional options
+set.seed(2570)
+
+# Specify the number of available cores
+# n_cores <- future::availableCores()
+# options(mc.cores=n_cores)
+```
+
+
+```{r config}
+
+# Path to output directory
+out_dir <- "tdp43"
+if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Load configuration
+config <- yaml::read_yaml("config/config.yaml")
+
+# Input & output obj paths
+input_obj <- "map2/cytoplasmic_seg.zarr"
+output_obj <- file.path(out_dir, "tdp32_quant.zarr")
+
+# Specify the layers of ImageContainer obj for input and output arrays
+sq_layer <- config[['sq_layer']]
+out_layer <- config[['out_layer']]
+
+# Specify channels
+channels <- map(
+    names(config[['channels']]),
+    ~config[['channels']][[.x]]) %>%
+    set_names(names(config[['channels']]))
+
+# Specify connectivity to determine which neighboring pixels are 
+# considered connected when forming objects
+connectivity <- config[['connectivity']]
+
+# Conservative cleanup settings for binarized TDP43
+tdp43_min_component_quantile <- config[['tdp43']][['min_component_quantile']]
+tdp43_area_threshold_quantile <- config[['tdp43']][['area_threshold_quantile']]
+tdp43_large_object_quantile <- config[['tdp43']][['large_object_quantile']]
+tdp43_max_reasonable_area_multiplier <- config[['tdp43']][['max_reasonable_area_multiplier']]
+
+# TRUE/FALSE options for TDP43 handling
+tdp43_apply_cleanup <- config[['tdp43']][['apply_cleanup']]
+tdp43_fill_holes <- config[['tdp43']][['fill_holes']]
+tdp43_border_clear <- config[['tdp43']][['border_clear']]
+
+# Optional nucleus-to-MAP2 assignment settings
+assignment_overlap_min_pixels <- config[['integration']][['assignment_overlap_min_pixels']]
+assignment_max_distance <- config[['integration']][['assignment_max_distance']]
+
+# Load helper functions
+source(config[['helper']][['R']])
+
+# Specify conda env
+use_condaenv(config[['conda_env']])
+source_python(config[['helper']][['py']])
+```
+
+```{python ppackages}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import ndimage as ndi
+from skimage import io, measure, morphology, segmentation, feature, color, util
+from matplotlib.colors import ListedColormap
+import dask.array as da
+import squidpy as sq
+import xarray as xr
+import subprocess
+import os
+```
+
+This workflow performs compartment integration and overlap-based TDP43 quantification 
+from previously cleaned binary masks.
+
+Assumptions:
+
+- DAPI has already been cleaned and segmented into nuclear objects
+- MAP2 has already been cleaned into a usable MAP2-positive mask
+- TDP43 is already binarized
+- TDP43 should be treated as an occupancy mask, not an intensity image
+- extra-nuclear compartment is defined initially as MAP2-positive signal minus nucleus
+- any additional TDP43 cleanup should be minimal and conservative
+
+# Loading input `ImageContainer`
+
+```{python load_input}
+
+# ------------------------------------------------------------------------------
+# This chunk imports input image saved as zarr in the previous step
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+
+# Load the Zarr store into an ImageContainer
+# Set lazy=True to enable Dask-backed lazy loading, which is memory-efficient for large images.
+# You can also specify chunks for Dask if needed.
+img = sq.im.ImageContainer.load(r.input_obj, lazy=True)
+
+print("Input loaded:\n", r.input_obj)
+print("ImageContainer:\n", img)
+```
+
+# Extracting masks used for integration
+
+This step retrieves:
+
+- DAPI cleaned mask
+- MAP2 cleaned mask
+- TDP43 binary mask
+
+```{python input_summary}
+
+# ------------------------------------------------------------------------------
+# This chunk inspects the input image
+# ------------------------------------------------------------------------------
+
+# Retrieve the Dask arrays for channels of interest ([y, x, z, channels])
+arr_dic = {}
+for key, value in r.channels.items(): 
+    arr = img[r.out_layer].data[:, :, 0, value]
+    arr_dic[key] = arr > 0
+
+for key, value in arr_dic.items():
+    print(key, "foreground pixels =", int(value.sum()))
+```
+
+# Summarizing initial TDP43 input
+
+We first inspect the connected-component structure of the binarized TDP43 mask, mainly to decide 
+whether minimal cleanup is needed.
+
+```{python inspect_tdp}
+
+# ------------------------------------------------------------------------------
+# This chunk summarizes the input TDP43 mask
+# ------------------------------------------------------------------------------
+# reticulate::repl_python()
+tdp_initial_labels, tdp_initial_df = summarize_components(
+    arr_dic['tdp43'],
+    connectivity=r.connectivity)
+```
+
+Metrics:
+
+- Label: A unique integer assigned to each segmented object so individual nuclei 
+  can be identified and tracked separately.
+- Area: The number of foreground pixels belonging to a segmented object, 
+  representing its size in pixel units.
+- Bounding box: The smallest axis-aligned rectangle that fully contains 
+  the segmented object.
+- Eccentricity: A shape descriptor measuring how elongated an object is, 
+  where 0 is circle-like and values closer to 1 are more ellipse-like or stretched.
+- Solidity: The fraction of the object’s area relative to the area of its convex hull,
+  indicating how solid versus indented or irregular the shape is.
+- Extent: The fraction of the bounding box occupied by the object, reflecting how fully 
+ the object fills its enclosing rectangle.
+
+```{r input_summary_df}
+print(head(py$initial_df))
+print(tail(py$initial_df))
+```
+
+# Estimating conservative TDP43 cleanup parameters {.tabset}
+
+These parameters are used only if `tdp43_apply_cleanup = TRUE`.
+
+```{python cleanup_parameters}
+
+# ------------------------------------------------------------------------------
+# This chunk estimates conservative cleanup parameters for TDP43
+# ------------------------------------------------------------------------------
+
+tdp_param_est = estimate_cleanup_parameters(
+    tdp_initial_df,
+    min_component_quantile=r.tdp43_min_component_quantile,
+    area_threshold_quantile=r.tdp43_area_threshold_quantile,
+    large_object_quantile=r.tdp43_large_object_quantile,
+    max_reasonable_area_multiplier=r.tdp43_max_reasonable_area_multiplier)
+```
+
+- `min_size`: Lower bound for removing tiny disconnected debris objects
+- `area_threshold`: Maximum hole size that may be filled if `fill_holes = TRUE`
+- `large_object_cutoff`: Upper-tail threshold used to flag unusually large objects for review
+- `median_area`: Useful descriptive summary of the connected-component distribution
+
+The distribution of object area is explored using histograms, before and after removing large objects.
+
+```{r parameters_df, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes area distribution and median area
+# ------------------------------------------------------------------------------
+
+df <- as.data.frame(py$tdp_param_est)
+knitr::kable(df)
+
+filtered_df <- py$tdp_initial_df %>%
+  dplyr::filter(area <= df[['large_object_cutoff']])
+
+df_list <- list(before=py$tdp_initial_df, after=filtered_df)
+
+for (name in names(df_list)) {
+    cat('##', name, 'filtering at the large obj cutoff\n\n')
+    print(plot_histo(df_list[[name]]))
+    cat('\n\n')
+}
+```
+
+Note that the red dashed vertical lines indicate median area. The “after” histogram is shown 
+only to make the distribution easier to read after excluding extreme large objects from plotting;
+it does not mean those large objects are removed from segmentation.
+
+# Cleaning TDP43 mask conservatively
+
+This step is optional. If enabled, it should only:
+
+- remove tiny disconnected speckles
+- fill very small holes if requested
+- avoid aggressive morphology that could distort localization
+
+```{python cleanup_tdp}
+
+# ------------------------------------------------------------------------------
+# This chunk applies optional conservative cleanup to TDP43
+# ------------------------------------------------------------------------------
+
+if bool(r.tdp43_apply_cleanup):
+    tdp_clean = clean_input_mask(
+        tdp,
+        min_size=int(tdp_param_est["min_size"]),
+        area_threshold=int(tdp_param_est["area_threshold"]),
+        connectivity=r.connectivity,
+        fill_holes=bool(r.tdp43_fill_holes),
+        border_clear=bool(r.tdp43_border_clear)
+    )
+else:
+    tdp_clean = tdp.copy()
+
+print("TDP43 cleaned foreground pixels =", int(tdp_clean.sum()))
+```
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+
