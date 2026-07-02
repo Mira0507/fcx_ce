@@ -2751,4 +2751,6 @@ fcx_ce
 
 - TDP43 quantification in progress
     - conda env: ``senv``
-    - script: ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+    - scripts: 
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
