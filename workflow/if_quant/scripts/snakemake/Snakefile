@@ -8,7 +8,7 @@ import pandas as pd
 
 
 # Specify path to config file
-configfile: 'config/config.yaml'
+configfile: 'config/config_raw.yaml'
 
 # Prep sampletable
 sample = pd.read_table(config['sampletable']).set_index('samplename', drop=False)
