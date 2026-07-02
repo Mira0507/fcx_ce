@@ -260,7 +260,7 @@ This step is optional. If enabled, it should only:
 # ------------------------------------------------------------------------------
 
 if bool(r.target_apply_cleanup):
-    tdp_clean = clean_input_mask(
+    target_clean = clean_input_mask(
         arr_dic[r.chan_names['target']],
         min_size=int(target_param_est["min_size"]),
         area_threshold=int(target_param_est["area_threshold"]),
@@ -269,9 +269,9 @@ if bool(r.target_apply_cleanup):
         border_clear=bool(r.target_border_clear)
     )
 else:
-    tdp_clean = tdp.copy()
+    target_clean = arr_dic[r.chan_names['target']].copy()
 
-print("TDP43 cleaned foreground pixels =", int(tdp_clean.sum()))
+print("TDP43 cleaned foreground pixels =", int(target_clean.sum()))
 ```
 
 # Building compartment masks
@@ -309,6 +309,103 @@ print("TDP43 nuclear pixels =", int(target_nuclear_mask.sum()))
 print("TDP43 cytoplasmic pixels =", int(target_cytoplasmic_mask.sum()))
 print("TDP43 other pixels =", int(target_other_mask.sum()))
 ```
+
+# Labeling nuclei and cytoplasm-positive objects
+
+This step builds object labels for downstream mapping and per-object summaries.
+
+```{python compartmental_labels}
+
+# ------------------------------------------------------------------------------
+# This chunk labels nuclei and MAP2-positive objects
+# ------------------------------------------------------------------------------
+
+nuclear_labels = measure.label(nuclear_mask, connectivity=r.connectivity)
+cyto_labels = measure.label(cytoplasmic_mask, connectivity=r.connectivity)
+
+print("Number of nuclei =", int(nuclear_labels.max()))
+print("Number of cytoplasmic objects =", int(cyto_labels.max()))
+```
+
+# Building nucleus-to-MAP2 assignment table
+
+This is an initial pragmatic assignment step.
+
+For each nucleus:
+
+- identify overlapping MAP2-positive object(s)
+- if overlap exists, assign the MAP2 object with greatest overlap
+- if no overlap exists, optionally assign nearest MAP2 object within distance threshold
+- otherwise leave unassigned
+
+```{python identify_overlap}
+
+# ------------------------------------------------------------------------------
+# This chunk assigns nuclei to MAP2-positive regions
+# ------------------------------------------------------------------------------
+
+nuclei_df = regionprops_dataframe(nuclear_labels)
+cytoplasm_df = regionprops_dataframe(cyto_labels)
+
+assignment_rows = []
+
+cyto_props = measure.regionprops(cyto_labels)
+cyto_centroids = {prop.label: prop.centroid for prop in cyto_props}
+
+for prop in measure.regionprops(nuclear_labels):
+    nuc_label = prop.label
+    nuc_mask_i = (nuclear_labels == nuc_label)
+
+    overlap_labels, overlap_counts = np.unique(cyto_labels[nuc_mask_i], return_counts=True)
+    overlap_df = pd.DataFrame({
+        "cyto_label": overlap_labels,
+        "overlap_pixels": overlap_counts
+    })
+    overlap_df = overlap_df[overlap_df["cyto_label"] > 0]
+
+    assigned_cyto_label = np.nan
+    assignment_method = "unassigned"
+    overlap_pixels = 0
+    centroid_distance = np.nan
+
+    if overlap_df.shape[0] > 0:
+        overlap_df = overlap_df.sort_values("overlap_pixels", ascending=False)
+        top_hit = overlap_df.iloc[0]
+        if int(top_hit["overlap_pixels"]) >= int(r.assignment_overlap_min_pixels):
+            assigned_cyto_label = int(top_hit["cyto_label"])
+            assignment_method = "overlap"
+            overlap_pixels = int(top_hit["overlap_pixels"])
+
+    if pd.isna(assigned_cyto_label) and len(cyto_centroids) > 0:
+        nuc_centroid = prop.centroid
+        dist_list = []
+        for cyto_label, cyto_centroid in cyto_centroids.items():
+            dist = np.sqrt((nuc_centroid[0] - cyto_centroid[0])**2 +
+                           (nuc_centroid[1] - cyto_centroid[1])**2)
+            dist_list.append((cyto_label, dist))
+
+        if len(dist_list) > 0:
+            dist_list = sorted(dist_list, key=lambda x: x[1])
+            nearest_label, nearest_dist = dist_list[0]
+            if nearest_dist <= float(r.assignment_max_distance):
+                assigned_cyto_label = int(nearest_label)
+                assignment_method = "nearest"
+                centroid_distance = float(nearest_dist)
+
+    assignment_rows.append({
+        "nucleus_label": int(nuc_label),
+        "assigned_cyto_label": assigned_cyto_label,
+        "assignment_method": assignment_method,
+        "overlap_pixels": overlap_pixels,
+        "centroid_distance": centroid_distance
+    })
+
+assignment_df = pd.DataFrame(assignment_rows)
+
+print(assignment_df.head())
+print(assignment_df.tail())
+```
+
 
 # Session info
 
