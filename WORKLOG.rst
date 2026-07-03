@@ -2754,3 +2754,20 @@ fcx_ce
     - scripts: 
         - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
         - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+
+
+2026-07-02
+----------
+
+@Mira0507
+
+- Threshold TDP43 images using masking pipeline 
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quant/scripts/snakemake/config/config_raw.yaml`` (NEW)
+        - ``workflow/if_quant/scripts/snakemake/Snakefile`` (UPDATED)
+        - ``workflow/if_quant/scripts/snakemake/WRAPPER_SLURM`` (UPDATED)
+    - note:
+        - thresholding data with the percent-normalized (``percnorm``) images
+          was not optimal
+        - this run configures to disable intensity normalization
