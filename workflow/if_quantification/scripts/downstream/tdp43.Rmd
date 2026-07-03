@@ -36,7 +36,6 @@ set.seed(2570)
 # options(mc.cores=n_cores)
 ```
 
-
 ```{r config}
 
 # Path to output directory
@@ -162,8 +161,12 @@ for key, value in arr_dic.items():
 
 # Summarizing initial TDP43 input
 
-We first inspect the connected-component structure of the binarized TDP43 mask, mainly to decide 
-whether minimal cleanup is needed.
+This section inspects the connected-component structure of the binarized TDP43 mask before any 
+optional cleanup is applied.
+
+The purpose is to understand whether the current TDP43 mask contains many tiny speckles, 
+fragmented objects, or unusually large connected components that might justify conservative cleanup. 
+This is an inspection step, not yet a transformation step.
 
 ```{python inspect_tdp}
 
@@ -171,12 +174,14 @@ whether minimal cleanup is needed.
 # This chunk summarizes the input TDP43 mask
 # ------------------------------------------------------------------------------
 # reticulate::repl_python()
+
+# Compute connected-component labels and a per-object summary table for the target protein
 target_initial_labels, target_initial_df = summarize_components(
     arr_dic[r.chan_names['target']],
     connectivity=r.connectivity)
 ```
 
-Metrics:
+Metrics shown below describe the connected components in the initial TDP43 mask:
 
 - Label: A unique integer assigned to each segmented object so individual nuclei 
   can be identified and tracked separately.
@@ -198,7 +203,10 @@ print(tail(py$target_initial_df))
 
 # Estimating conservative TDP43 cleanup parameters {.tabset}
 
-These parameters are used only if `tdp43_apply_cleanup = TRUE`.
+This section computes adaptive cleanup thresholds from the observed TDP43 component distribution.
+
+These thresholds are used only if cleanup is enabled in the config file. The goal is to support minimal,
+data-driven cleanup rather than hard-coded morphology settings.
 
 ```{python cleanup_parameters}
 
@@ -214,6 +222,8 @@ target_param_est = estimate_cleanup_parameters(
     max_reasonable_area_multiplier=r.target_max_reasonable_area_multiplier)
 ```
 
+In particular, this step estimates:
+
 - `min_size`: Lower bound for removing tiny disconnected debris objects
 - `area_threshold`: Maximum hole size that may be filled if `fill_holes = TRUE`
 - `large_object_cutoff`: Upper-tail threshold used to flag unusually large objects for review
@@ -227,14 +237,17 @@ The distribution of object area is explored using histograms, before and after r
 # This chunk visualizes area distribution and median area
 # ------------------------------------------------------------------------------
 
+# Convert the parameter summary into an R data frame for display
 df <- as.data.frame(py$target_param_est)
 knitr::kable(df)
 
+# Exclude very large objects only for improved plotting readability
 filtered_df <- py$target_initial_df %>%
   dplyr::filter(area <= df[['large_object_cutoff']])
 
 df_list <- list(before=py$target_initial_df, after=filtered_df)
 
+# Render area histograms for both views
 for (name in names(df_list)) {
     cat('##', name, 'filtering at the large obj cutoff\n\n')
     print(plot_histo(df_list[[name]]))
@@ -248,7 +261,10 @@ it does not mean those large objects are removed from segmentation.
 
 # Cleaning TDP43 mask conservatively
 
-This step is optional. If enabled, it should only:
+This section applies optional cleanup to the binarized TDP43 mask. Because TDP43 is the signal being 
+quantified rather than the compartment-defining channel, cleanup should remain conservative. 
+
+If enabled, it should only:
 
 - remove tiny disconnected speckles
 - fill very small holes if requested
@@ -260,6 +276,7 @@ This step is optional. If enabled, it should only:
 # This chunk applies optional conservative cleanup to TDP43
 # ------------------------------------------------------------------------------
 
+# Apply cleanup only if enabled in the config file
 if bool(r.target_apply_cleanup):
     target_clean = clean_input_mask(
         arr_dic[r.chan_names['target']],
@@ -270,6 +287,7 @@ if bool(r.target_apply_cleanup):
         border_clear=bool(r.target_border_clear)
     )
 else:
+    # Otherwise keep the original TDP43 binary mask unchanged
     target_clean = arr_dic[r.chan_names['target']].copy()
 
 print("TDP43 cleaned foreground pixels =", int(target_clean.sum()))
@@ -277,7 +295,8 @@ print("TDP43 cleaned foreground pixels =", int(target_clean.sum()))
 
 # Building compartment masks
 
-We define:
+This section defines the core biological compartments used for all downstream measurements. The current 
+first-pass compartment logic is:
 
 - `nuclear_mask` = DAPI-positive nuclear mask
 - `cytoplasmic_mask` = MAP2-positive extra-nuclear mask
@@ -292,18 +311,26 @@ We define:
 # ------------------------------------------------------------------------------
 
 # reticulate::repl_python()
+
+# Use the DAPI mask as the nuclear compartment
 nuclear_mask = arr_dic[r.chan_names['nuc']]
+
+# Define extra-nuclear MAP2-positive territory as cytoplasmic mask
 cytoplasmic_mask = np.logical_and(
     arr_dic[r.chan_names['cyt']],
     np.logical_not(nuclear_mask))
 
+# Intersect cleaned TDP43 with each compartment definition
 target_nuclear_mask = np.logical_and(target_clean, nuclear_mask)
 target_cytoplasmic_mask = np.logical_and(target_clean, cytoplasmic_mask)
+
+# Define residual TDP43 outside both main compartments
 target_other_mask = np.logical_and(
     target_clean,
     np.logical_not(np.logical_or(nuclear_mask, cytoplasmic_mask))
 )
 
+# Print basic pixel-count summaries for each mask
 print("Nuclear pixels =", int(nuclear_mask.sum()))
 print("Cytoplasmic pixels =", int(cytoplasmic_mask.sum()))
 print("TDP43 nuclear pixels =", int(target_nuclear_mask.sum()))
@@ -313,7 +340,15 @@ print("TDP43 other pixels =", int(target_other_mask.sum()))
 
 # Labeling nuclei and cytoplasm-positive objects
 
-This step builds object labels for downstream mapping and per-object summaries.
+This section converts the binary nuclear and cytoplasmic masks into connected-component label 
+images. Label images make it possible to summarize individual nuclei and cytoplasmic objects 
+without repeatedly creating expensive full-image masks in later steps.
+
+These labels are used downstream for:
+
+- nucleus-to-MAP2 assignment
+- per-nucleus summaries
+- cytoplasmic object summaries
 
 ```{python compartmental_labels}
 
@@ -321,35 +356,40 @@ This step builds object labels for downstream mapping and per-object summaries.
 # This chunk labels nuclei and MAP2-positive objects
 # ------------------------------------------------------------------------------
 
+# Label connected components in the nuclear and cytoplasmic masks
 nuclear_labels = measure.label(nuclear_mask, connectivity=r.connectivity)
 cyto_labels = measure.label(cytoplasmic_mask, connectivity=r.connectivity)
 
+# Print the number of labeled objects in each compartment
 print("Number of nuclei =", int(nuclear_labels.max()))
 print("Number of cytoplasmic objects =", int(cyto_labels.max()))
 ```
 
 # Building nucleus-to-MAP2 assignment table
 
-This is an initial pragmatic assignment step.
+This section builds a first-pass mapping between nuclei and MAP2-positive objects. To reduce runtime, 
+the assignment uses a faster strategy than the original per-nucleus masking loop:
 
-For each nucleus:
+- build nucleus and cytoplasmic object tables once
+- assign nuclei by overlap first
+- only if enabled, assign remaining unassigned nuclei by nearest centroid
+- store the final assignment table for downstream summaries
 
-- identify overlapping MAP2-positive object(s)
-- if overlap exists, assign the MAP2 object with greatest overlap
-- if no overlap exists, optionally assign nearest MAP2 object within distance threshold
-- otherwise leave unassigned
+This avoids repeated full-image mask creation for each nucleus and is much more scalable.
 
 ```{python assigment_table}
 
 # ------------------------------------------------------------------------------
-# This chunk creates a nucleus-to-MAP2 assignment table
+# This chunk build summary tables for nuclei and cytoplasmic objects
 # ------------------------------------------------------------------------------
 
-# Nucleus summary table
+# Measure nucleus labels, centroids, and areas
 nuc_props = measure.regionprops_table(
     nuclear_labels,
     properties=["label", "centroid", "area"]
 )
+
+# Summarize nuclear metrics in a data frame
 nuclei_df = pd.DataFrame(nuc_props).rename(columns={
     "label": "nucleus_label",
     "centroid-0": "nuc_y",
@@ -357,11 +397,13 @@ nuclei_df = pd.DataFrame(nuc_props).rename(columns={
     "area": "nucleus_area"
 })
 
-# Cytoplasm summary table
+# Measure cytoplasmic object labels, centroids, and areas
 cyto_props = measure.regionprops_table(
     cyto_labels,
     properties=["label", "centroid", "area"]
 )
+
+# Summarize cytoplasmic metrics in a data frame
 cytoplasm_df = pd.DataFrame(cyto_props).rename(columns={
     "label": "cyto_label",
     "centroid-0": "cyto_y",
@@ -370,15 +412,18 @@ cytoplasm_df = pd.DataFrame(cyto_props).rename(columns={
 })
 ```
 
-```{python update_assignment_table, eval=FALSE}
+```{python update_assignment_table}
 
 # ------------------------------------------------------------------
-# This chunk adds overlap-based assignment
+# This chunk adds overlap-based nucleus-to-MAP2 assignment
 # ------------------------------------------------------------------
 
 # reticulate::repl_python()
+
+# Find pixels where a labeled nucleus and labeled cytoplasmic object coexist
 overlap_mask = (nuclear_labels > 0) & (cyto_labels > 0)
 
+# If any overlap exists, count overlap pixels for each nucleus-cytoplasm pair
 if overlap_mask.sum() > 0:
     overlap_pairs = pd.DataFrame({
         "nucleus_label": nuclear_labels[overlap_mask].ravel(),
@@ -393,25 +438,29 @@ if overlap_mask.sum() > 0:
         .sort_values(["nucleus_label", "overlap_pixels"], ascending=[True, False])
     )
 
+    # Keep only the strongest overlapping MAP2 object for each nucleus
     best_overlap_df = overlap_counts_df.drop_duplicates(
         subset=["nucleus_label"],
         keep="first"
     )
 
+    # Mark overlap-based assignments
     best_overlap_df["assignment_method"] = "overlap"
     best_overlap_df["centroid_distance"] = np.nan
 
+    # Enforce a minimum overlap requirement before accepting an assignment
     best_overlap_df.loc[
         best_overlap_df["overlap_pixels"] < int(r.assignment_overlap_min_pixels),
         ["cyto_label", "assignment_method"]
     ] = [np.nan, "unassigned"]
 else:
+    # Create an empty overlap table if no overlaps were detected
     best_overlap_df = pd.DataFrame(columns=[
         "nucleus_label", "cyto_label", "overlap_pixels",
         "assignment_method", "centroid_distance"
     ])
 
-# Merge overlap assignments onto all nuclei
+# Merge overlap results back onto the full nucleus table
 assignment_df = nuclei_df.merge(
     best_overlap_df[["nucleus_label",
         "cyto_label",
@@ -422,6 +471,7 @@ assignment_df = nuclei_df.merge(
     how="left"
 )
 
+# Fill missing values for nuclei that received no overlap-based assignment
 assignment_df["overlap_pixels"] = assignment_df["overlap_pixels"].fillna(0)
 assignment_df["assignment_method"] = assignment_df["assignment_method"].fillna("unassigned")
 ```
@@ -429,12 +479,14 @@ assignment_df["assignment_method"] = assignment_df["assignment_method"].fillna("
 ```{python cleanup}
 
 # ------------------------------------------------------------------
-# This chunk cleans up after optionally performing nearest-neighbor assignment only for unassigned nuclei
+# This chunk optionally assigns remaining nuclei by nearest cytoplasmic centroid
 # ------------------------------------------------------------------
 
+# Proceed only if at least one cytoplasmic object exists
 if cytoplasm_df.shape[0] > 0:
     unassigned_mask = assignment_df["assignment_method"] == "unassigned"
 
+    # Use nearest-neighbor assignment only if enabled and needed
     if bool(r.assignment_max_distance) and unassigned_mask.sum() > 0:
         cyto_tree = cKDTree(cytoplasm_df[["cyto_y", "cyto_x"]].to_numpy())
 
@@ -445,9 +497,11 @@ if cytoplasm_df.shape[0] > 0:
 
         nearest_labels = cytoplasm_df.iloc[indices]["cyto_label"].to_numpy()
 
+        # Store nearest candidate assignments and distances
         assignment_df.loc[unassigned_mask, "nearest_cyto_label"] = nearest_labels
         assignment_df.loc[unassigned_mask, "centroid_distance"] = distances
 
+        # Accept nearest assignments only within the allowed maximum distance
         valid_mask = (
             unassigned_mask &
             (assignment_df["centroid_distance"] <= float(r.assignment_max_distance))
@@ -456,12 +510,70 @@ if cytoplasm_df.shape[0] > 0:
         assignment_df.loc[valid_mask, "cyto_label"] = assignment_df.loc[valid_mask, "nearest_cyto_label"]
         assignment_df.loc[valid_mask, "assignment_method"] = "nearest"
 
-# Final cleanup
+# Finalize the canonical assigned cytoplasmic label column
 assignment_df["assigned_cyto_label"] = assignment_df["cyto_label"]
+
+# Drop the temporary column name to keep the final table cleaner
 assignment_df = assignment_df.drop(columns=["cyto_label"], errors="ignore")
 
 print(assignment_df.head())
 print(assignment_df.tail())
+```
+
+# Building compartment-level summary metrics
+
+This section computes whole-image summary metrics describing how TDP43-positive area is distributed 
+across nuclear, cytoplasmic, and other regions. These summary values provide the main first-pass 
+biological readout for this workflow and are also useful as quick QC measures before looking at 
+per-nucleus results.
+
+```{python compartment_metrics}
+
+# ------------------------------------------------------------------------------
+# This chunk computes whole-image compartment overlap and occupancy metrics
+# ------------------------------------------------------------------------------
+
+# Count total TDP43-positive area after cleanup
+target_total_area = int(target_clean.sum())
+
+# Count TDP43-positive area in each compartment
+target_nuclear_area = int(target_nuclear_mask.sum())
+target_cytoplasmic_area = int(target_cytoplasmic_mask.sum())
+target_other_area = int(target_other_mask.sum())
+
+# Build a one-row summary table containing whole-image compartment metrics
+compartment_summary_df = pd.DataFrame([{
+    "input_shape_y": int(nuclear_mask.shape[0]),
+    "input_shape_x": int(nuclear_mask.shape[1]),
+    "nuclear_area": nuclear_area,
+    "cytoplasmic_area": cytoplasmic_area,
+    "target_total_area": target_total_area,
+    "target_nuclear_area": target_nuclear_area,
+    "target_cytoplasmic_area": target_cytoplasmic_area,
+    "target_other_area": target_other_area,
+    "nuclear_fraction_of_target": (
+        target_nuclear_area / target_total_area if target_total_area > 0 else np.nan
+    ),
+    "cytoplasmic_fraction_of_target": (
+        target_cytoplasmic_area / target_total_area if target_total_area > 0 else np.nan
+    ),
+    "other_fraction_of_target": (
+        target_other_area / target_total_area if target_total_area > 0 else np.nan
+    ),
+    "nuclear_occupancy": (
+        target_nuclear_area / nuclear_area if nuclear_area > 0 else np.nan
+    ),
+    "cytoplasmic_occupancy": (
+        target_cytoplasmic_area / cytoplasmic_area if cytoplasmic_area > 0 else np.nan
+    ),
+    "cytoplasmic_to_nuclear_target_area_ratio": (
+        target_cytoplasmic_area / target_nuclear_area if target_nuclear_area > 0 else np.nan
+    )
+}])
+```
+
+```{r compartment_summary, results='asis'}
+knitr::kable(py$compartment_summary_df)
 ```
 
 # Session info
