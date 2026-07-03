@@ -95,6 +95,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage as ndi
+from scipy.spatial import cKDTree
 from skimage import io, measure, morphology, segmentation, feature, color, util
 from matplotlib.colors import ListedColormap
 import dask.array as da
@@ -338,74 +339,130 @@ For each nucleus:
 - if no overlap exists, optionally assign nearest MAP2 object within distance threshold
 - otherwise leave unassigned
 
-```{python identify_overlap}
+```{python assigment_table}
 
 # ------------------------------------------------------------------------------
-# This chunk assigns nuclei to MAP2-positive regions
+# This chunk creates a nucleus-to-MAP2 assignment table
 # ------------------------------------------------------------------------------
 
-nuclei_df = regionprops_dataframe(nuclear_labels)
-cytoplasm_df = regionprops_dataframe(cyto_labels)
+# Nucleus summary table
+nuc_props = measure.regionprops_table(
+    nuclear_labels,
+    properties=["label", "centroid", "area"]
+)
+nuclei_df = pd.DataFrame(nuc_props).rename(columns={
+    "label": "nucleus_label",
+    "centroid-0": "nuc_y",
+    "centroid-1": "nuc_x",
+    "area": "nucleus_area"
+})
 
-assignment_rows = []
+# Cytoplasm summary table
+cyto_props = measure.regionprops_table(
+    cyto_labels,
+    properties=["label", "centroid", "area"]
+)
+cytoplasm_df = pd.DataFrame(cyto_props).rename(columns={
+    "label": "cyto_label",
+    "centroid-0": "cyto_y",
+    "centroid-1": "cyto_x",
+    "area": "cyto_area"
+})
+```
 
-cyto_props = measure.regionprops(cyto_labels)
-cyto_centroids = {prop.label: prop.centroid for prop in cyto_props}
+```{python update_assignment_table, eval=FALSE}
 
-for prop in measure.regionprops(nuclear_labels):
-    nuc_label = prop.label
-    nuc_mask_i = (nuclear_labels == nuc_label)
+# ------------------------------------------------------------------
+# This chunk adds overlap-based assignment
+# ------------------------------------------------------------------
 
-    overlap_labels, overlap_counts = np.unique(cyto_labels[nuc_mask_i], return_counts=True)
-    overlap_df = pd.DataFrame({
-        "cyto_label": overlap_labels,
-        "overlap_pixels": overlap_counts
-    })
-    overlap_df = overlap_df[overlap_df["cyto_label"] > 0]
+# reticulate::repl_python()
+overlap_mask = (nuclear_labels > 0) & (cyto_labels > 0)
 
-    assigned_cyto_label = np.nan
-    assignment_method = "unassigned"
-    overlap_pixels = 0
-    centroid_distance = np.nan
-
-    if overlap_df.shape[0] > 0:
-        overlap_df = overlap_df.sort_values("overlap_pixels", ascending=False)
-        top_hit = overlap_df.iloc[0]
-        if int(top_hit["overlap_pixels"]) >= int(r.assignment_overlap_min_pixels):
-            assigned_cyto_label = int(top_hit["cyto_label"])
-            assignment_method = "overlap"
-            overlap_pixels = int(top_hit["overlap_pixels"])
-
-    if pd.isna(assigned_cyto_label) and len(cyto_centroids) > 0:
-        nuc_centroid = prop.centroid
-        dist_list = []
-        for cyto_label, cyto_centroid in cyto_centroids.items():
-            dist = np.sqrt((nuc_centroid[0] - cyto_centroid[0])**2 +
-                           (nuc_centroid[1] - cyto_centroid[1])**2)
-            dist_list.append((cyto_label, dist))
-
-        if len(dist_list) > 0:
-            dist_list = sorted(dist_list, key=lambda x: x[1])
-            nearest_label, nearest_dist = dist_list[0]
-            if nearest_dist <= float(r.assignment_max_distance):
-                assigned_cyto_label = int(nearest_label)
-                assignment_method = "nearest"
-                centroid_distance = float(nearest_dist)
-
-    assignment_rows.append({
-        "nucleus_label": int(nuc_label),
-        "assigned_cyto_label": assigned_cyto_label,
-        "assignment_method": assignment_method,
-        "overlap_pixels": overlap_pixels,
-        "centroid_distance": centroid_distance
+if overlap_mask.sum() > 0:
+    overlap_pairs = pd.DataFrame({
+        "nucleus_label": nuclear_labels[overlap_mask].ravel(),
+        "cyto_label": cyto_labels[overlap_mask].ravel()
     })
 
-assignment_df = pd.DataFrame(assignment_rows)
+    overlap_counts_df = (
+        overlap_pairs
+        .groupby(["nucleus_label", "cyto_label"], as_index=False)
+        .size()
+        .rename(columns={"size": "overlap_pixels"})
+        .sort_values(["nucleus_label", "overlap_pixels"], ascending=[True, False])
+    )
+
+    best_overlap_df = overlap_counts_df.drop_duplicates(
+        subset=["nucleus_label"],
+        keep="first"
+    )
+
+    best_overlap_df["assignment_method"] = "overlap"
+    best_overlap_df["centroid_distance"] = np.nan
+
+    best_overlap_df.loc[
+        best_overlap_df["overlap_pixels"] < int(r.assignment_overlap_min_pixels),
+        ["cyto_label", "assignment_method"]
+    ] = [np.nan, "unassigned"]
+else:
+    best_overlap_df = pd.DataFrame(columns=[
+        "nucleus_label", "cyto_label", "overlap_pixels",
+        "assignment_method", "centroid_distance"
+    ])
+
+# Merge overlap assignments onto all nuclei
+assignment_df = nuclei_df.merge(
+    best_overlap_df[["nucleus_label",
+        "cyto_label",
+        "overlap_pixels",
+        "assignment_method",
+        "centroid_distance"]],
+    on="nucleus_label",
+    how="left"
+)
+
+assignment_df["overlap_pixels"] = assignment_df["overlap_pixels"].fillna(0)
+assignment_df["assignment_method"] = assignment_df["assignment_method"].fillna("unassigned")
+```
+
+```{python cleanup}
+
+# ------------------------------------------------------------------
+# This chunk cleans up after optionally performing nearest-neighbor assignment only for unassigned nuclei
+# ------------------------------------------------------------------
+
+if cytoplasm_df.shape[0] > 0:
+    unassigned_mask = assignment_df["assignment_method"] == "unassigned"
+
+    if bool(r.assignment_max_distance) and unassigned_mask.sum() > 0:
+        cyto_tree = cKDTree(cytoplasm_df[["cyto_y", "cyto_x"]].to_numpy())
+
+        distances, indices = cyto_tree.query(
+            assignment_df.loc[unassigned_mask, ["nuc_y", "nuc_x"]].to_numpy(),
+            k=1
+        )
+
+        nearest_labels = cytoplasm_df.iloc[indices]["cyto_label"].to_numpy()
+
+        assignment_df.loc[unassigned_mask, "nearest_cyto_label"] = nearest_labels
+        assignment_df.loc[unassigned_mask, "centroid_distance"] = distances
+
+        valid_mask = (
+            unassigned_mask &
+            (assignment_df["centroid_distance"] <= float(r.assignment_max_distance))
+        )
+
+        assignment_df.loc[valid_mask, "cyto_label"] = assignment_df.loc[valid_mask, "nearest_cyto_label"]
+        assignment_df.loc[valid_mask, "assignment_method"] = "nearest"
+
+# Final cleanup
+assignment_df["assigned_cyto_label"] = assignment_df["cyto_label"]
+assignment_df = assignment_df.drop(columns=["cyto_label"], errors="ignore")
 
 print(assignment_df.head())
 print(assignment_df.tail())
 ```
-
 
 # Session info
 
