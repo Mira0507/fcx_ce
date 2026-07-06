@@ -75,4 +75,4 @@ target:
 
 integration:
     assignment_overlap_min_pixels: 1
-    assignment_max_distance: 50
+    assignment_max_distance: 0
