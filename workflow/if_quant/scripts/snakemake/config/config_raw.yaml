@@ -108,7 +108,6 @@ pseudo_cols:
   map: violet       # channel 1
   tdp: limegreen    # channel 2
   gad: orange       # channel 3
-  # aldh: lightblue   # channel 4
 
 # Specify antibodies of interest to be merged
 merge_list:
