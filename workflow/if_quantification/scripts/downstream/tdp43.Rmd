@@ -849,7 +849,15 @@ df_list <- list(
     compartment_summary = py$compartment_summary_df,
     nucleus_assignment_summary = py$assignment_df,
     per_nucleus_summary = py$per_nucleus_df
-)
+) %>%
+# Clean each column if necessary
+mclapply(function(df) {
+    df %>%
+        as.data.frame() %>%
+        mutate_if(is.list, unlist)
+
+})
+
 
 # Initialize a table that will store output file links
 path_df <- data.frame(
@@ -860,8 +868,17 @@ path_df <- data.frame(
 # Write each table to disk and record its output path
 for (name in names(df_list)) {
     tsv <- file.path(out_dir, paste0(name, ".tsv"))
+    df <- df_list[[name]]
+
+    # Remove unassigned objects
+    if (name %in% c('nucleus_assignment_summary', 'per_nucleus_summary')) {
+        df <- df %>%
+            dplyr::filter(assignment_method != "unassigned")
+    }
+
+    # Save as TSV
     write.table(
-        df_list[[name]],
+        df,
         tsv,
         quote=FALSE,
         row.names=FALSE,
