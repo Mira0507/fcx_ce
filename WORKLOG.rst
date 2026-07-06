@@ -2771,3 +2771,29 @@ fcx_ce
         - thresholding data with the percent-normalized (``percnorm``) images
           was not optimal
         - this run configures to disable intensity normalization
+
+
+2026-07-06
+----------
+
+@Mira0507
+
+
+- Threshold TDP43 images using masking pipeline
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quant/scripts/snakemake/config/sampletable.txt`` (UPDATED)
+    - notes
+        - threshold all samples (2 controls, 5 FTD-GRN, and 2 FTD-sporadic samples)
+          using raw intensities
+
+- TDP43 quantification in progress
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+    - notes
+        - added documentation on individual analysis metrics
+        - completed drafting the quantification script, but this does not 
+          include statistics
