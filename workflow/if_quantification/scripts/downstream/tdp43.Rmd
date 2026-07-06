@@ -47,7 +47,7 @@ config <- yaml::read_yaml("config/config.yaml")
 
 # Input & output obj paths
 input_obj <- "map2/cytoplasmic_seg.zarr"
-output_obj <- file.path(out_dir, "tdp32_quant.zarr")
+output_obj <- file.path(out_dir, "tdp43_quant.zarr")
 
 # Specify the layers of ImageContainer obj for input and output arrays
 sq_layer <- config[['sq_layer']]
@@ -533,6 +533,7 @@ per-nucleus results.
 # This chunk computes whole-image compartment overlap and occupancy metrics
 # ------------------------------------------------------------------------------
 
+# reticulate::repl_python()
 # Count total TDP43-positive area after cleanup
 target_total_area = int(target_clean.sum())
 
@@ -540,6 +541,10 @@ target_total_area = int(target_clean.sum())
 target_nuclear_area = int(target_nuclear_mask.sum())
 target_cytoplasmic_area = int(target_cytoplasmic_mask.sum())
 target_other_area = int(target_other_mask.sum())
+
+# Count total available area for the nuclear and cytoplasmic compartments
+nuclear_area = int(nuclear_mask.sum())
+cytoplasmic_area = int(cytoplasmic_mask.sum())
 
 # Build a one-row summary table containing whole-image compartment metrics
 compartment_summary_df = pd.DataFrame([{
@@ -573,7 +578,301 @@ compartment_summary_df = pd.DataFrame([{
 ```
 
 ```{r compartment_summary, results='asis'}
-knitr::kable(py$compartment_summary_df)
+knitr::kable(t(py$compartment_summary_df) %>% as.data.frame %>% set_names('value'))
+```
+
+# Building per-nucleus summary metrics
+
+This section computes per-nucleus TDP43 overlap metrics using a fast label-based aggregation approach.
+
+Rather than generating a full binary mask for each nucleus, this method uses `np.bincount` 
+on the label image. This is much faster and scales better to large images or many nuclei.
+
+The resulting table contains:
+
+- per-nucleus area
+- TDP43-positive area inside each nucleus
+- nuclear occupancy
+- assigned cytoplasmic object
+- assigned cytoplasmic area and TDP43 overlap
+- cytoplasmic-to-nuclear TDP43 ratio
+
+```{python per_nuc_metrics}
+
+# ------------------------------------------------------------------------------
+# Compute fast per-nucleus summary metrics using label-based aggregation
+# ------------------------------------------------------------------------------
+
+# Count total pixels belonging to each nucleus label
+nucleus_area_counts = np.bincount(nuclear_labels.ravel())
+
+# Count TDP43-positive pixels belonging to each nucleus label
+nuclear_target_counts = np.bincount(
+    nuclear_labels[target_clean].ravel(),
+    minlength = nucleus_area_counts.shape[0]
+)
+
+# Build a nucleus-level summary table
+per_nucleus_df = pd.DataFrame({
+    "nucleus_label": np.arange(1, nucleus_area_counts.shape[0]),
+    "nucleus_area": nucleus_area_counts[1:],
+    "nuclear_target_area": nuclear_target_counts[1:]
+})
+
+# Compute fraction of each nucleus occupied by TDP43
+per_nucleus_df["nuclear_occupancy"] = (
+    per_nucleus_df["nuclear_target_area"] /
+    per_nucleus_df["nucleus_area"].replace(0, np.nan)
+)
+
+# Count total pixels belonging to each cytoplasmic object label
+cyto_area_counts = np.bincount(cyto_labels.ravel())
+
+# Count TDP43-positive pixels belonging to each cytoplasmic object label
+cyto_target_counts = np.bincount( cyto_labels[target_clean].ravel(), minlength = cyto_area_counts.shape[0])
+
+# Build a cytoplasmic object summary table
+cyto_summary_df = pd.DataFrame({
+    "assigned_cyto_label": np.arange(1, cyto_area_counts.shape[0]),
+    "assigned_cyto_area": cyto_area_counts[1:],
+    "assigned_cyto_target_area": cyto_target_counts[1:]
+})
+
+# Compute fraction of each assigned cytoplasmic object occupied by TDP43
+cyto_summary_df["assigned_cyto_occupancy"] = (
+    cyto_summary_df["assigned_cyto_target_area"] /
+    cyto_summary_df["assigned_cyto_area"].replace(0, np.nan)
+)
+
+# Merge nucleus-to-cytoplasm assignment results onto the per-nucleus table
+per_nucleus_df = per_nucleus_df.merge(
+    assignment_df[[
+        "nucleus_label",
+        "assigned_cyto_label",
+        "assignment_method",
+        "overlap_pixels",
+        "centroid_distance"
+    ]],
+    on = "nucleus_label",
+    how = "left"
+)
+
+# Merge cytoplasmic object summaries using the assigned cytoplasmic label
+per_nucleus_df = per_nucleus_df.merge(
+    cyto_summary_df,
+    on = "assigned_cyto_label",
+    how = "left"
+)
+
+# Compute the cytoplasmic-to-nuclear TDP43 area ratio per assigned unit
+per_nucleus_df["cytoplasmic_to_nuclear_target_area_ratio"] = (
+    per_nucleus_df["assigned_cyto_target_area"] /
+    per_nucleus_df["nuclear_target_area"].replace(0, np.nan)
+)
+
+# Print the beginning and end of the per-nucleus summary table
+print(per_nucleus_df.head())
+print(per_nucleus_df.tail())
+```
+
+# Run summary
+
+This section prints a concise run-level summary so that the most important counts are visible 
+without opening the exported tables. These values are useful for quick QC and to confirm that 
+the workflow behaved as expected.
+
+```{python run_level_summary}
+
+# ------------------------------------------------------------------------------
+# Print concise run-level summary metrics
+# ------------------------------------------------------------------------------
+
+# Collect a compact set of top-level QC metrics
+run_summary = {
+    "input_shape": tuple(nuclear_mask.shape),
+    "n_nuclei": int(nuclear_labels.max()),
+    "n_cytoplasmic_objects": int(cyto_labels.max()),
+    "n_assigned_nuclei": int((assignment_df["assignment_method"] != "unassigned").sum()),
+    "target_total_area": int(target_clean.sum()),
+    "target_nuclear_area": int(target_nuclear_mask.sum()),
+    "target_cytoplasmic_area": int(target_cytoplasmic_mask.sum()),
+    "target_other_area": int(target_other_mask.sum())
+}
+
+# Print each run-level metric
+for key, value in run_summary.items():
+    print(key, "=", value)
+```
+
+# Adding integration outputs back to the ImageContainer
+
+This section writes the derived masks back into the output object so they remain available 
+for future review and downstream use.
+
+
+
+# Visualizing compartment overlap {.tabset}
+
+This section generates QC figures for the key masks and overlap relationships.
+
+These plots provide a visual check that:
+
+- nuclear and cytoplasmic compartments look reasonable
+- TDP43 cleanup did not distort the mask unexpectedly
+- the overlap logic places TDP43 signal into the expected compartments
+
+```{r qc_plots, eval=FALSE}
+
+# ------------------------------------------------------------------------------
+# Generate and link QC figures produced by the Python helper functions
+# ------------------------------------------------------------------------------
+
+# Define the QC image files that will be written to disk
+qc_files <- c(
+    "nuclear_mask.png",
+    "cytoplasmic_mask.png",
+    "tdp43_clean.png",
+    "compartment_overlay.png",
+    "tdp43_compartment_overlay.png"
+)
+
+# Save single-mask QC images
+py$save_mask_plot(py$nuclear_mask, file.path(out_dir, "nuclear_mask.png"), title = "Nuclear mask")
+py$save_mask_plot(py$cytoplasmic_mask, file.path(out_dir, "cytoplasmic_mask.png"), title = "Cytoplasmic mask")
+py$save_mask_plot(py$target_clean, file.path(out_dir, "tdp43_clean.png"), title = "Cleaned TDP43 mask")
+
+# Save multi-layer overlay showing compartments plus cleaned TDP43
+py$save_overlay_plot(
+    py$nuclear_mask,
+    py$cytoplasmic_mask,
+    py$target_clean,
+    file.path(out_dir, "compartment_overlay.png")
+)
+
+# Save overlay showing compartment-specific TDP43 placement
+py$save_target_compartment_overlay(
+    py$target_nuclear_mask,
+    py$target_cytoplasmic_mask,
+    py$target_other_mask,
+    file.path(out_dir, "tdp43_compartment_overlay.png")
+)
+
+# Build a table of QC image links for easy browsing in the rendered document
+path_df <- data.frame(
+    file = qc_files,
+    link = file.path(out_dir, qc_files)
+)
+
+# Render the QC image link table
+knitr::kable(
+    path_df %>%
+        mutate(link = paste0("[", link, "](", link, ")"))
+)
+
+```
+
+# Summary tables
+
+This section exports the main result tables as tab-separated files so they can be inspected in Excel,
+R, or Python later.
+
+The exported tables capture:
+
+- TDP43 input connected-component summary
+- estimated TDP43 cleanup parameters
+- whole-image compartment summary
+- nucleus-to-MAP2 assignment table
+- per-nucleus overlap summary
+
+
+```{r save_output_tables, results='asis'}
+
+# ------------------------------------------------------------------------------
+# Write key summary tables to disk and render a link table
+# ------------------------------------------------------------------------------
+
+# Collect all tables that should be exported as TSV files
+df_list <- list(
+    target_input_summary = py$target_initial_df,
+    target_parameter_summary = py$target_param_est,
+    compartment_summary = py$compartment_summary_df,
+    nucleus_assignment_summary = py$assignment_df,
+    per_nucleus_summary = py$per_nucleus_df
+)
+
+# Initialize a table that will store output file links
+path_df <- data.frame(
+    table = names(df_list),
+    link = ""
+)
+
+# Write each table to disk and record its output path
+for (name in names(df_list)) {
+    tsv <- file.path(out_dir, paste0(name, ".tsv"))
+    write.table(
+        df_list[[name]],
+        tsv,
+        quote=FALSE,
+        row.names=FALSE,
+        col.names=TRUE,
+        sep = "\t"
+    )
+    path_df[path_df$table == name, "link"] <- tsv
+}
+
+# Render the exported-table link summary
+knitr::kable(
+    path_df %>%
+        mutate(link = paste0("[", link, "](", link, ")"))
+)
+```
+
+# Saving the `ImageContainer` object
+
+The final `ImageContainer` object contains the following layers:
+
+- `nuclear_mask`: cleaned nuclear mask (e.g. DAPI)
+- `cytoplasmic_mask`: cleaned cytoplasmic mask (e.g. MAP2)
+- `target_clean`: cleaned target mask (e.g. TDP43)
+- `target_nuclear`: target in nucleus (e.g. nuclear TDP43)
+- `target_cytoplasmic`: target in cytoplasm (e.g. cytoplasmic TDP43)
+- `target_other`: target unassigned
+
+```{python add_to_imagecontainer}
+
+# ------------------------------------------------------------------------------
+# Add derived masks back into the ImageContainer
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Add the nuclear mask as a new layer
+img_dic = {
+    "nuclear_mask": nuclear_mask,
+    "cytoplasmic_mask": cytoplasmic_mask,
+    "target_clean": target_clean,
+    "target_nuclear": target_nuclear_mask,
+    "target_cytoplasmic": target_cytoplasmic_mask,
+    "target_other": target_other_mask
+}
+
+for key, value in img_dic.items():
+    img.add_img(value, layer=key)
+
+# Delete unnecessary layers
+layers_del = [l for l in list(img) if l not in list(img_dic.keys())]
+print("The following layers are deleted: ", layers_del)
+for l in layers_del:
+    del img[l]
+
+# Print the layer names now present in the output object
+print("Derived layers added to ImageContainer")
+print(img)
+
+# Write the output ImageContainer to the configured path
+img.save(r.output_obj)
+
+# Print the saved output path
+print(r.output_obj)
 ```
 
 # Session info
