@@ -527,6 +527,35 @@ across nuclear, cytoplasmic, and other regions. These summary values provide the
 biological readout for this workflow and are also useful as quick QC measures before looking at 
 per-nucleus results.
 
+Mask-based metrics:
+
+- `input_shape_y`, `input_shape_x`: height (y) and width (x) of image
+- `nuclear_area`: number of pixels in the nuclear compartment (e.g. DAPI-mask)
+- `cytoplasmic_area`: number of pixels in the cytoplasmic compartment (e.g. MAP2-mask)
+- `target_total_area`: number of target-positive pixels (e.g. TDP43-positive pixels)
+- `target_nuclear_area`: number of target-positive pixels that fall inside the nuclear compartment
+  (e.g. `target_clean` AND `nuclear_mask`)
+- `target_cytoplasmic_agrea`: number of target-positive pixels that fall inside the cytoplasmic compartment
+  (e.g. `target_clean` AND `cytoplasmic_mask`)
+- `target_other_area`: number of target-positive pixels that fall outside both the nuclear and 
+  cytoplasmic compartments
+  (e.g. signal outside segmented cells, segmentation mismatch, or TDP43-positive pixels 
+  not covered by the current compartment definitions)
+
+Fraction-based metrics:
+
+- `nuclear_fraction_of_target`: `target_nuclear_area` / `target_total_area`
+- `cytoplasmic_fraction_of_target`: `target_nuclear_area` / `target_total_area`
+- `other_fraction_of_target`: `target_other_area` / `target_total_area`
+
+Occupancy-based metrics:
+
+- `nuclear_occupancy`: `target_nuclear_area` / `nuclear_area` (e.g. DAPI AND TDP43)
+- `cytoplasmic_occupancy`: `target_cytoplasmic_area` / `nuclear_area` (e.g. MAP2 AND TDP43)
+- `cytoplasmic_to_nuclear_target_area_ratio`:
+  `target_cytoplasmic_area` / `target_nuclear_area`
+  (> 1 if more TDP43 signal is greater in cytoplasm)
+
 ```{python compartment_metrics}
 
 # ------------------------------------------------------------------------------
@@ -596,6 +625,23 @@ The resulting table contains:
 - assigned cytoplasmic object
 - assigned cytoplasmic area and TDP43 overlap
 - cytoplasmic-to-nuclear TDP43 ratio
+
+Assignment-related metrics:
+
+- `assigned_cyto_label`: label ID of the cytoplasmic object assigned to that nucleus
+- `assignment_method`: `overlap`, `nearest` (nearest centroid if no overlap assignment was available),
+  `unassigned` (no cytoplasmic object was assigned)
+- `overlap_pixels`: number of pixels of overlap between the nucleus and its best-matching cytoplasmic object
+- `centroid_distance`: distance between the nucleus centroid and the assigned cytoplasmic object centroid
+
+Compartment-related metrics:
+
+- `assigned_cyto_area`: area of the assigned cytoplasmic object (e.g. assigned MAP2-positive objects)
+- `assigned_cyto_target_area`: number of target-positive pixels inside the assigned cytoplasmic object
+  (e.g. assigned TDP43 AND MAP2-positive objects)
+- `assigned_cyto_occupancy`: `assigned_cyto_target_area` / `assigned_cyto_area`
+- `cytoplasmic_to_nuclear_target_area_ratio`:
+  `assigned_cyto_target_area` / `nuclear_target_area`
 
 ```{python per_nuc_metrics}
 
@@ -681,6 +727,18 @@ This section prints a concise run-level summary so that the most important count
 without opening the exported tables. These values are useful for quick QC and to confirm that 
 the workflow behaved as expected.
 
+Metrics:
+
+- `input_shape`: (height, width)
+- `n_nuclei`: number of labeled nuclei detected in the nuclear mask
+- `n_cytoplasmic_objects`: number of labeled cytoplasmic objects detected in the cytoplasmic mask
+- `n_assigned_nuclei`: number of nuclei that receive a cytoplasmic assignment by either overlap or
+  nearest-neighbor logic (low values may indicate segmentation mismatch or overly strict assignment criteria)
+- `target_total_area`: total target-positive area after cleanup
+- `target_nuclear_area`: target-positive area inside nuclei
+- `target_cytoplasmic_area`: target-positive area inside the cytoplasmic mask
+- `target_other_area`: target-positive area outside both main compartments
+
 ```{python run_level_summary}
 
 # ------------------------------------------------------------------------------
@@ -703,13 +761,6 @@ run_summary = {
 for key, value in run_summary.items():
     print(key, "=", value)
 ```
-
-# Adding integration outputs back to the ImageContainer
-
-This section writes the derived masks back into the output object so they remain available 
-for future review and downstream use.
-
-
 
 # Visualizing compartment overlap {.tabset}
 

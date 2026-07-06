@@ -65,14 +65,34 @@ cyt:
     border_clear: false
 
 target:
+    # Lower quantile of connected-component area used to estimate the minimum object size.
+    # Components below this empirical size cutoff are treated as likely debris/noise.
     min_component_quantile: 0.05
+    # Quantile used to derive the hole-removal / area cleanup threshold from the component-size distribution.
+    # Larger values make cleanup more conservative by tolerating bigger gaps/small artifacts before removal.
     area_threshold_quantile: 0.25
+    # Upper quantile used to identify unusually large connected components in the target mask.
+    # Useful for flagging merged objects or broad artifacts relative to the image-specific size distribution.
     large_object_quantile: 0.99
+    # Caps the largest "reasonable" object area as a multiple of the reference large-object estimate.
+    # Objects beyond this multiplier can be treated as likely artifacts or pathological merges.
     max_reasonable_area_multiplier: 5
+    # If true, run morphology-based cleanup using the thresholds estimated above.
+    # If false, preserve the incoming target mask as-is.
     apply_cleanup: true
+    # If true, fill internal holes within target objects during cleanup.
+    # False preserves internal voids, which is often safer for already-binarized masks 
+    # when occupancy shape matters.
     fill_holes: false
+    # If true, remove objects touching the image border.
+    # False keeps partial edge objects, which may be desirable if border truncation
+    # should not exclude valid signal.
     border_clear: false
 
 integration:
+    # Minimum number of overlapping pixels required for direct assignment between objects.
+    # A value of 1 means any nonzero overlap is sufficient to establish a match.
     assignment_overlap_min_pixels: 1
-    assignment_max_distance: 0
+    # Maximum fallback distance (in pixels) allowed when overlap-based assignment fails.
+    # A value of 0 disables distance-based reassignment and enforces overlap-only matching.
+    assignment_max_distance: 10
