@@ -162,26 +162,14 @@ def save_mask_plot(ar, out_path, cmap="gray", title=None):
     plt.savefig(out_path, dpi=600, bbox_inches="tight")
     plt.close()
 
-# Save a three-layer compartment overlay image
-def save_overlay_plot(nuclear_mask, cytoplasmic_mask, target_mask, out_path):
+# Save a three-layer overlay image
+def overlay_plot(arr_1, arr_2, arr_3, out_path):
     plt.figure(figsize=(8, 8))
-    plt.imshow(np.zeros_like(nuclear_mask), cmap="gray")
-    plt.imshow(nuclear_mask, cmap=ListedColormap([(1, 1, 1, 0), "dodgerblue"]), alpha=0.5)
-    plt.imshow(cytoplasmic_mask, cmap=ListedColormap([(1, 1, 1, 0), "orange"]), alpha=0.4)
-    plt.imshow(target_mask, cmap=ListedColormap([(1, 1, 1, 0), "limegreen"]), alpha=0.4)
+    plt.imshow(arr_1, cmap=ListedColormap([(1, 1, 1, 0), "dodgerblue"]), alpha=0.5)
+    plt.imshow(arr_2, cmap=ListedColormap([(1, 1, 1, 0), "orange"]), alpha=0.5)
+    plt.imshow(arr_3, cmap=ListedColormap([(1, 1, 1, 0), "violet"]), alpha=0.5)
     plt.xticks([])
     plt.yticks([])
     plt.savefig(out_path, dpi=600, bbox_inches="tight")
     plt.close()
 
-# Save a TDP43-by-compartment overlay image
-def save_target_compartment_overlay(target_nuc, target_cyto, target_other, out_path):
-    plt.figure(figsize=(8, 8))
-    plt.imshow(np.zeros_like(target_nuc), cmap="gray")
-    plt.imshow(target_nuc, cmap=ListedColormap([(1, 1, 1, 0), "dodgerblue"]), alpha=0.7)
-    plt.imshow(target_cyto, cmap=ListedColormap([(1, 1, 1, 0), "orange"]), alpha=0.7)
-    plt.imshow(target_other, cmap=ListedColormap([(1, 1, 1, 0), "red"]), alpha=0.7)
-    plt.xticks([])
-    plt.yticks([])
-    plt.savefig(out_path, dpi=600, bbox_inches="tight")
-    plt.close()
