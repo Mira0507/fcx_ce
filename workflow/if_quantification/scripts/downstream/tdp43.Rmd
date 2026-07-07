@@ -38,6 +38,10 @@ set.seed(2570)
 
 ```{r config}
 
+# ------------------------------------------------------------------------------
+# This chunk configures file paths and variables
+# ------------------------------------------------------------------------------
+
 # Path to output directory
 out_dir <- "tdp43"
 if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
@@ -772,54 +776,70 @@ These plots provide a visual check that:
 - TDP43 cleanup did not distort the mask unexpectedly
 - the overlap logic places TDP43 signal into the expected compartments
 
-```{r qc_plots, eval=FALSE}
+## Individual masks
+
+```{python qc_plots}
 
 # ------------------------------------------------------------------------------
 # Generate and link QC figures produced by the Python helper functions
 # ------------------------------------------------------------------------------
 
-# Define the QC image files that will be written to disk
-qc_files <- c(
-    "nuclear_mask.png",
-    "cytoplasmic_mask.png",
-    "tdp43_clean.png",
-    "compartment_overlay.png",
-    "tdp43_compartment_overlay.png"
-)
+mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
+path_dic = {}
 
-# Save single-mask QC images
-py$save_mask_plot(py$nuclear_mask, file.path(out_dir, "nuclear_mask.png"), title = "Nuclear mask")
-py$save_mask_plot(py$cytoplasmic_mask, file.path(out_dir, "cytoplasmic_mask.png"), title = "Cytoplasmic mask")
-py$save_mask_plot(py$target_clean, file.path(out_dir, "tdp43_clean.png"), title = "Cleaned TDP43 mask")
+for key, value in mask_dic.items():
+    out_path = f"{r.out_dir}/{key}_mask.png"
+    plt.figure(figsize=(8, 8))
+    plt.imshow(value, cmap='gray')
+    plt.xticks([])
+    plt.yticks([])
+    plt.savefig(out_path, dpi=600, bbox_inches="tight")
+    plt.close()
+    path_dic[key] = out_path
+```
 
-# Save multi-layer overlay showing compartments plus cleaned TDP43
-py$save_overlay_plot(
-    py$nuclear_mask,
-    py$cytoplasmic_mask,
-    py$target_clean,
-    file.path(out_dir, "compartment_overlay.png")
-)
-
-# Save overlay showing compartment-specific TDP43 placement
-py$save_target_compartment_overlay(
-    py$target_nuclear_mask,
-    py$target_cytoplasmic_mask,
-    py$target_other_mask,
-    file.path(out_dir, "tdp43_compartment_overlay.png")
-)
-
+```{r individual_qc_plots, results='asis'}
 # Build a table of QC image links for easy browsing in the rendered document
-path_df <- data.frame(
-    file = qc_files,
-    link = file.path(out_dir, qc_files)
-)
+data.frame(
+    link = unlist(py$path_dic)
+) %>%
+rownames_to_column('mask') %>%
+mutate(link = paste0("[", link, "](", link, ")")) %>%
+knitr::kable()
+```
 
-# Render the QC image link table
-knitr::kable(
-    path_df %>%
-        mutate(link = paste0("[", link, "](", link, ")"))
-)
+## Mask overlay
 
+Color map:
+
+- nuclear mask: dodgerblue
+- cytoplasmic mask: orange
+- target mask: violet
+
+```{python mask_overlay}
+out_path = f"{r.out_dir}/mask_overlay.png"
+overlay_plot(nuclear_mask, cytoplasmic_mask, target_clean, out_path)
+```
+
+```{r mask_overlay_link, results='asis'}
+link_output(py$out_path)
+```
+
+## Target-compartment overlay
+
+Color map:
+
+- target inside the nuclear mask: dodgerblue
+- target inside the cytoplasmic mask: orange
+- target outside the nuclear and cytoplasmic mask: violet
+
+```{python target_compartment_overlay, eval=FALSE}
+out_path = f"{r.out_dir}/target_compartment_overlay.png"
+overlay_plot(target_nuclear_mask, target_cytoplasmic_mask, target_other_mask, out_path)
+```
+
+```{r target_compartment_overlay_link, results='asis'}
+link_output(py$out_path)
 ```
 
 # Summary tables
@@ -834,7 +854,6 @@ The exported tables capture:
 - whole-image compartment summary
 - nucleus-to-MAP2 assignment table
 - per-nucleus overlap summary
-
 
 ```{r save_output_tables, results='asis'}
 
@@ -857,7 +876,6 @@ mclapply(function(df) {
         mutate_if(is.list, unlist)
 
 })
-
 
 # Initialize a table that will store output file links
 path_df <- data.frame(
