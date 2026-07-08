@@ -2797,3 +2797,27 @@ fcx_ce
         - added documentation on individual analysis metrics
         - completed drafting the quantification script, but this does not 
           include statistics
+
+
+2026-07-07
+----------
+
+@Mira0507
+
+
+- Threshold TDP43 images using masking pipeline
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quant/scripts/snakemake/Snakefile``
+    - notes
+        - continued running after reconfiguring the ``qc_normalization`` rule
+          with runtime from 12h to 24h and memory from 1T to 2T
+
+- Draft TDP43 quantification script
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+    - notes
+        - worked on QC visualization
+
