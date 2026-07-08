@@ -786,15 +786,9 @@ These plots provide a visual check that:
 
 mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
 path_dic = {}
-
 for key, value in mask_dic.items():
     out_path = f"{r.out_dir}/{key}_mask.png"
-    plt.figure(figsize=(8, 8))
-    plt.imshow(value, cmap='gray')
-    plt.xticks([])
-    plt.yticks([])
-    plt.savefig(out_path, dpi=600, bbox_inches="tight")
-    plt.close()
+    save_mask_plot(value, out_path)
     path_dic[key] = out_path
 ```
 
@@ -833,7 +827,7 @@ Color map:
 - target inside the cytoplasmic mask: orange
 - target outside the nuclear and cytoplasmic mask: violet
 
-```{python target_compartment_overlay, eval=FALSE}
+```{python target_compartment_overlay}
 out_path = f"{r.out_dir}/target_compartment_overlay.png"
 overlay_plot(target_nuclear_mask, target_cytoplasmic_mask, target_other_mask, out_path)
 ```

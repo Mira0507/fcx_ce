@@ -153,18 +153,14 @@ def regionprops_dataframe(label_img):
 
 # Save a single binary mask as a grayscale image
 def save_mask_plot(ar, out_path, cmap="gray", title=None):
-    plt.figure(figsize=(8, 8))
     plt.imshow(ar, cmap=cmap)
     plt.xticks([])
     plt.yticks([])
-    if title is not None:
-        plt.title(title)
     plt.savefig(out_path, dpi=600, bbox_inches="tight")
     plt.close()
 
 # Save a three-layer overlay image
 def overlay_plot(arr_1, arr_2, arr_3, out_path):
-    plt.figure(figsize=(8, 8))
     plt.imshow(arr_1, cmap=ListedColormap([(1, 1, 1, 0), "dodgerblue"]), alpha=0.5)
     plt.imshow(arr_2, cmap=ListedColormap([(1, 1, 1, 0), "orange"]), alpha=0.5)
     plt.imshow(arr_3, cmap=ListedColormap([(1, 1, 1, 0), "violet"]), alpha=0.5)
