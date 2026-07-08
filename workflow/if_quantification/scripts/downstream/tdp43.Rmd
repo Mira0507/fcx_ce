@@ -778,6 +778,10 @@ These plots provide a visual check that:
 
 ## Individual masks
 
+- `nuclear_mask`: cleaned nuclear mask
+- `cytoplasmic_mask`: cleaned cytoplasmic
+- `target`: minimally cleaned TDP43 mask
+
 ```{python qc_plots}
 
 # ------------------------------------------------------------------------------
@@ -812,7 +816,12 @@ Color map:
 
 ```{python mask_overlay}
 out_path = f"{r.out_dir}/mask_overlay.png"
-overlay_plot(nuclear_mask, cytoplasmic_mask, target_clean, out_path)
+overlay_plot(
+    nuclear_mask,
+    cytoplasmic_mask,
+    out_path,
+    arr_3=target_clean
+    )
 ```
 
 ```{r mask_overlay_link, results='asis'}
@@ -829,10 +838,122 @@ Color map:
 
 ```{python target_compartment_overlay}
 out_path = f"{r.out_dir}/target_compartment_overlay.png"
-overlay_plot(target_nuclear_mask, target_cytoplasmic_mask, target_other_mask, out_path)
+overlay_plot(
+    target_nuclear_mask,
+    target_cytoplasmic_mask,
+    out_path,
+    arr_3=target_other_mask
+    )
 ```
 
 ```{r target_compartment_overlay_link, results='asis'}
+link_output(py$out_path)
+```
+
+# Visualizing assigned overlap {.tabset}
+
+This section visualizes only assigned nuclear, cytoplasmic, and target objects.
+
+```{python filter_assigned}
+
+# ------------------------------------------------------------------------------
+# This chunk creates QC masks that retain only successfully matched nucleus-cytoplasm pairs
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Keep nuclei with a successful assignment (overlap or nearest)
+assigned_df = assignment_df.loc[
+    assignment_df["assignment_method"] != "unassigned"
+].copy()
+
+# Extract the matched nucleus and cytoplasmic object labels
+assigned_nucleus_labels = assigned_df["nucleus_label"].dropna().astype(int).unique()
+assigned_cyto_labels = assigned_df["assigned_cyto_label"].dropna().astype(int).unique()
+
+# Rebuild binary masks that include only assigned objects
+nuclear_mask_assigned = np.isin(nuclear_labels, assigned_nucleus_labels)
+cytoplasmic_mask_assigned = np.isin(cyto_labels, assigned_cyto_labels)
+target_clean_assigned = np.logical_and(
+    target_clean,
+    np.logical_or(nuclear_mask_assigned, cytoplasmic_mask_assigned)
+)
+
+# TDP43 compartment intersecting with assigned nuclear and cytoplasmic objects
+target_nuclear_mask_assigned = np.logical_and(target_clean, nuclear_mask_assigned)
+target_cytoplasmic_mask_assigned = np.logical_and(target_clean, cytoplasmic_mask_assigned)
+```
+
+## Individual masks
+
+- `nuclear_mask_assigned`: cleaned nuclear mask assigned to overlapping or the nearest cytoplasmic objects
+- `cytoplasmic_mask_referenced`: cleaned cytoplasmic mask referenced by nuclei from `nuclear_mask_assigned`
+- `target`: minimally cleaned TDP43 mask assigned to either the nucleus or cytoplasm
+
+```{python assigned_plots}
+
+# ------------------------------------------------------------------------------
+# Generate and link QC figures for assigned objects
+# ------------------------------------------------------------------------------
+
+mask_dic = {
+  'nuclear_mask_assigned': nuclear_mask_assigned,
+  'cytoplasmic_mask_referenced': cytoplasmic_mask_assigned,
+  'target_assigned': target_clean_assigned}
+path_dic = {}
+for key, value in mask_dic.items():
+    out_path = f"{r.out_dir}/{key}_mask.png"
+    save_mask_plot(value, out_path)
+    path_dic[key] = out_path
+```
+
+```{r individual_assigned_plots, results='asis'}
+# Build a table of QC image links for easy browsing in the rendered document
+data.frame(
+    link = unlist(py$path_dic)
+) %>%
+rownames_to_column('mask') %>%
+mutate(link = paste0("[", link, "](", link, ")")) %>%
+knitr::kable()
+```
+
+## Mask overlay
+
+Color map:
+
+- nuclear mask assigned: dodgerblue
+- cytoplasmic mask referenced: orange
+- target mask assigned: violet
+
+```{python mask_overlay_assigned}
+out_path = f"{r.out_dir}/mask_assigned_overlay.png"
+overlay_plot(
+  nuclear_mask_assigned,
+  cytoplasmic_mask_assigned,
+  out_path,
+  arr_3=target_clean_assigned
+  )
+```
+
+```{r mask_overlay_link_assigned, results='asis'}
+link_output(py$out_path)
+```
+
+## Target-compartment overlay
+
+Color map:
+
+- target inside the nuclear mask assigned: dodgerblue
+- target inside the cytoplasmic mask referenced: orange
+
+```{python target_compartment_overlay_assigned, results='asis'}
+out_path = f"{r.out_dir}/target_compartment_assigned_overlay.png"
+overlay_plot(
+  target_nuclear_mask_assigned,
+  target_cytoplasmic_mask_assigned,
+  out_path)
+```
+
+```{r target_compartment_overlay_link_assigned, results='asis'}
 link_output(py$out_path)
 ```
 

@@ -160,10 +160,11 @@ def save_mask_plot(ar, out_path, cmap="gray", title=None):
     plt.close()
 
 # Save a three-layer overlay image
-def overlay_plot(arr_1, arr_2, arr_3, out_path):
+def overlay_plot(arr_1, arr_2, out_path, arr_3=None):
     plt.imshow(arr_1, cmap=ListedColormap([(1, 1, 1, 0), "dodgerblue"]), alpha=0.5)
     plt.imshow(arr_2, cmap=ListedColormap([(1, 1, 1, 0), "orange"]), alpha=0.5)
-    plt.imshow(arr_3, cmap=ListedColormap([(1, 1, 1, 0), "violet"]), alpha=0.5)
+    if arr_3 is not None:
+        plt.imshow(arr_3, cmap=ListedColormap([(1, 1, 1, 0), "violet"]), alpha=0.5)
     plt.xticks([])
     plt.yticks([])
     plt.savefig(out_path, dpi=600, bbox_inches="tight")
