@@ -2562,3 +2562,262 @@ fcx_ce
           ``calculate_ratios`` and ``subset_clean_counts``
         - CE ratio recalculated as the following:
           TDP43-affected CEs / all junctions
+
+
+2026-06-12
+----------
+
+@Mira0507
+
+- Transfer thalamus IF imagings
+    - directory: ``input/if_quantification``
+    - samples
+        - 2 Ctrls
+        - 5 FTD-GRN
+        - 2 FTD-Sporadic
+
+- Run thalamus IF masking
+    - conda env: ``senv`` symlinked from ``squidpy_masking`` 
+    - Pipeline: 
+      https://github.com/Mira0507/squidpy_masking
+    - files added
+        - ``workflow/if_quantification/scripts/snakemake/Snakefile`` 
+        - ``workflow/if_quantification/scripts/snakemake/WRAPPER_SLURM``
+        - ``workflow/if_quantification/scripts/snakemake/build_imagecontainer.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/config/config.yaml``
+        - ``workflow/if_quantification/scripts/snakemake/config/dag.png``
+        - ``workflow/if_quantification/scripts/snakemake/config/dag_qc.png``
+        - ``workflow/if_quantification/scripts/snakemake/config/helpers.R``
+        - ``workflow/if_quantification/scripts/snakemake/config/sampletable.txt``
+        - ``workflow/if_quantification/scripts/snakemake/image_conversion.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/merge_channels.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/native_thresholding.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/post_processing.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/qc_normalization.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/smooth.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/squidpy_segmentation.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/watershed_segmentation.Rmd``
+
+2026-06-17
+----------
+
+@Mira0507
+
+- Plot additional genes of interest on the Visium dataset
+    - conda env: ``venv``
+    - scripts:
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd`` 
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd`` 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+
+- IF masking
+    - conda env: ``senv``
+    - scripts updated
+        - ``workflow/if_quantification/scripts/snakemake/build_imagecontainer.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/qc_normalization.Rmd``
+        - ``workflow/if_quantification/scripts/snakemake/config/config.yaml``
+        - ``workflow/if_quantification/scripts/snakemake/Snakefile``
+    - notes
+        - run paused after the ``qc_normalization`` rule
+        - channel info updated in ``Rmd``
+
+
+2026-06-18
+----------
+
+@Mira0507
+
+- Script nuclear segmentation
+    - conda env: ``senv`` (symlinked from ``../squidpy_masking/env``)
+    - files added
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+    - notes
+        - compartment segmentation is designed into the following three scripts
+            - ``dapi.Rmd`` for cleaning and segmentation of nuclei
+            - ``map2.Rmd`` for cleaning and segmentation of cytoplasm
+            - ``dapi_map2.Rmd`` for subtraction (DAPI - MAP2)
+        - input is not prepared yet. just starting with old masked images having both channels
+
+- Add Visium SpatialFeaturePlot for additional genes of interest
+    - conda env: ``venv``
+    - scripts
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-neurons.Rmd``
+
+2026-06-22
+----------
+
+@Mira0507
+
+- Rerun masking using updated Snakemake
+    - conda env: ``senv``
+    - scripts added
+        - ``workflow/if_quant/scripts/snakemake/Snakefile``
+        - ``workflow/if_quant/scripts/snakemake/WRAPPER_SLURM``
+        - ``workflow/if_quant/scripts/snakemake/build_imagecontainer.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/config/config.yaml``
+        - ``workflow/if_quant/scripts/snakemake/config/helpers.R``
+        - ``workflow/if_quant/scripts/snakemake/config/sampletable.txt``
+        - ``workflow/if_quant/scripts/snakemake/image_conversion.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/merge_channels.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/native_thresholding.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/post_processing.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/qc_normalization.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/smooth.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/squidpy_segmentation.Rmd``
+        - ``workflow/if_quant/scripts/snakemake/watershed_segmentation.Rmd``
+    - notes
+        - This update is designed to optimize chunksize to have 1/n of 
+          user-specified n in the ``config.yaml``
+        - currently, it's set to 8, which means the chunk size will be 1/8 
+          of either width (width < height) or height (width > height).
+
+- Continue scripting nuclear segmentation using toy images
+    - conda env: ``env``
+    - scripts updated:
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+
+2026-06-23
+----------
+
+@Mira0507
+
+- Continue scripting nuclear segmentation using toy images
+    - conda env: ``senv``
+    - scripts updated:
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+
+
+2026-06-25
+----------
+
+@Mira0507
+
+- Proceed with the next steps thresholding images
+    - scripts updated
+        - ``workflow/if_quant/scripts/snakemake/Snakefile`` 
+        - ``workflow/if_quant/scripts/snakemake/WRAPPER_SLURM`` 
+        - ``workflow/if_quant/scripts/snakemake/config/config.yaml``
+    - note:
+        - percent normalization used
+        - minor changes to allocate large computational resources in ``Snakefile``
+
+2026-06-26
+----------
+
+@Mira0507
+
+- Image segmentation/quantification helper functions and configuration changed
+    - files:
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.R`` (added)
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.R`` (updated)
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml`` (updated)
+
+- Nuclear segmentation bugfix
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+    - note: channels not for DAPI were lost. fixed (see below)
+
+    .. code-block:: r
+
+        img.add_img(cleaned_mask, layer=r.out_layer) # WRONG
+        img[r.out_layer].data[:, :, 0, r.chan] = cleaned_mask # CORRECT
+
+- Cytoplasmic segmenation in progress
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/map2.Rmd``
+
+
+2026-06-29
+----------
+
+@Mira0507
+
+- Cytoplasmic segmenation in progress
+    - conda env: ``senv``
+    - script: ``workflow/if_quantification/scripts/downstream/map2.Rmd``
+    - note: reran after bugfix
+
+
+2026-07-01
+----------
+
+@Mira0507
+
+- TDP43 quantification in progress
+    - conda env: ``senv``
+    - scripts: 
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+
+
+2026-07-02
+----------
+
+@Mira0507
+
+- Threshold TDP43 images using masking pipeline 
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quant/scripts/snakemake/config/config_raw.yaml`` (NEW)
+        - ``workflow/if_quant/scripts/snakemake/Snakefile`` (UPDATED)
+        - ``workflow/if_quant/scripts/snakemake/WRAPPER_SLURM`` (UPDATED)
+    - note:
+        - thresholding data with the percent-normalized (``percnorm``) images
+          was not optimal
+        - this run configures to disable intensity normalization
+
+
+2026-07-06
+----------
+
+@Mira0507
+
+
+- Threshold TDP43 images using masking pipeline
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quant/scripts/snakemake/config/sampletable.txt`` (UPDATED)
+    - notes
+        - threshold all samples (2 controls, 5 FTD-GRN, and 2 FTD-sporadic samples)
+          using raw intensities
+
+- TDP43 quantification in progress
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+    - notes
+        - added documentation on individual analysis metrics
+        - completed drafting the quantification script, but this does not 
+          include statistics
+
+
+2026-07-07
+----------
+
+@Mira0507
+
+
+- Threshold TDP43 images using masking pipeline
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quant/scripts/snakemake/Snakefile``
+    - notes
+        - continued running after reconfiguring the ``qc_normalization`` rule
+          with runtime from 12h to 24h and memory from 1T to 2T
+
+- Draft TDP43 quantification script
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+    - notes
+        - worked on QC visualization
+

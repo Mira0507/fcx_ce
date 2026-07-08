@@ -1,0 +1,489 @@
+---
+title: "Nuclear cleaning & segmentation"
+author: "Mira Sohn"
+output:
+    html_document:
+        code_folding: hide
+        df_print: paged
+        toc: true
+        toc_float: true
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      cache.lazy=FALSE)
+```
+
+Last run: `r date()`
+
+```{r libraries}
+# Libraries
+library(parallel)
+library(tidyverse)
+library(ggplot2)
+library(reticulate)
+
+# Additional options
+set.seed(2570)
+
+# Specify the number of available cores
+# n_cores <- future::availableCores()
+# options(mc.cores=n_cores)
+```
+
+
+```{r config}
+
+# Path to output directory
+out_dir <- "dapi"
+if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
+
+# Load configuration
+config <- yaml::read_yaml("config/config.yaml")
+
+# Input & output obj paths
+input_obj <- '../../../../../squidpy_masking/scripts/snakemake/results/noperm/post_processing.zarr'
+output_obj <- file.path(out_dir, "nuclear_seg.zarr")
+
+# Specify the layers of ImageContainer obj for input and output arrays
+sq_layer <- config[['sq_layer']]
+out_layer <- config[['out_layer']]
+
+# Specify channel
+chan <- config[['channels']][['dapi']]
+
+# Specify connectivity to determine which neighboring pixels are 
+# considered connected when forming objects
+connectivity <- config[['connectivity']]
+
+# Specify parameters for cleaning
+# Debris-control parameter
+# (treat the smallest tail of objects as the best estimate of likely noise/speckle scale.)
+min_component_quantile <- config[['nuc']][["min_component_quantile"]]
+# small-hole filling parameter
+# (The 25th percentile is more permissive than the 10th percentile,
+# which makes sense because internal holes can be somewhat larger than isolated specks)
+area_threshold_quantile <- config[['nuc']][["area_threshold_quantile"]]
+# merged-object/artifact flagging parameter
+# (isolates the extreme upper tail rather than the center of the size distribution,
+# which is where you’d expect merged nuclei or image artifacts to appear)
+large_object_quantile <- config[['nuc']][["large_object_quantile"]]
+# Safety cap
+# (Without it, one or two giant bizarre objects could push the “large object” 
+# threshold so high that genuinely suspicious large nuclei would no longer be flagged.)
+max_reasonable_area_multiplier <- config[['nuc']][["max_reasonable_area_multiplier"]]
+# Sigma for Guanssian filter preceding watershed
+dt_smoothing_sigma <- config[['nuc']][['dt_smoothing_sigma']]
+# how close two peaks can be before they are treated as one
+# (A larger footprint reduces over-splitting; a smaller one increases sensitivity
+# to local bumps and may split one nucleus into multiple labels.)
+peak_footprint <- config[['nuc']][['peak_footprint']]
+
+# readability and speed of QC visualization
+qc_overlay_max_objects <- config[['nuc']][['qc_overlay_max_objects']]
+
+# Additional TRUE/FALSE options
+fill_holes <- config[['nuc']][['fill_holes']]
+border_clear <- config[['nuc']][['border_clear']]
+watershed_for_splitting <- config[['nuc']][['watershed_for_splitting']]
+
+# Load helper functions
+source(config[['helper']][['R']])
+
+# Specify conda env
+use_condaenv(config[['conda_env']])
+source_python(config[['helper']][['py']])
+```
+
+```{python ppackages}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import ndimage as ndi
+from skimage import io, measure, morphology, segmentation, feature, color, util
+from matplotlib.colors import ListedColormap
+from skimage.segmentation import watershed
+import dask.array as da
+import squidpy as sq
+import xarray as xr
+import subprocess
+import os
+```
+
+This workflow performs **nuclear cleaning and segmentation** from 
+a **binarized DAPI mask**.
+
+Assumptions:
+
+- the input is already binary or can be safely coerced to binary
+- the current file focuses on **nucleus-only segmentation**
+- morphology cleanup thresholds should be **estimated from the image**, 
+  not fixed arbitrarily
+- segmentation outputs will later feed cytoplasmic compartment construction 
+  and downstream TDP43 localization analysis
+
+# Loading input `ImageContainer`
+
+```{python load_input}
+
+# ------------------------------------------------------------------------------
+# This chunk imports input image saved as zarr in the previous step
+# ------------------------------------------------------------------------------
+
+# Load the Zarr store into an ImageContainer
+# Set lazy=True to enable Dask-backed lazy loading, which is memory-efficient for large images.
+# You can also specify chunks for Dask if needed.
+img = sq.im.ImageContainer.load(r.input_obj, lazy=True)
+
+print("Input loaded:\n", r.input_obj)
+print("ImageContainer:\n", img)
+```
+
+# Summarizing initial input summary
+
+We aim to give a first-pass description of object sizes/shapes in the input
+
+```{python input_summary}
+
+# ------------------------------------------------------------------------------
+# This chunk inspects the input image
+# ------------------------------------------------------------------------------
+
+# Duplicate a layer in the ImageContainer obj
+cleaned_img = img[r.sq_layer]
+img.add_img(cleaned_img, layer=r.out_layer)
+
+# Retrieve the Dask array with nuclear staining ([y, x, z, channels])
+binary_mask = img[r.out_layer].data[:, :, 0, r.chan]
+
+# Compute input sizes and shapes
+initial_labels, initial_df = summarize_components(
+    binary_mask,
+    connectivity=r.connectivity)
+```
+
+Metrics:
+
+- Label: A unique integer assigned to each segmented object so individual nuclei 
+  can be identified and tracked separately.
+- Area: The number of foreground pixels belonging to a segmented object, 
+  representing its size in pixel units.
+- Bounding box: The smallest axis-aligned rectangle that fully contains 
+  the segmented object.
+- Eccentricity: A shape descriptor measuring how elongated an object is, 
+  where 0 is circle-like and values closer to 1 are more ellipse-like or stretched.
+- Solidity: The fraction of the object’s area relative to the area of its convex hull,
+  indicating how solid versus indented or irregular the shape is.
+- Extent: The fraction of the bounding box occupied by the object, reflecting how fully 
+ the object fills its enclosing rectangle.
+
+```{r input_summary_df}
+print(head(py$initial_df))
+print(tail(py$initial_df))
+```
+
+# Estimating cleanup parameters adaptively {.tabset}
+
+We examine the distribution of connected-component areas from `initial_df`, as summarized below:
+
+```{python cleanup_parameters}
+
+# ------------------------------------------------------------------------------
+# This chunk calculates estimate parameters
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+param_est = estimate_cleanup_parameters( 
+    initial_df,
+    min_component_quantile=r.min_component_quantile,
+    area_threshold_quantile=r.area_threshold_quantile,
+    large_object_quantile=r.large_object_quantile,
+    max_reasonable_area_multiplier=r.max_reasonable_area_multiplier)
+```
+
+- `min_size`: Lower bound for removing tiny disconnected debris objects
+- `area_threshold`: Maximum hole size that may be filled if `fill_holes = TRUE`
+- `large_object_cutoff`: Upper-tail threshold used to flag unusually large objects for review
+- `median_area`: Useful descriptive summary of the connected-component distribution
+
+Note that the red dashed vertical lines indicate median area. The “after” histogram is shown 
+only to make the distribution easier to read after excluding extreme large objects from plotting;
+it does not mean those large objects are removed from segmentation.
+
+```{r parameters_df, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes area distribution and median area
+# ------------------------------------------------------------------------------
+
+# Print estimated parameters
+df <- as.data.frame(py$param_est)
+knitr::kable(df)
+
+# Remove objects that are greater than large object cutoff
+filtered_df <- py$initial_df %>%
+  dplyr::filter(area <= df[['large_object_cutoff']])
+
+df_list <- list(before=py$initial_df, after=filtered_df)
+
+# Visualize data
+for (name in names(df_list)) {
+    cat('##', name, 'filtering at the large obj cutoff\n\n')
+    print(plot_histo(df_list[[name]]))
+    cat('\n\n')
+}
+```
+
+Note that the red dashed vertical lines indicate median area. 
+
+
+# Cleaning mask
+
+This step performs the following:
+
+- removes very small foreground objects using min_size
+- fills small holes using area_threshold if enabled
+- optionally removes border-touching objects if `border_clear = TRUE`
+
+```{python cleanup_mask}
+
+# ------------------------------------------------------------------------------
+# This chunk cleans the binary mask
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+cleaned_mask = clean_input_mask(
+    binary_mask,
+    min_size=int(param_est["min_size"]),
+    area_threshold=int(param_est["area_threshold"]),
+    connectivity=r.connectivity,
+    fill_holes=bool(r.fill_holes),
+    border_clear=bool(r.border_clear)
+    )
+```
+
+# Segmenting nuclei
+
+This step runs the following if watershed is enabled:
+
+- computes a distance transform on the cleaned mask
+- smooths it
+- finds local maxima as candidate nucleus centers
+- uses marker-controlled watershed to split touching nuclei
+
+We label connected components directly, otherwise.
+
+```{python nuc_seg}
+
+# ------------------------------------------------------------------------------
+# This chunk runs segmentation optionally
+# ------------------------------------------------------------------------------
+
+if bool(r.watershed_for_splitting):
+    nuclear_labels = split_merged_nuclei(
+        cleaned_mask,
+        sigma=r.dt_smoothing_sigma,
+        peak_footprint=r.peak_footprint,
+        connectivity=r.connectivity)
+else:
+    nuclear_labels = measure.label(
+        cleaned_mask,
+        connectivity=r.connectivity
+        )
+```
+
+# Building the final feature table
+
+This step computes per-nucleus measurements from the final labeled image. Refer to the following table
+for detailed information:
+
+- label
+- area
+- centroid
+- bounding box
+- eccentricity
+- solidity
+- extent
+- major/minor axis lengths
+- equivalent diameter
+- perimeter
+
+The `is_large_object_flag` column is included for QC only. It can help identify large connected 
+regions that may represent biologically real extended neuronal structure, merged signal, or 
+segmentation artifacts.
+
+```{python feature_df}
+
+# ------------------------------------------------------------------------------
+# This chunk runs segmentation optionally
+# ------------------------------------------------------------------------------
+
+# Summarize image properties in a data frame
+nuclei_df = regionprops_dataframe(nuclear_labels)
+
+# Add QC flags
+if nuclei_df.shape[0] > 0:
+    large_cutoff = param_est["large_object_cutoff"]
+    nuclei_df["is_large_object_flag"] = nuclei_df["area"] >= large_cutoff
+else:
+    nuclei_df["is_large_object_flag"] = pd.Series(dtype=bool)
+
+print(nuclei_df.head())
+print(nuclei_df.tail())
+
+run_summary = {
+    "input_shape": tuple(binary_mask.shape),
+    "input_foreground_pixels": int(binary_mask.sum()),
+    "cleaned_foreground_pixels": int(cleaned_mask.sum()),
+    "n_initial_components": int(initial_df.shape[0]),
+    "n_final_nuclei": int(nuclei_df.shape[0]),
+    "estimated_min_size": int(param_est["min_size"]),
+    "estimated_area_threshold": int(param_est["area_threshold"]),
+    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
+}
+
+for key,value in run_summary.items():
+    print(key, "=", value)
+```
+
+```{python add_to_img}
+
+# ------------------------------------------------------------------------------
+# This chunk adds the cleaned masked array back to the ImageContainer obj
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Add the cleaned mask array to the ImageContainer obj
+img[r.out_layer].data[:, :, 0, r.chan] = cleaned_mask
+
+# Delete unnecessary layers
+layers_del = [l for l in list(img) if l not in ['image', r.sq_layer, r.out_layer]]
+print("The following layers are deleted: ", layers_del)
+for l in layers_del:
+    del img[l]
+```
+
+# Visualizing cleaned nuclear segmentation {.tabset}
+
+- Input: `r sq_layer`
+- Output: `r out_layer`
+
+Unique pixels at each array are visualized using the following pseudocolors:
+
+```{python vis_prep}
+
+# ------------------------------------------------------------------------------
+# This chunk is used to prepare visualizing processed images
+# ----------------------------------------------------------------------------
+
+# Specify a colormap used for unique pixels
+color_map = {r.sq_layer: 'dodgerblue', r.out_layer: 'orange'}
+for key, value in color_map.items(): 
+    print(key, "=", value)
+
+# Specify a function to visualize unique pixels
+def display_merge(layer_list):
+
+    # Stack binary images
+    for l in layer_list:
+        ar = img[l].data[:, :, 0, r.chan]
+        plt.imshow(ar,
+                   cmap=ListedColormap([(1, 1, 1, 0), color_map[l]]),
+                   alpha=0.5)
+    plt.xticks([])
+    plt.yticks([])
+    plt.savefig(f"{r.out_dir}/unique_pixels.png", dpi=600)
+    plt.show()
+```
+
+```{r vis_images, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes input and output masking
+# ------------------------------------------------------------------------------
+
+# Visualize binary images across the channels
+for (layer in c(sq_layer, out_layer)) {
+    cat("## Channel", chan, "&", layer, "Layer\n\n")
+    # Command to show image
+    t_deparsed_1 <- paste0("img.show('", layer, "', channel=", chan, ", cmap='gray')")
+    t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/", layer, "_channel_", chan,  ".png', dpi=600)")
+    t_deparsed_3 <- "plt.close()"
+    t_deparsed <- c(t_deparsed_1, t_deparsed_2, t_deparsed_3)
+    subchunkify(name=paste0(layer, "_", chan), t_deparsed=t_deparsed)
+
+    link_output(paste0(out_dir, "/", layer, "_channel_", chan, ".png"))
+    cat('\n\n')
+}
+
+# Overlay images before and after cleaning
+cat("## Unique pixels\n\n")
+t_deparsed <- paste0("display_merge(list(color_map.keys()))\n")
+subchunkify(name="unique_pixels", t_deparsed=t_deparsed)
+link_output(paste0(out_dir, "/unique_pixels.png"))
+```
+
+# Summary tables
+
+Excel-readable tables are linked in the following table:
+
+- input summary: object statistics before cleanup
+- nuclear summary: object statistics after cleanup and connected-component labeling
+- parameter summary: adaptive thresholds estimated from the image
+
+```{r summary_tables, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk saves and links output summary tables
+# ------------------------------------------------------------------------------
+
+df_list <- list(
+    input_summary=py$initial_df,
+    nuclear_summary=py$nuclei_df,
+    parameter_summary=py$param_est
+)
+
+path_df <- data.frame(table=names(df_list), link="")
+
+for (name in names(df_list)) {
+    tsv <- file.path(out_dir, paste0(name, ".tsv"))
+    write.table(df_list[[name]],
+                tsv,
+                quote=FALSE,
+                row.names=FALSE,
+                col.names=TRUE)
+    path_df[path_df$table == name, 'link'] <- tsv
+}
+
+knitr::kable(
+    path_df %>%
+        mutate(link=paste0("[", link, "](", link, ")"))
+)
+```
+
+# Saving the `ImageContainer` object
+
+Output images are saved as the following object:
+
+```{python save_zarr}
+
+# ------------------------------------------------------------------------------
+# This chunk saves updated ImageContainer as Zarr
+# ------------------------------------------------------------------------------
+
+img.save(r.output_obj)
+print(r.output_obj)
+```
+
+
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
+
+
+

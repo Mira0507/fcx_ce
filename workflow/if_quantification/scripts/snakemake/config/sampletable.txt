@@ -1,0 +1,10 @@
+samplename	input_image	channel
+Ctrl_EA1101620	../../../../input/if_quantification/EA1101620_Ctrl/Image_235.vsi	multi
+Ctrl_EA0901945	../../../../input/if_quantification/EA0901945_Ctrl/Image_236.vsi	multi
+FTD-GRN_EA1702561	../../../../input/if_quantification/EA1702561_Patient/Image_239.vsi	multi
+FTD-GRN_EA1702410	../../../../input/if_quantification/EA1702410_Patient/Image_241.vsi	multi
+FTD-GRN_EA1300353	../../../../input/if_quantification/EA1300353_Patient/Image_237.vsi	multi
+FTD-GRN_EA1201258	../../../../input/if_quantification/EA1201258_Patient/Image_240.vsi	multi
+FTD-GRN_EA0600308	../../../../input/if_quantification/EA0600308_Patient/Image_238.vsi	multi
+FTD-Sporadic_EA1602805	../../../../input/if_quantification/EA1602805_Sporadic-FTD/Image_01.vsi	multi
+FTD-Sporadic_EA1302454	../../../../input/if_quantification/EA1302454_Sporadic-FTD/Image.vsi	multi

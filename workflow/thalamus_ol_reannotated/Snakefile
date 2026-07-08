@@ -232,9 +232,9 @@ rule extract_junctions:
     output:
         junc = "{outdir}/bed/cell/{sc_barcode}.junc"
     resources:
-        mem_mb = 1024 * 10,
-        disk_mb = 1024 * 5,
-        runtime = 60
+        mem_mb = 1024 * 40,
+        disk_mb = 1024 * 10,
+        runtime = 60 * 2
     threads: 1
     shell:
         """

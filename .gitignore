@@ -2,6 +2,7 @@
 input/
 *.log
 *results/
+*.zip
 .DS_Store
 ._.DS_Store
 *logs/
@@ -26,3 +27,7 @@ results*/
 *visium-thalamus-allcells/
 *visium-thalamus/
 *sc-pseudobulk-v2/
+*dapi/
+*map2/
+*.Rhistory
+*tdp43/
