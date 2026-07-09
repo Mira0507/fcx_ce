@@ -84,7 +84,7 @@ celltype_col <- "annotation_04142026"
 selection_col <- "general_disease"
 
 # Filter specific barcodes based on the `selection_col` column in the metadata?
-# Set to NULL if you want to use all samples
+# Set to NULL to disable
 barcode_selection <- NULL
 
 # Specify genes of interest
@@ -369,7 +369,7 @@ rctd_list <- lapply(
 ```
 
 ```{r vis_rctd_doublet, results='asis'}
-stop()
+
 # --------------------------------------------------------------------------------
 # This chunk visualizes RCTD results from the doublet mode
 # --------------------------------------------------------------------------------
@@ -528,7 +528,6 @@ for (name in Images(seurat)) {
 ```
 
 # Updated Seurat obj
-
 
 ```{r save}
 
