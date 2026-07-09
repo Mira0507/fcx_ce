@@ -2821,3 +2821,16 @@ fcx_ce
     - notes
         - worked on QC visualization
 
+2026-07-08
+----------
+
+@Mira0507
+
+- Draft TDP43 quantification script
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+    - notes
+        - worked on visualizing assigned objects
+
