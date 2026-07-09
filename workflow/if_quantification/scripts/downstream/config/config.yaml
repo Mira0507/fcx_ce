@@ -96,3 +96,36 @@ integration:
     # Maximum fallback distance (in pixels) allowed when overlap-based assignment fails.
     # A value of 0 disables distance-based reassignment and enforces overlap-only matching.
     assignment_max_distance: 10
+
+tissue:
+    # If true, build a shared tissue-support mask and use it to suppress
+    # out-of-sample objects across the nuclear, cytoplasmic, and target masks.
+    enabled: true
+
+    # Channel combination used to define the tissue footprint.
+    # "nuc_plus_cyt" is the safest default because DAPI and MAP2 define the
+    # compartment-support region without allowing isolated target artifacts to define tissue.
+    source: "nuc_plus_cyt"
+
+    # Minimum connected-component size retained in the raw tissue-support mask.
+    # Smaller components are treated as likely debris outside the tissue section.
+    min_size: 5000
+
+    # Maximum hole size filled inside the tissue-support mask.
+    # This helps consolidate the tissue footprint without aggressively altering its outer shape.
+    hole_area: 20000
+
+    # Radius of the binary closing footprint used to bridge narrow gaps and small fractures
+    # in the tissue-support mask.
+    closing_radius: 15
+
+    # Radius of the binary dilation footprint used to slightly expand the tissue-support mask
+    # so edge-adjacent biological signal is not excluded.
+    dilation_radius: 20
+
+    # Number of largest connected tissue components to retain after cleanup.
+    # Use 1 for a single dominant tissue section; increase only if valid tissue is fragmented.
+    keep_n_largest: 1
+
+    # Minimum area required for a cleaned tissue component to be retained as a plausible sample region.
+    min_component_area: 50000

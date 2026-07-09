@@ -151,6 +151,70 @@ def regionprops_dataframe(label_img):
     )
     return pd.DataFrame(props)
 
+def build_tissue_mask(
+    nuclear_mask,
+    cytoplasmic_mask,
+    target_mask=None,
+    source="nuc_plus_cyt",
+    min_size=5000,
+    hole_area=20000,
+    closing_radius=15,
+    dilation_radius=20,
+    keep_n_largest=1,
+    min_component_area=50000
+):
+    """Build a broad tissue-support mask to suppress out-of-sample artifacts."""
+
+    nuclear_mask = nuclear_mask.astype(bool)
+    cytoplasmic_mask = cytoplasmic_mask.astype(bool)
+
+    if target_mask is not None:
+        target_mask = target_mask.astype(bool)
+
+    # Build the raw tissue-support mask from the selected channel combination
+    if source == "nuc_plus_cyt":
+        tissue_mask = np.logical_or(nuclear_mask, cytoplasmic_mask)
+    elif source == "all_channels":
+        if target_mask is None:
+            raise ValueError("target_mask must be provided when source='all_channels'")
+        tissue_mask = nuclear_mask | cytoplasmic_mask | target_mask
+    else:
+        raise ValueError(f"Unsupported tissue source: {source}")
+
+    # Morphology cleanup to consolidate the sample footprint
+    tissue_mask = morphology.remove_small_objects(tissue_mask, min_size=min_size)
+    tissue_mask = morphology.remove_small_holes(tissue_mask, area_threshold=hole_area)
+
+    if closing_radius > 0:
+        tissue_mask = morphology.binary_closing(
+            tissue_mask,
+            footprint=morphology.disk(closing_radius)
+        )
+
+    if dilation_radius > 0:
+        tissue_mask = morphology.binary_dilation(
+            tissue_mask,
+            footprint=morphology.disk(dilation_radius)
+        )
+
+    # Keep only the largest plausible tissue component(s)
+    tissue_labels = measure.label(tissue_mask)
+    props = measure.regionprops(tissue_labels)
+
+    props = sorted(props, key=lambda x: x.area, reverse=True)
+
+    keep_labels = [
+        p.label for p in props[:keep_n_largest]
+        if p.area >= min_component_area
+    ]
+
+    if keep_labels:
+        tissue_mask = np.isin(tissue_labels, keep_labels)
+    else:
+        tissue_mask = np.zeros_like(tissue_mask, dtype=bool)
+
+    return tissue_mask
+
 # Save a single binary mask as a grayscale image
 def save_mask_plot(ar, out_path, cmap="gray", title=None):
     plt.imshow(ar, cmap=cmap)
