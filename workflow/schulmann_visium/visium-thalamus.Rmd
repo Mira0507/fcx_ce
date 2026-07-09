@@ -79,6 +79,14 @@ h5ad_list <- list(
 # Path to output directory
 out_dir <- "visium-thalamus"
 
+# Column names for cell subtypes and disease conditions
+celltype_col <- "annotation_04142026"
+selection_col <- "general_disease"
+
+# Filter specific barcodes based on the `selection_col` column in the metadata?
+# Set to NULL if you want to use all samples
+barcode_selection <- NULL
+
 # Specify genes of interest
 gene_list <- list(
     set1=c('SYT1', 'GAD2', 'SOX14'),
@@ -110,9 +118,6 @@ gene_list <- list(
         'CALB1'
     )
 )
-
-# Annotation column name
-celltype_col <- "annotation_04142026"
 
 # Specify colors for plots
 plot_colors <- c('#F4F1DE', '#E07A5F', '#3D405B', '#4ecdc4')
@@ -280,7 +285,24 @@ subset(nCount_RNA > 0)
 print(ad_seurat)
 ```
 
-```{r prep_rctd, cache=TRUE, dependson='adata_to_seurat'}
+```{r select_cells, cache=TRUE, dependson='adata_to_seurat'}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally selects samples of interest
+# --------------------------------------------------------------------------------
+
+if (!is.null(barcode_selection)) {
+    m_df <- ad_seurat@meta.data
+    barcodes_selected <- m_df[m_df[[selection_col]] %in% barcode_selection,] %>%
+        rownames()
+    print(paste0(length(barcodes_selected), " cells are filtered to proceed with the next steps."))
+    print(paste0("These are for the following cells: ", barcode_selection, " in ", selection_col))
+    ad_seurat <- subset(ad_seurat, cells=barcodes_selected)
+    print(ad_seurat)
+}
+```
+
+```{r prep_rctd, cache=TRUE, dependson=c('adata_to_seurat', 'select_cells')}
 
 # --------------------------------------------------------------------------------
 # This chunk preps input for RCTD
@@ -305,6 +327,7 @@ reference <- Reference(counts, cluster, nUMI)
 
 # Prep a list of query across images
 query_list <- mclapply(1:length(Images(seurat)), function(i) {
+
     # Extract raw counts per image
     ct <- GetAssayData(
         seurat,
@@ -346,7 +369,7 @@ rctd_list <- lapply(
 ```
 
 ```{r vis_rctd_doublet, results='asis'}
-
+stop()
 # --------------------------------------------------------------------------------
 # This chunk visualizes RCTD results from the doublet mode
 # --------------------------------------------------------------------------------
