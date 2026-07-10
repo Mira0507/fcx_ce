@@ -527,6 +527,59 @@ for (name in Images(seurat)) {
 }
 ```
 
+## Annotation transfer - individual proportions {.tabset}
+
+Here, we visualize the proportion of individual cell subtypes ranging from 0 to 1.
+
+```{r vis_rctd_individual, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk preps plots the proportion of cell subtypes computed using the multi-node RCTD
+# --------------------------------------------------------------------------------
+
+for (name in Images(seurat)) {
+
+    cat('###', name, '{.tabset}\n\n')
+    for (celltype in all_celltypes) {
+
+        # Prep input data frame
+        cat('####', celltype, '{.tabset}\n\n')
+        coords <- GetTissueCoordinates(seurat, image=name) %>%
+            set_names(c('x', 'y'))
+        coords <- weights_df[rownames(coords),] %>%
+            dplyr::select(celltype) %>%
+            cbind(coords)
+        colnames(coords)[1] <- 'proportion'
+
+        for (prop in c('fixed', 'adjusted')) {
+
+            cat('#####', prop, 'scale\n\n')
+            # Plot celltype proportions by coordinate
+            p <- ggplot(coords, aes(x=x, y=y, color=proportion)) +
+                geom_point(size=0.5) +
+                custom_theme() + 
+                coord_flip() + 
+                scale_x_reverse() 
+            p  <- if (prop == "fixed") {
+                p + scale_color_gradient(low='yellow', high='red', limits=c(0, 1))
+            } else {
+                p + scale_color_gradient(low='yellow', high='red')
+            }
+
+            print(p)
+
+            # Save and link
+            p_path <- file.path(
+                out_dir,
+                paste0(name, '_', celltype, '_', prop, '.svg'))
+            ggsave(p_path, p, device="svg")
+            link_plot(p_path)
+        }
+    }
+}
+```
+
+
 # Updated Seurat obj
 
 ```{r save}
