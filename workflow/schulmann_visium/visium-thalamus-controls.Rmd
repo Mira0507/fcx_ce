@@ -493,6 +493,8 @@ seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 
 names(plot_colors) <- all_celltypes
 
+coords_list <- list()
+
 for (name in Images(seurat)) {
     cat('###', name, '\n\n')
 
@@ -502,6 +504,7 @@ for (name in Images(seurat)) {
     coords <- cbind(
         coords,
         weights_df[rownames(coords), all_celltypes])
+    coords_list[[name]] <- coords
 
     # Plot celltype proportions by coordinate
     p <- ggplot() +
@@ -540,22 +543,23 @@ Here, we visualize the proportion of individual cell subtypes ranging from 0 to 
 for (name in Images(seurat)) {
 
     cat('###', name, '{.tabset}\n\n')
+
+    # Extract the coordinate data frame for each celltype
+    coords <- coords_list[[name]]
+
     for (celltype in all_celltypes) {
 
         # Prep input data frame
         cat('####', celltype, '{.tabset}\n\n')
-        coords <- GetTissueCoordinates(seurat, image=name) %>%
-            set_names(c('x', 'y'))
-        coords <- weights_df[rownames(coords),] %>%
-            dplyr::select(celltype) %>%
-            cbind(coords)
-        colnames(coords)[1] <- 'proportion'
+        # Filter a single celltype
+        coords_i <- coords[, c('x', 'y', celltype)]
+        colnames(coords_i)[3] <- 'proportion'
 
         for (prop in c('fixed', 'adjusted')) {
 
             cat('#####', prop, 'scale\n\n')
             # Plot celltype proportions by coordinate
-            p <- ggplot(coords, aes(x=x, y=y, color=proportion)) +
+            p <- ggplot(coords_i, aes(x=x, y=y, color=proportion)) +
                 geom_point(size=0.5) +
                 custom_theme() + 
                 coord_flip() + 
