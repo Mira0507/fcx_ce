@@ -2834,3 +2834,25 @@ fcx_ce
     - notes
         - worked on visualizing assigned objects
 
+2026-07-09
+----------
+
+@Mira0507
+
+- Update deconvolution scripts for Schulmann et al. Visium dataset
+    - conda env: ``venv``
+    - script: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd`` (all samples)
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd`` (control samples only)
+    - notes
+        - optionally filtered barcodes of interest
+        - plotted individual cell proportions per spot
+
+- Draft TDP43 quantification script
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+    - notes
+        - slide glass artifacts removal added
