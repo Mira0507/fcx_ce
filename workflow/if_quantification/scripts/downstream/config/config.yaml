@@ -98,34 +98,43 @@ integration:
     assignment_max_distance: 10
 
 tissue:
-    # If true, build a shared tissue-support mask and use it to suppress
-    # out-of-sample objects across the nuclear, cytoplasmic, and target masks.
+    # Enable shared tissue-footprint masking before downstream QC and quantification.
+    # This removes obvious out-of-sample objects across all masks.
     enabled: true
 
-    # Channel combination used to define the tissue footprint.
-    # "nuc_plus_cyt" is the safest default because DAPI and MAP2 define the
-    # compartment-support region without allowing isolated target artifacts to define tissue.
+    # Channels used to build the initial tissue-support mask. "nuc_plus_cyt" or "all_channels"
+    # "nuc_plus_cyt" is the safer default because it does not let target-channel noise define tissue.
     source: "nuc_plus_cyt"
 
-    # Minimum connected-component size retained in the raw tissue-support mask.
-    # Smaller components are treated as likely debris outside the tissue section.
-    min_size: 5000
+    # ----------- Customize the following values and uncomment, if necessary -----------------
+    # Minimum connected-component size kept in the tissue mask.
+    # Increase this to remove more small debris; decrease it if valid tissue fragments are being lost.
+    # min_size: 1000
 
     # Maximum hole size filled inside the tissue-support mask.
-    # This helps consolidate the tissue footprint without aggressively altering its outer shape.
-    hole_area: 20000
+    # Larger values make the tissue footprint more continuous.
+    # hole_area: 20000
 
-    # Radius of the binary closing footprint used to bridge narrow gaps and small fractures
-    # in the tissue-support mask.
-    closing_radius: 15
+    # Radius used for binary closing to bridge small gaps in the tissue mask.
+    # Larger values connect nearby regions more aggressively.
+    # closing_radius: 9
 
-    # Radius of the binary dilation footprint used to slightly expand the tissue-support mask
-    # so edge-adjacent biological signal is not excluded.
-    dilation_radius: 20
+    # Radius used to slightly expand the cleaned tissue mask.
+    # This helps avoid trimming valid signal near tissue edges.
+    # dilation_radius: 12
 
-    # Number of largest connected tissue components to retain after cleanup.
-    # Use 1 for a single dominant tissue section; increase only if valid tissue is fragmented.
-    keep_n_largest: 1
+    # Rule for deciding which cleaned tissue components to keep.
+    # "largest_n" is stricter; "min_area" is more permissive for fragmented tissue.
+    # component_policy: "min_area"
 
-    # Minimum area required for a cleaned tissue component to be retained as a plausible sample region.
-    min_component_area: 50000
+    # Number of largest components to keep when using "largest_n".
+    # This is ignored when component_policy is "min_area".
+    # keep_n_largest: 1
+
+    # Minimum area required for a tissue component to be retained.
+    # Lower this if real tissue pieces are being removed.
+    # min_component_area: 20000
+
+    # Optional rescue radius around the original nuclear mask.
+    # This helps preserve valid nucleus-supported regions that a strict tissue mask might trim away.
+    # nuclear_rescue_radius: 5

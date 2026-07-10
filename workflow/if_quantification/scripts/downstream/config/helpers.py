@@ -155,23 +155,69 @@ def build_tissue_mask(
     nuclear_mask,
     cytoplasmic_mask,
     target_mask=None,
+    mode="conservative",
     source="nuc_plus_cyt",
-    min_size=5000,
-    hole_area=20000,
-    closing_radius=15,
-    dilation_radius=20,
-    keep_n_largest=1,
-    min_component_area=50000
+    min_size=None,
+    hole_area=None,
+    closing_radius=None,
+    dilation_radius=None,
+    component_policy=None,
+    keep_n_largest=None,
+    min_component_area=None,
+    nuclear_rescue_radius=None
 ):
-    """Build a broad tissue-support mask to suppress out-of-sample artifacts."""
+    """Build a broad tissue-support mask for removing out-of-sample artifacts."""
 
-    nuclear_mask = nuclear_mask.astype(bool)
-    cytoplasmic_mask = cytoplasmic_mask.astype(bool)
+    # Convert inputs to boolean arrays so logical and morphology operations behave consistently.
+    nuclear_mask = np.asarray(nuclear_mask).astype(bool)
+    cytoplasmic_mask = np.asarray(cytoplasmic_mask).astype(bool)
 
+    # Convert the optional target mask only if it is provided.
     if target_mask is not None:
-        target_mask = target_mask.astype(bool)
+        target_mask = np.asarray(target_mask).astype(bool)
 
-    # Build the raw tissue-support mask from the selected channel combination
+    # Set mode-specific defaults, while allowing explicit arguments to override them.
+    if mode == "regular":
+        if min_size is None:
+            min_size = 5000
+        if hole_area is None:
+            hole_area = 20000
+        if closing_radius is None:
+            closing_radius = 15
+        if dilation_radius is None:
+            dilation_radius = 20
+        if component_policy is None:
+            component_policy = "largest_n"
+        if keep_n_largest is None:
+            keep_n_largest = 1
+        if min_component_area is None:
+            min_component_area = 50000
+        if nuclear_rescue_radius is None:
+            nuclear_rescue_radius = 0
+
+    elif mode == "conservative":
+        if min_size is None:
+            min_size = 1000
+        if hole_area is None:
+            hole_area = 20000
+        if closing_radius is None:
+            closing_radius = 9
+        if dilation_radius is None:
+            dilation_radius = 12
+        if component_policy is None:
+            component_policy = "min_area"
+        if keep_n_largest is None:
+            keep_n_largest = 1
+        if min_component_area is None:
+            min_component_area = 20000
+        if nuclear_rescue_radius is None:
+            nuclear_rescue_radius = 5
+
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
+
+    # Build the initial tissue-support seed from the requested channel set.
+    # The nucleus + cytoplasm option is usually the safest default.
     if source == "nuc_plus_cyt":
         tissue_mask = np.logical_or(nuclear_mask, cytoplasmic_mask)
     elif source == "all_channels":
@@ -181,38 +227,70 @@ def build_tissue_mask(
     else:
         raise ValueError(f"Unsupported tissue source: {source}")
 
-    # Morphology cleanup to consolidate the sample footprint
-    tissue_mask = morphology.remove_small_objects(tissue_mask, min_size=min_size)
-    tissue_mask = morphology.remove_small_holes(tissue_mask, area_threshold=hole_area)
-
+    # Bridge small gaps and fractures in the tissue-support mask.
     if closing_radius > 0:
         tissue_mask = morphology.binary_closing(
             tissue_mask,
             footprint=morphology.disk(closing_radius)
         )
 
+    # Fill small holes inside the tissue footprint.
+    if hole_area > 0:
+        tissue_mask = morphology.remove_small_holes(
+            tissue_mask,
+            area_threshold=hole_area
+        )
+
+    # Remove very small disconnected objects that are unlikely to be real tissue.
+    if min_size > 0:
+        tissue_mask = morphology.remove_small_objects(
+            tissue_mask,
+            min_size=min_size
+        )
+
+    # Slightly expand the tissue mask to preserve edge-adjacent valid signal.
     if dilation_radius > 0:
         tissue_mask = morphology.binary_dilation(
             tissue_mask,
             footprint=morphology.disk(dilation_radius)
         )
 
-    # Keep only the largest plausible tissue component(s)
+    # Label connected tissue regions for component-based filtering.
     tissue_labels = measure.label(tissue_mask)
     props = measure.regionprops(tissue_labels)
 
-    props = sorted(props, key=lambda x: x.area, reverse=True)
+    # Keep only the largest N components when using the stricter policy.
+    if component_policy == "largest_n":
+        props = sorted(props, key=lambda x: x.area, reverse=True)
+        keep_labels = [
+            p.label for p in props[:keep_n_largest]
+            if p.area >= min_component_area
+        ]
 
-    keep_labels = [
-        p.label for p in props[:keep_n_largest]
-        if p.area >= min_component_area
-    ]
+    # Keep all components above the minimum area when using the more permissive policy.
+    elif component_policy == "min_area":
+        keep_labels = [
+            p.label for p in props
+            if p.area >= min_component_area
+        ]
+    else:
+        raise ValueError(f"Unsupported component_policy: {component_policy}")
 
+    # Rebuild the mask from retained components, or return an empty mask if none pass.
     if keep_labels:
         tissue_mask = np.isin(tissue_labels, keep_labels)
     else:
         tissue_mask = np.zeros_like(tissue_mask, dtype=bool)
 
+    # Optionally rescue nucleus-supported regions that may have been trimmed away.
+    if nuclear_rescue_radius > 0:
+        nuclear_rescue = morphology.binary_dilation(
+            nuclear_mask,
+            footprint=morphology.disk(nuclear_rescue_radius)
+        )
+        tissue_mask = np.logical_or(tissue_mask, nuclear_rescue)
+
+    # Return the final cleaned tissue-support mask.
     return tissue_mask
 
 # Save a single binary mask as a grayscale image
