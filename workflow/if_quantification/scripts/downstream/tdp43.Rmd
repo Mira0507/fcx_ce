@@ -415,7 +415,7 @@ if r.tissue["enabled"]:
         nuclear_mask=nuclear_mask,
         cytoplasmic_mask=cytoplasmic_mask,
         target_mask=target_clean,
-        mode=tissue_mode,
+        mode=r.tissue_mode,
         source=r.tissue["source"],
     )
 
@@ -444,7 +444,7 @@ if r.tissue["enabled"]:
         "target_cytoplasmic_pixels_after_tissue_mask": int(target_cytoplasmic_mask.sum()),
         "target_other_pixels_after_tissue_mask": int(target_other_mask.sum())
     }])
-    print(f"Slide glass artifacts have been removed using the {tissue_modue} mode")
+    print(f"Slide glass artifacts have been removed using the {r.tissue_modue} mode")
 
 ```
 
