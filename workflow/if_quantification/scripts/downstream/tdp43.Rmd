@@ -369,7 +369,7 @@ Images:
 mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
 path_dic = {}
 for key, value in mask_dic.items():
-    out_path = f"{r.out_dir}/{key}_mask.png"
+    out_path = f"{r.out_dir}/{key}_mask_initial.png"
     save_mask_plot(value, out_path)
     path_dic[key] = out_path
 ```
@@ -434,12 +434,25 @@ if r.tissue["enabled"]:
         "target_cytoplasmic_pixels_after_tissue_mask": int(target_cytoplasmic_mask.sum()),
         "target_other_pixels_after_tissue_mask": int(target_other_mask.sum())
     }])
-    Print("Slide glass artifacts have been removed!")
+    print("Slide glass artifacts have been removed!")
 
 ```
 
-```{r tissue_summary, results='asis'}
-stop()
+```{r print_tissue_summary, results='asis'}
+if (!is.null(tissue[['enabled']])) {
+    tissue_df <- t(py$tissue_summary) %>%
+        as.data.frame()
+    colnames(tissue_df) <- 'value'
+    print(knitr::kable(tissue_df))
+    path <- file.path(out_dir, "tissue_summary.tsv")
+    write.table(tissue_df,
+                path,
+                sep="\t",
+                quote=FALSE,
+                row.names=TRUE,
+                col.names=TRUE)
+    link_output(path)
+}
 ```
 
 # Masks after removing slide glass artifacts (optional)
@@ -454,7 +467,7 @@ if r.tissue["enabled"]:
     mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
     path_dic = {}
     for key, value in mask_dic.items():
-        out_path = f"{r.out_dir}/{key}_mask.png"
+        out_path = f"{r.out_dir}/{key}_mask_artifacts_removed.png"
         save_mask_plot(value, out_path)
         path_dic[key] = out_path
 ```
@@ -741,7 +754,9 @@ compartment_summary_df = pd.DataFrame([{
 ```
 
 ```{r compartment_summary, results='asis'}
-knitr::kable(t(py$compartment_summary_df) %>% as.data.frame %>% set_names('value'))
+knitr::kable(t(py$compartment_summary_df) %>%
+    as.data.frame %>%
+    set_names('value'))
 ```
 
 # Building per-nucleus summary metrics
