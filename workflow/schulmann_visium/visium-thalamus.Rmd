@@ -120,7 +120,7 @@ gene_list <- list(
 )
 
 # Specify colors for plots
-plot_colors <- c('#F4F1DE', '#E07A5F', '#3D405B', '#4ecdc4')
+plot_colors <- c('#F4F1DE', '#E07A5F', '#BDB76B', '#4ecdc4')
 
 # Create directories if missing
 for (p in c(out_dir)) {
@@ -256,7 +256,7 @@ all_barcodes = list(adata.obs.index)
 To transfer annotations from the annotated dataset to the Visium dataset, the annotated dataset is converted
 into a Seurat obj.
 
-## Annotation transfer - doublet mode {.tabset}
+## Doublet mode {.tabset}
 
 Annotation transfer with the doublet mode option computes in the following two cell subtypes:
 
@@ -368,10 +368,14 @@ rctd_list <- lapply(
     set_names(names(query_list))
 ```
 
-```{r vis_rctd_doublet, results='asis'}
+### Per-celltype {.tabset}
+
+The top 2 cell subtypes are visualized separately.
+
+```{r doublet_separated, results='asis'}
 
 # --------------------------------------------------------------------------------
-# This chunk visualizes RCTD results from the doublet mode
+# This chunk visualizes RCTD results from the doublet mode separately
 # --------------------------------------------------------------------------------
 
 # Add RCTD results to the metadata of Visium obj
@@ -394,7 +398,7 @@ names(plot_cols) <- levels(c(rctd_df[['first_type']], rctd_df[['second_df']]))
 
 # Plot and save
 for (name in Images(seurat)) {
-    cat('###', name, '\n\n')
+    cat('####', name, '\n\n')
     p_list <- mclapply(c('first_type', 'second_type'), function(anno) {
         SpatialDimPlot(seurat,
                        group.by=anno,
@@ -408,13 +412,73 @@ for (name in Images(seurat)) {
     })
     p <- p_list[[1]] | p_list[[2]]
     print(p)
-    p_path <- file.path(out_dir, paste0(name, '_annotated.svg'))
+    p_path <- file.path(out_dir, paste0(name, '_doublet_sep.svg'))
     ggsave(p_path, p, device="svg")
     link_plot(p_path)
 }
 ```
 
-## Annotation transfer - celltype proportions {.tabset}
+### Per-spot {.tabset}
+
+The top 2 cell subtypes are visualized across spots with a uniform weight.
+
+```{r doublet_both, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk visualizes RCTD results from the doublet mode in a single plot
+# --------------------------------------------------------------------------------
+# Specify colors for plots
+plot_cols <- c(plot_colors, "black")
+
+coords_list <- list()
+
+for (name in Images(seurat)) {
+    cat('####', name, '\n\n')
+
+    # Prep input data frame
+    coords <- GetTissueCoordinates(seurat, image=name) %>%
+        set_names(c('x', 'y'))
+    coords_list[[name]] <- coords
+    celltype_df <- seurat@meta.data[, c('first_type', 'second_type')]
+    coords <- cbind(coords, celltype_df[rownames(coords),])
+    # Extract celltypes
+    top_celltypes <- as.vector(celltype_df) %>%
+        unlist() %>%
+        unique() %>%
+        levels()
+
+    # Add celltype columns with an weight of 0.5 if they align with any of the top 2 celltypes
+    for (c in top_celltypes) {
+        coords[, c] <- ifelse(
+            coords$first_type == c & coords$second_type == c, 1, 
+            ifelse(coords$first_type != c & coords$second_type != c, 0, 0.5))
+    }
+
+    # Plot celltype proportions by coordinate
+    p <- ggplot() +
+        scatterpie::geom_scatterpie(
+            data=coords,
+            cols=top_celltypes,
+            color=NA,
+            aes(x=x, y=y, r=1)) +
+        coord_equal() +
+        custom_theme() +
+        coord_flip() + 
+        scale_x_reverse() +
+        scale_fill_manual(values=plot_cols)
+
+    print(p)
+
+    # Save and link
+    p_path <- file.path(
+        out_dir,
+        paste0(name, '_doublet_both.svg'))
+    ggsave(p_path, p, device="svg")
+    link_plot(p_path)
+}
+```
+
+## Multi mode {.tabset}
 
 Since two cell subtypes do not adequately represent all transferred celltypes, we assess the proportion of 
 cell subtypes across the annotated celltypes.
@@ -485,6 +549,8 @@ weights_df <- weights_df[colnames(seurat),]
 seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 ```
 
+### Proportion piescatter plot {.tabset}
+
 ```{r vis_rctd_multi, results='asis'}
 
 # --------------------------------------------------------------------------------
@@ -493,14 +559,11 @@ seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 
 names(plot_colors) <- all_celltypes
 
-coords_list <- list()
-
 for (name in Images(seurat)) {
-    cat('###', name, '\n\n')
+    cat('####', name, '\n\n')
 
     # Prep input data frame
-    coords <- GetTissueCoordinates(seurat, image=name) %>%
-        set_names(c('x', 'y'))
+    coords <- coords_list[[name]]
     coords <- cbind(
         coords,
         weights_df[rownames(coords), all_celltypes])
@@ -530,7 +593,7 @@ for (name in Images(seurat)) {
 }
 ```
 
-## Annotation transfer - individual proportions {.tabset}
+### Density heatmap {.tabset}
 
 Here, we visualize the proportion of individual cell subtypes ranging from 0 to 1.
 
@@ -542,7 +605,7 @@ Here, we visualize the proportion of individual cell subtypes ranging from 0 to 
 
 for (name in Images(seurat)) {
 
-    cat('###', name, '{.tabset}\n\n')
+    cat('####', name, '{.tabset}\n\n')
 
     # Extract the coordinate data frame for each celltype
     coords <- coords_list[[name]]
@@ -550,14 +613,14 @@ for (name in Images(seurat)) {
     for (celltype in all_celltypes) {
 
         # Prep input data frame
-        cat('####', celltype, '{.tabset}\n\n')
+        cat('#####', celltype, '{.tabset}\n\n')
         # Filter a single celltype
         coords_i <- coords[, c('x', 'y', celltype)]
         colnames(coords_i)[3] <- 'proportion'
 
         for (prop in c('fixed', 'adjusted')) {
 
-            cat('#####', prop, 'scale\n\n')
+            cat('######', prop, 'scale\n\n')
             # Plot celltype proportions by coordinate
             p <- ggplot(coords_i, aes(x=x, y=y, color=proportion)) +
                 geom_point(size=0.5) +
@@ -582,8 +645,6 @@ for (name in Images(seurat)) {
     }
 }
 ```
-
-
 
 # Updated Seurat obj
 
