@@ -493,6 +493,8 @@ seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 
 names(plot_colors) <- all_celltypes
 
+coords_list <- list()
+
 for (name in Images(seurat)) {
     cat('###', name, '\n\n')
 
@@ -502,6 +504,7 @@ for (name in Images(seurat)) {
     coords <- cbind(
         coords,
         weights_df[rownames(coords), all_celltypes])
+    coords_list[[name]] <- coords
 
     # Plot celltype proportions by coordinate
     p <- ggplot() +
@@ -526,6 +529,61 @@ for (name in Images(seurat)) {
     link_plot(p_path)
 }
 ```
+
+## Annotation transfer - individual proportions {.tabset}
+
+Here, we visualize the proportion of individual cell subtypes ranging from 0 to 1.
+
+```{r vis_rctd_individual, results='asis'}
+
+# --------------------------------------------------------------------------------
+# This chunk preps plots the proportion of cell subtypes computed using the multi-node RCTD
+# --------------------------------------------------------------------------------
+
+for (name in Images(seurat)) {
+
+    cat('###', name, '{.tabset}\n\n')
+
+    # Extract the coordinate data frame for each celltype
+    coords <- coords_list[[name]]
+
+    for (celltype in all_celltypes) {
+
+        # Prep input data frame
+        cat('####', celltype, '{.tabset}\n\n')
+        # Filter a single celltype
+        coords_i <- coords[, c('x', 'y', celltype)]
+        colnames(coords_i)[3] <- 'proportion'
+
+        for (prop in c('fixed', 'adjusted')) {
+
+            cat('#####', prop, 'scale\n\n')
+            # Plot celltype proportions by coordinate
+            p <- ggplot(coords_i, aes(x=x, y=y, color=proportion)) +
+                geom_point(size=0.5) +
+                custom_theme() + 
+                coord_flip() + 
+                scale_x_reverse() 
+            p  <- if (prop == "fixed") {
+                p + scale_color_gradient(low='yellow', high='red', limits=c(0, 1))
+            } else {
+                p + scale_color_gradient(low='yellow', high='red')
+            }
+
+            print(p)
+
+            # Save and link
+            p_path <- file.path(
+                out_dir,
+                paste0(name, '_', celltype, '_', prop, '.svg'))
+            ggsave(p_path, p, device="svg")
+            link_plot(p_path)
+        }
+    }
+}
+```
+
+
 
 # Updated Seurat obj
 
