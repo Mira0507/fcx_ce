@@ -87,6 +87,11 @@ assignment_max_distance <- config[['integration']][['assignment_max_distance']]
 
 # Optional removal of out-of-sample artifacts
 tissue <- config[['tissue']]
+# Configure how to remove out-of-sample artifacts: "regular" or "conservative"
+# "regular" applies stricter cleanup and usually keeps only the largest
+# plausible tissue region. "conservative" applies lighter cleanup and keeps
+# more fragmented tissue, with optional rescue of nucleus-supported regions.
+tissue_mode <- "regular" # set to "regular" or "conservative"
 
 # Load helper functions
 source(config[['helper']][['R']])
@@ -386,7 +391,17 @@ knitr::kable()
 
 # Removing slide glass artifacts (optional)
 
-This section aims to remove artifacts outside the tissue area.
+This section aims to remove artifacts outside the tissue area, using one of the two methods:
+
+- **regular**: builds a stricter tissue-support mask intended for images with one dominant,
+  well-connected tissue section. It uses stronger cleanup and keeps only the largest 
+  plausible tissue component(s), which helps remove out-of-sample artifacts but may trim
+  fragmented valid tissue.
+
+- **conservative**: builds a more permissive tissue-support mask intended for images
+  where valid tissue is sparse, fragmented, or weakly connected. It uses lighter cleanup,
+  keeps all sufficiently large tissue components, and can rescue nucleus-supported regions
+  to reduce loss of real in-tissue objects.
 
 ```{python tissue_mask}
 
@@ -400,13 +415,8 @@ if r.tissue["enabled"]:
         nuclear_mask=nuclear_mask,
         cytoplasmic_mask=cytoplasmic_mask,
         target_mask=target_clean,
+        mode=tissue_mode,
         source=r.tissue["source"],
-        min_size=r.tissue["min_size"],
-        hole_area=r.tissue["hole_area"],
-        closing_radius=r.tissue["closing_radius"],
-        dilation_radius=r.tissue["dilation_radius"],
-        keep_n_largest=r.tissue["keep_n_largest"],
-        min_component_area=r.tissue["min_component_area"]
     )
 
     # Apply the shared tissue-support mask to all downstream masks
@@ -434,7 +444,7 @@ if r.tissue["enabled"]:
         "target_cytoplasmic_pixels_after_tissue_mask": int(target_cytoplasmic_mask.sum()),
         "target_other_pixels_after_tissue_mask": int(target_other_mask.sum())
     }])
-    print("Slide glass artifacts have been removed!")
+    print(f"Slide glass artifacts have been removed using the {tissue_modue} mode")
 
 ```
 
