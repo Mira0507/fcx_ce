@@ -96,3 +96,45 @@ integration:
     # Maximum fallback distance (in pixels) allowed when overlap-based assignment fails.
     # A value of 0 disables distance-based reassignment and enforces overlap-only matching.
     assignment_max_distance: 10
+
+tissue:
+    # Enable shared tissue-footprint masking before downstream QC and quantification.
+    # This removes obvious out-of-sample objects across all masks.
+    enabled: true
+
+    # Channels used to build the initial tissue-support mask. "nuc_plus_cyt" or "all_channels"
+    # "nuc_plus_cyt" is the safer default because it does not let target-channel noise define tissue.
+    source: "nuc_plus_cyt"
+
+    # ----------- Customize the following values and uncomment, if necessary -----------------
+    # Minimum connected-component size kept in the tissue mask.
+    # Increase this to remove more small debris; decrease it if valid tissue fragments are being lost.
+    # min_size: 1000
+
+    # Maximum hole size filled inside the tissue-support mask.
+    # Larger values make the tissue footprint more continuous.
+    # hole_area: 20000
+
+    # Radius used for binary closing to bridge small gaps in the tissue mask.
+    # Larger values connect nearby regions more aggressively.
+    # closing_radius: 9
+
+    # Radius used to slightly expand the cleaned tissue mask.
+    # This helps avoid trimming valid signal near tissue edges.
+    # dilation_radius: 12
+
+    # Rule for deciding which cleaned tissue components to keep.
+    # "largest_n" is stricter; "min_area" is more permissive for fragmented tissue.
+    # component_policy: "min_area"
+
+    # Number of largest components to keep when using "largest_n".
+    # This is ignored when component_policy is "min_area".
+    # keep_n_largest: 1
+
+    # Minimum area required for a tissue component to be retained.
+    # Lower this if real tissue pieces are being removed.
+    # min_component_area: 20000
+
+    # Optional rescue radius around the original nuclear mask.
+    # This helps preserve valid nucleus-supported regions that a strict tissue mask might trim away.
+    # nuclear_rescue_radius: 5

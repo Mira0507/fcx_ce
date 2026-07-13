@@ -2834,3 +2834,59 @@ fcx_ce
     - notes
         - worked on visualizing assigned objects
 
+2026-07-09
+----------
+
+@Mira0507
+
+- Update deconvolution scripts for Schulmann et al. Visium dataset
+    - conda env: ``venv``
+    - scripts 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd`` (all samples)
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd`` (control samples only)
+    - notes
+        - optionally filtered barcodes of interest
+        - plotted individual cell proportions per spot
+
+- Draft TDP43 quantification script
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/tdp43.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+    - notes
+        - slide glass artifacts removal added
+
+
+2026-07-10
+----------
+
+@Mira0507
+
+- Draft TDP43 quantification script
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/tdp43_conservative.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml
+    - notes
+        - ``tdp43.Rmd``-generated images showed not only slide glass artifacts 
+          but also objects within the white matter were removed. This appears to be 
+          associated with one or more from the following reasons:
+            - morphology closing / cleanup was too strong
+            - only the single largest component was kept
+        - ``tdp43_conservative.Rmd`` is added to run the artifact removal in a more
+          conservative way
+        - ``helpers.py`` and ``config.yaml`` refactored
+
+- Update deconvolution scripts for Schulmann et al. Visium dataset
+    - conda env: ``venv``
+    - script: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+    - notes
+        - refactored code
+        - added scatter pieplots with uniformly weighted duplicate proportions
+

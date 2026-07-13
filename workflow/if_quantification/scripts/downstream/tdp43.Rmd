@@ -85,6 +85,14 @@ target_border_clear <- config[['target']][['border_clear']]
 assignment_overlap_min_pixels <- config[['integration']][['assignment_overlap_min_pixels']]
 assignment_max_distance <- config[['integration']][['assignment_max_distance']]
 
+# Optional removal of out-of-sample artifacts
+tissue <- config[['tissue']]
+# Configure how to remove out-of-sample artifacts: "regular" or "conservative"
+# "regular" applies stricter cleanup and usually keeps only the largest
+# plausible tissue region. "conservative" applies lighter cleanup and keeps
+# more fragmented tissue, with optional rescue of nucleus-supported regions.
+tissue_mode <- "regular" # set to "regular" or "conservative"
+
 # Load helper functions
 source(config[['helper']][['R']])
 
@@ -340,6 +348,151 @@ print("Cytoplasmic pixels =", int(cytoplasmic_mask.sum()))
 print("TDP43 nuclear pixels =", int(target_nuclear_mask.sum()))
 print("TDP43 cytoplasmic pixels =", int(target_cytoplasmic_mask.sum()))
 print("TDP43 other pixels =", int(target_other_mask.sum()))
+```
+
+# Individual masks
+
+This section generates QC figures for the key masks and overlap relationships. These plots provide 
+a visual check that:
+
+- nuclear and cytoplasmic compartments look reasonable
+- TDP43 cleanup did not distort the mask unexpectedly
+- the overlap logic places TDP43 signal into the expected compartments
+
+Images:
+
+- `nuclear_mask`: cleaned nuclear mask
+- `cytoplasmic_mask`: cleaned cytoplasmic
+- `target`: minimally cleaned TDP43 mask
+
+```{python qc_plots}
+
+# ------------------------------------------------------------------------------
+# Generate and link QC figures produced by the Python helper functions
+# ------------------------------------------------------------------------------
+
+mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
+path_dic = {}
+for key, value in mask_dic.items():
+    out_path = f"{r.out_dir}/{key}_mask_initial.png"
+    save_mask_plot(value, out_path)
+    path_dic[key] = out_path
+```
+
+```{r individual_qc_plots, results='asis'}
+# Build a table of QC image links for easy browsing in the rendered document
+data.frame(
+    link = unlist(py$path_dic)
+) %>%
+rownames_to_column('mask') %>%
+mutate(link = paste0("[", link, "](", link, ")")) %>%
+knitr::kable()
+```
+
+# Removing slide glass artifacts (optional)
+
+This section aims to remove artifacts outside the tissue area, using one of the two methods:
+
+- **regular**: builds a stricter tissue-support mask intended for images with one dominant,
+  well-connected tissue section. It uses stronger cleanup and keeps only the largest 
+  plausible tissue component(s), which helps remove out-of-sample artifacts but may trim
+  fragmented valid tissue.
+
+- **conservative**: builds a more permissive tissue-support mask intended for images
+  where valid tissue is sparse, fragmented, or weakly connected. It uses lighter cleanup,
+  keeps all sufficiently large tissue components, and can rescue nucleus-supported regions
+  to reduce loss of real in-tissue objects.
+
+```{python tissue_mask}
+
+# ------------------------------------------------------------------------------
+# Build a shared tissue-support mask and apply it to all downstream masks
+# ------------------------------------------------------------------------------
+
+if r.tissue["enabled"]:
+
+    tissue_mask = build_tissue_mask(
+        nuclear_mask=nuclear_mask,
+        cytoplasmic_mask=cytoplasmic_mask,
+        target_mask=target_clean,
+        mode=r.tissue_mode,
+        source=r.tissue["source"],
+    )
+
+    # Apply the shared tissue-support mask to all downstream masks
+    nuclear_mask = np.logical_and(nuclear_mask.astype(bool), tissue_mask)
+    cytoplasmic_mask = np.logical_and(cytoplasmic_mask.astype(bool), tissue_mask)
+    target_clean = np.logical_and(target_clean.astype(bool), tissue_mask)
+
+    # Recompute compartment-specific target masks after tissue restriction
+    target_nuclear_mask = np.logical_and(target_clean, nuclear_mask)
+    target_cytoplasmic_mask = np.logical_and(target_clean, cytoplasmic_mask)
+    target_other_mask = np.logical_and(
+        target_clean,
+        np.logical_not(np.logical_or(nuclear_mask, cytoplasmic_mask))
+    )
+
+    # Save a short summary table for QC
+    tissue_summary = pd.DataFrame([{
+        "tissue_enabled": bool(r.tissue["enabled"]),
+        "tissue_source": r.tissue["source"],
+        "tissue_pixels": int(tissue_mask.sum()),
+        "nuclear_pixels_after_tissue_mask": int(nuclear_mask.sum()),
+        "cytoplasmic_pixels_after_tissue_mask": int(cytoplasmic_mask.sum()),
+        "target_pixels_after_tissue_mask": int(target_clean.sum()),
+        "target_nuclear_pixels_after_tissue_mask": int(target_nuclear_mask.sum()),
+        "target_cytoplasmic_pixels_after_tissue_mask": int(target_cytoplasmic_mask.sum()),
+        "target_other_pixels_after_tissue_mask": int(target_other_mask.sum())
+    }])
+    print(f"Slide glass artifacts have been removed using the {r.tissue_mode} mode")
+
+```
+
+```{r print_tissue_summary, results='asis'}
+if (!is.null(tissue[['enabled']])) {
+    tissue_df <- t(py$tissue_summary) %>%
+        as.data.frame()
+    colnames(tissue_df) <- 'value'
+    print(knitr::kable(tissue_df))
+    path <- file.path(out_dir, "tissue_summary.tsv")
+    write.table(tissue_df,
+                path,
+                sep="\t",
+                quote=FALSE,
+                row.names=TRUE,
+                col.names=TRUE)
+    link_output(path)
+}
+```
+
+# Masks after removing slide glass artifacts (optional)
+
+```{python qc_plots_updated}
+
+# ------------------------------------------------------------------------------
+# Generate and link QC figures produced by the Python helper functions
+# ------------------------------------------------------------------------------
+
+if r.tissue["enabled"]:
+    mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
+    path_dic = {}
+    for key, value in mask_dic.items():
+        out_path = f"{r.out_dir}/{key}_mask_artifacts_removed.png"
+        save_mask_plot(value, out_path)
+        path_dic[key] = out_path
+```
+
+```{r individual_qc_plots_updated, results='asis'}
+# Build a table of QC image links for easy browsing in the rendered document
+if (tissue[['enabled']]) {
+    data.frame(
+        link = unlist(py$path_dic)
+    ) %>%
+    rownames_to_column('mask') %>%
+    mutate(link = paste0("[", link, "](", link, ")")) %>%
+    knitr::kable() %>%
+    print()
+}
 ```
 
 # Labeling nuclei and cytoplasm-positive objects
@@ -611,7 +764,9 @@ compartment_summary_df = pd.DataFrame([{
 ```
 
 ```{r compartment_summary, results='asis'}
-knitr::kable(t(py$compartment_summary_df) %>% as.data.frame %>% set_names('value'))
+knitr::kable(t(py$compartment_summary_df) %>%
+    as.data.frame %>%
+    set_names('value'))
 ```
 
 # Building per-nucleus summary metrics
@@ -767,44 +922,6 @@ for key, value in run_summary.items():
 ```
 
 # Visualizing compartment overlap {.tabset}
-
-This section generates QC figures for the key masks and overlap relationships.
-
-These plots provide a visual check that:
-
-- nuclear and cytoplasmic compartments look reasonable
-- TDP43 cleanup did not distort the mask unexpectedly
-- the overlap logic places TDP43 signal into the expected compartments
-
-## Individual masks
-
-- `nuclear_mask`: cleaned nuclear mask
-- `cytoplasmic_mask`: cleaned cytoplasmic
-- `target`: minimally cleaned TDP43 mask
-
-```{python qc_plots}
-
-# ------------------------------------------------------------------------------
-# Generate and link QC figures produced by the Python helper functions
-# ------------------------------------------------------------------------------
-
-mask_dic = {'nuclear': nuclear_mask, 'cytoplasmic': cytoplasmic_mask, 'target': target_clean}
-path_dic = {}
-for key, value in mask_dic.items():
-    out_path = f"{r.out_dir}/{key}_mask.png"
-    save_mask_plot(value, out_path)
-    path_dic[key] = out_path
-```
-
-```{r individual_qc_plots, results='asis'}
-# Build a table of QC image links for easy browsing in the rendered document
-data.frame(
-    link = unlist(py$path_dic)
-) %>%
-rownames_to_column('mask') %>%
-mutate(link = paste0("[", link, "](", link, ")")) %>%
-knitr::kable()
-```
 
 ## Mask overlay
 
@@ -1081,6 +1198,7 @@ print(r.output_obj)
 ```{r session_info, collapse=FALSE}
 sessionInfo()
 ```
+
 
 
 

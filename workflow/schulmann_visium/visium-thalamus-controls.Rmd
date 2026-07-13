@@ -77,7 +77,7 @@ h5ad_list <- list(
 )
 
 # Path to output directory
-out_dir <- "visium-thalamus"
+out_dir <- "visium-thalamus-controls"
 
 # Column names for cell subtypes and disease conditions
 celltype_col <- "annotation_04142026"
@@ -85,7 +85,7 @@ selection_col <- "general_disease"
 
 # Filter specific barcodes based on the `selection_col` column in the metadata?
 # Set to NULL to disable
-barcode_selection <- NULL
+barcode_selection <- "Control"
 
 # Specify genes of interest
 gene_list <- list(
@@ -368,6 +368,7 @@ rctd_list <- lapply(
     set_names(names(query_list))
 ```
 
+
 ### Per-celltype {.tabset}
 
 The top 2 cell subtypes are visualized separately.
@@ -645,6 +646,8 @@ for (name in Images(seurat)) {
     }
 }
 ```
+
+
 
 # Updated Seurat obj
 
