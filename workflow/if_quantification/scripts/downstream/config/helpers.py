@@ -1,3 +1,10 @@
+def robust_quantile(x, q, fallback=None):
+    x = np.asarray(x)
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return fallback
+    return float(np.quantile(x, q))
+
 def summarize_components(mask, connectivity=2):
     """
     Return connected-component summary statistics.
@@ -10,84 +17,141 @@ def summarize_components(mask, connectivity=2):
     df = pd.DataFrame(props)
     return lbl, df
 
-
-def robust_quantile(x, q, fallback=None):
-    x = np.asarray(x)
-    x = x[np.isfinite(x)]
-    if x.size == 0:
-        return fallback
-    return float(np.quantile(x, q))
-
-
 def estimate_cleanup_parameters(component_df,
                                 min_component_quantile=0.10,
                                 area_threshold_quantile=0.25,
                                 large_object_quantile=0.99,
-                                max_reasonable_area_multiplier=4.0):
+                                max_reasonable_area_multiplier=4.0,
+                                min_plausible_nucleus_area_px=16,
+                                max_plausible_nucleus_area_px=50000,
+                                min_min_size_px=4,
+                                max_min_size_px=5000,
+                                min_hole_area_px=4,
+                                max_hole_area_px=10000):
     """
-    Estimate morphology parameters from connected-component areas.
+    Estimate morphology cleanup parameters from connected-component areas.
+
+    Aim of this update:
+    - keep cleanup adaptive to the current image
+    - reduce instability from extreme debris or giant artifacts
+    - return a few extra diagnostics for downstream QC
 
     Strategy:
-    - min_size: lower-tail component area estimate, to remove tiny debris
-    - area_threshold: lower-mid component area estimate, used for hole removal
-    - large_object_cutoff: upper-tail estimate to identify unusually large merged objects
+    - use plausible component sizes to estimate cleanup thresholds
+    - use the full distribution only for upper-tail large-object flagging
+    - cap thresholds to avoid pathological values on unusual images
     """
+    # Return safe defaults if no components exist
     if component_df.shape[0] == 0:
         return {
             "min_size": 0,
             "area_threshold": 0,
-            "large_object_cutoff": np.inf
+            "large_object_cutoff": np.inf,
+            "median_area": np.nan,
+            "n_components": 0,
+            "n_plausible_components": 0,
+            "fraction_plausible_components": np.nan
         }
 
+    # Extract positive finite component areas
     areas = np.asarray(component_df["area"].values, dtype=float)
     areas = areas[np.isfinite(areas)]
     areas = areas[areas > 0]
 
+    # Return safe defaults if usable areas disappear after filtering
     if areas.size == 0:
         return {
             "min_size": 0,
             "area_threshold": 0,
-            "large_object_cutoff": np.inf
+            "large_object_cutoff": np.inf,
+            "median_area": np.nan,
+            "n_components": 0,
+            "n_plausible_components": 0,
+            "fraction_plausible_components": np.nan
         }
 
-    q10 = robust_quantile(areas, min_component_quantile, fallback=1)
-    q25 = robust_quantile(areas, area_threshold_quantile, fallback=q10)
-    q99 = robust_quantile(areas, large_object_quantile, fallback=np.max(areas))
-    median_area = robust_quantile(areas, 0.50, fallback=q25)
+    # ------------------------------------------------------------
+    # Background:
+    # Use a plausibility-filtered subset to estimate cleanup thresholds
+    # so tiny debris and huge artifacts do not dominate the lower-tail summaries.
+    # ------------------------------------------------------------
+    # Keep only biologically plausible objects for threshold estimation
+    plausible_areas = areas[
+        (areas >= min_plausible_nucleus_area_px) &
+        (areas <= max_plausible_nucleus_area_px)
+    ]
 
-    min_size = max(1, int(round(q10)))
-    area_threshold = max(1, int(round(q25)))
+    # Fallback if the plausible filter is too strict for a given image
+    if plausible_areas.size == 0:
+        plausible_areas = areas.copy()
 
-    # Constrain extreme upper threshold so one bizarre giant object does not dominate.
-    capped_large = min(q99, median_area * max_reasonable_area_multiplier) if median_area is not None else q99
+    # Estimate lower-tail cleanup thresholds from plausible objects
+    q_min = robust_quantile(plausible_areas, min_component_quantile, fallback=1)
+    q_hole = robust_quantile(plausible_areas, area_threshold_quantile, fallback=q_min)
+    # Estimate upper-tail large-object threshold from all objects
+    q_large = robust_quantile(areas, large_object_quantile, fallback=np.max(areas))
+    median_area = robust_quantile(plausible_areas, 0.50, fallback=q_hole)
+
+    # Bound minimum object removal threshold to a safe range
+    min_size = max(min_min_size_px, int(round(q_min)))
+    min_size = min(min_size, max_min_size_px)
+    # Bound small-hole filling threshold to a safe range
+    area_threshold = max(min_hole_area_px, int(round(q_hole)))
+    area_threshold = min(area_threshold, max_hole_area_px)
+
+    # Constrain the extreme upper threshold so one bizarre giant object does not dominate.
+    capped_large = q_large
+    if median_area is not None and np.isfinite(median_area):
+        capped_large = min(q_large, median_area * max_reasonable_area_multiplier)
+
+    # Cap extreme large-object cutoff so one giant artifact does not dominate
     large_object_cutoff = max(area_threshold, int(round(capped_large)))
 
+    # Return cleanup settings plus a few QC diagnostics
     return {
-        "min_size": min_size,
-        "area_threshold": area_threshold,
-        "large_object_cutoff": large_object_cutoff,
+        "min_size": int(min_size),
+        "area_threshold": int(area_threshold),
+        "large_object_cutoff": int(large_object_cutoff),
         "median_area": float(median_area),
-        "n_components": int(areas.size)
+        "n_components": int(areas.size),
+        "n_plausible_components": int(plausible_areas.size),
+        "fraction_plausible_components": float(plausible_areas.size / areas.size)
     }
 
-
 def clean_input_mask(mask,
-                       min_size,
-                       area_threshold,
-                       connectivity=2,
-                       fill_holes=True,
-                       border_clear=False):
+                     min_size,
+                     area_threshold,
+                     connectivity=2,
+                     fill_holes=True,
+                     border_clear=False):
     """
     Conservative cleanup for binary nuclear masks.
+
+    Aim:
+    - remove tiny disconnected bright debris
+    - fill small internal holes inside likely nuclei
+    - optionally remove border-touching objects
+
+    Notes:
+    - this function is intentionally conservative
+    - it assumes the DAPI input is already binarized
     """
-    out = mask.copy()
+    out = np.asarray(mask).astype(bool).copy()
 
     # Remove very small bright debris
-    out = morphology.remove_small_objects(out, min_size=min_size, connectivity=connectivity)
+    out = morphology.remove_small_objects(
+        out,
+        min_size=min_size,
+        connectivity=connectivity
+    )
 
     # Fill small internal holes
     if fill_holes:
-        out = morphology.remove_small_holes(out, area_threshold=area_threshold, connectivity=connectivity)
+        out = morphology.remove_small_holes(
+            out,
+            area_threshold=area_threshold,
+            connectivity=connectivity
+        )
 
     # Optionally remove border-touching objects
     if border_clear:
@@ -95,6 +159,79 @@ def clean_input_mask(mask,
 
     return out
 
+def estimate_nuclear_scale_parameters(component_df,
+                                      pixel_size_um=None,
+                                      sigma_as_fraction_of_radius=0.20,
+                                      peak_footprint_as_fraction_of_diameter=0.50,
+                                      min_dt_smoothing_sigma=0.8,
+                                      max_dt_smoothing_sigma=3.0,
+                                      min_peak_footprint=5,
+                                      max_peak_footprint=21,
+                                      min_plausible_nucleus_area_px=16,
+                                      max_plausible_nucleus_area_px=50000):
+    """
+    Estimate scale-aware watershed parameters for splitting merged nuclei.
+
+    Aim:
+    - reduce dependence on demo-specific raw-pixel settings
+    - derive watershed parameters from the observed nucleus-size distribution
+    - preserve a simple fallback if image scale metadata are unavailable
+    """
+    # Return conservative fallback values if no components exist
+    if component_df.shape[0] == 0:
+        return {
+            "estimated_typical_nucleus_area_px": np.nan,
+            "estimated_nucleus_radius_px": np.nan,
+            "estimated_nucleus_diameter_px": np.nan,
+            "dt_smoothing_sigma": float(min_dt_smoothing_sigma),
+            "peak_footprint": int(min_peak_footprint),
+            "pixel_size_um": pixel_size_um
+        }
+
+    # Extract positive finite component areas
+    areas = np.asarray(component_df["area"].values, dtype=float)
+    areas = areas[np.isfinite(areas)]
+    areas = areas[areas > 0]
+
+    # Focus on plausible nuclei when estimating typical scale
+    plausible_areas = areas[
+        (areas >= min_plausible_nucleus_area_px) &
+        (areas <= max_plausible_nucleus_area_px)
+    ]
+
+    # Fall back to all areas if plausibility bounds are too strict
+    if plausible_areas.size == 0:
+        plausible_areas = areas.copy()
+
+    # Use median plausible area as a stable estimate of typical nucleus size
+    typical_area = robust_quantile(plausible_areas, 0.50, fallback=np.median(plausible_areas))
+    # Convert area to approximate radius and diameter
+    radius_px = np.sqrt(typical_area / np.pi)
+    diameter_px = 2.0 * radius_px
+
+    # Set smoothing relative to estimated nucleus radius
+    sigma = radius_px * sigma_as_fraction_of_radius
+    sigma = float(np.clip(sigma, min_dt_smoothing_sigma, max_dt_smoothing_sigma))
+
+    # Set local-max footprint relative to estimated nucleus diameter
+    peak_footprint = int(round(diameter_px * peak_footprint_as_fraction_of_diameter))
+    peak_footprint = int(np.clip(peak_footprint, min_peak_footprint, max_peak_footprint))
+
+    # Use an odd footprint for a symmetric local-max neighborhood
+    if peak_footprint % 2 == 0:
+        peak_footprint += 1
+        if peak_footprint > max_peak_footprint:
+            peak_footprint -= 2
+
+    # Return estimated nucleus scale plus resolved watershed settings
+    return {
+        "estimated_typical_nucleus_area_px": float(typical_area),
+        "estimated_nucleus_radius_px": float(radius_px),
+        "estimated_nucleus_diameter_px": float(diameter_px),
+        "dt_smoothing_sigma": float(sigma),
+        "peak_footprint": int(peak_footprint),
+        "pixel_size_um": pixel_size_um
+    }
 
 def split_merged_nuclei(mask, sigma=1.0, peak_footprint=9, connectivity=2):
     """
@@ -150,6 +287,39 @@ def regionprops_dataframe(label_img):
         )
     )
     return pd.DataFrame(props)
+
+def add_border_flag(df, label_img):
+    """
+    Add a touches_border flag to a regionprops dataframe.
+
+    Aim:
+    - keep partial edge nuclei by default
+    - allow later QC or filtering without deleting them up front
+    """
+    df = df.copy()
+
+    # Return an empty boolean column if no rows exist
+    if df.shape[0] == 0:
+        df["touches_border"] = pd.Series(dtype=bool)
+        return df
+
+    # Store image bounds for bbox checks
+    nrows, ncols = label_img.shape
+    touches = []
+
+    # Mark objects whose bounding box touches any image edge
+    for _, row in df.iterrows():
+        r0 = int(row["bbox-0"])
+        c0 = int(row["bbox-1"])
+        r1 = int(row["bbox-2"])
+        c1 = int(row["bbox-3"])
+
+        is_border = (r0 <= 0) or (c0 <= 0) or (r1 >= nrows) or (c1 >= ncols)
+        touches.append(bool(is_border))
+
+    # Append the border-touching QC flag
+    df["touches_border"] = touches
+    return df
 
 def build_tissue_mask(
     nuclear_mask,
