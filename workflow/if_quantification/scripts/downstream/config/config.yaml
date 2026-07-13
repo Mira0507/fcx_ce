@@ -1,4 +1,8 @@
-# Path to helper functions
+# ------------------------------------------------------------------
+# Shared helper files
+# Aim:
+# - keep Python and R helper code centralized
+# ------------------------------------------------------------------
 helper:
     py: "config/helpers.py"
     R: "config/helpers.R"
@@ -19,33 +23,98 @@ channels:
 # Label connectivity
 connectivity: 2
 
+# ------------------------------------------------------------------
+# Sample-level metadata
+# Aim:
+# - attach image/sample identity to outputs
+# - allow future scale-aware behavior when pixel metadata are known
+# Notes:
+# - leave pixel_size_um / magnification as null if unavailable
+# - a future batch wrapper can populate these per sample
+# ------------------------------------------------------------------
+sample:
+    sample_id: "demo_sample"
+    image_id: "demo_image"
+    group: "demo"
+    pixel_size_um: null
+    magnification: null
+
+# ------------------------------------------------------------------
 # Nuclear segmentation parameters
+# Aim:
+# - retain image-adaptive cleanup
+# - add guardrails for unusual images
+# - support scale-aware watershed splitting
+# ------------------------------------------------------------------
 nuc:
     border_clear: false
     fill_holes: true
     save_intermediates: true
+
     # Debris-control parameter
-    # (treat the smallest tail of objects as the best estimate of likely noise/speckle scale.)
+    # Treat the smallest tail of objects as the best estimate of likely
+    # noise / speckle scale in the current image.
     min_component_quantile: 0.10
-    # small-hole filling parameter
-    # (The 25th percentile is more permissive than the 10th percentile,
-    # which makes sense because internal holes can be somewhat larger than isolated specks)
+
+    # Small-hole filling parameter
+    # The 25th percentile is usually more permissive than the 10th percentile,
+    # which is useful because interior holes may be somewhat larger than isolated specks.
     area_threshold_quantile: 0.25
-    # merged-object/artifact flagging parameter
-    # (isolates the extreme upper tail rather than the center of the size distribution,
-    # which is where you’d expect merged nuclei or image artifacts to appear)
+
+    # Upper-tail object-size parameter
+    # Used to identify unusually large connected components that may represent
+    # merged nuclei or artifacts.
     large_object_quantile: 0.99
-    # Safety cap
-    # (Without it, one or two giant bizarre objects could push the “large object” 
-    # threshold so high that genuinely suspicious large nuclei would no longer be flagged.)
+
+    # Safety cap so one bizarre giant object does not make the large-object cutoff unusably high.
     max_reasonable_area_multiplier: 4.0
+
+    # --------------------------------------------------------------
+    # Guardrails for adaptive cleanup
+    # Aim:
+    # - keep thresholds from becoming unstable on sparse or artifact-heavy images
+    # - these are still in pixel units for now
+    # --------------------------------------------------------------
+    min_plausible_nucleus_area_px: 16
+    max_plausible_nucleus_area_px: 50000
+
+    min_min_size_px: 4
+    max_min_size_px: 5000
+
+    min_hole_area_px: 4
+    max_hole_area_px: 10000
+
     watershed_for_splitting: true
-    dt_smoothing_sigma: 1.0
-    # how close two peaks can be before they are treated as one
-    # (A larger footprint reduces over-splitting; a smaller one increases sensitivity
-    # to local bumps and may split one nucleus into multiple labels.)
-    peak_footprint: 9
-    # readability and speed of QC visualization
+
+    # --------------------------------------------------------------
+    # Watershed settings
+    # Aim:
+    # - if auto_compute is true, estimate sigma and footprint from the
+    #   image-derived nucleus size distribution
+    # - if false, use the manual fallback values below
+    # --------------------------------------------------------------
+    watershed:
+        auto_compute: true
+
+        # Manual fallback values
+        dt_smoothing_sigma: 1.0
+
+        # A larger footprint reduces over-splitting;
+        # a smaller one increases sensitivity to local bumps.
+        peak_footprint: 9
+
+        # Auto-estimation rules
+        sigma_as_fraction_of_radius: 0.20
+        peak_footprint_as_fraction_of_diameter: 0.50
+
+        # Safety bounds for auto-estimation
+        min_dt_smoothing_sigma: 0.8
+        max_dt_smoothing_sigma: 3.0
+
+        min_peak_footprint: 5
+        max_peak_footprint: 21
+
+    # Readability and speed of QC visualization
     qc_overlay_max_objects: 500
 
 # Cytoplasmic segmentation parameters
