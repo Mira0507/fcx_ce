@@ -640,14 +640,34 @@ path_df <- data.frame(table = names(df_list), link = "")
 
 for (name in names(df_list)) {
     tsv <- file.path(out_dir, paste0(name, ".tsv"))
-    write.table(
-        df_list[[name]],
-        tsv,
-        quote = FALSE,
-        row.names = FALSE,
-        col.names = TRUE,
-        sep = "\t"
-    )
+    df <- df_list[[name]]
+    tryCatch({
+        write.table(
+            df,
+            tsv,
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t"
+        )
+    }, error = function(e) {
+        c_length <- apply(df, 2, class)
+        for (c in colnames(df)) {
+            if (is.list(df[[c]])) {
+                df[[c]] <- df[[c]] %>%
+                    paste(sep=", ")
+            }
+        }
+        write.table(
+            df,
+            tsv,
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t"
+        )
+    })
+
     path_df[path_df$table == name, 'link'] <- tsv
 }
 
@@ -670,8 +690,6 @@ Output images are saved as the following object:
 img.save(r.output_obj)
 print(r.output_obj)
 ```
-
-
 
 # Session info
 
