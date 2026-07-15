@@ -58,7 +58,10 @@ import anndata as ad
 import scanpy as sc
 import pandas as pd
 import numpy as np
+import random
 import os
+
+random.seed(1516)
 ```
 
 ```{r config}
@@ -69,54 +72,35 @@ import os
 
 # Paths to input datasets
 input_path <- "../../input/Schulmann_visium/Visium_thal_seurat.rds"
-h5ad_list <- list(
-    InNeuSOX14neg="../../input/thalamus_neurons_reannotated/InNeuSOX14neg_adata.h5ad",
-    InNeuSOX14pos="../../input/thalamus_neurons_reannotated/InNeuSOX14pos_adata.h5ad",
-    ExNeuRNF220neg="../../input/thalamus_neurons_reannotated/ExNeuRNF220neg_adata.h5ad",
-    ExNeuRNF220pos="../../input/thalamus_neurons_reannotated/ExNeuRNF220pos_adata.h5ad"
-)
+input_h5ad <- "../../input/Schulmann_visium/combined_reclustered.h5ad"
 
 # Path to output directory
 out_dir <- "visium-thalamus-controls"
 
-# Column names for cell subtypes and disease conditions
-celltype_col <- "annotation_04142026"
+# Column names for cell subtypes
+celltype_col <- "annotation_06012026"
+
+# Filter neurons?
+filter_neurons <- TRUE
+
+# Column name for disease conditions
 selection_col <- "general_disease"
 
 # Filter specific barcodes based on the `selection_col` column in the metadata?
 # Set to NULL to disable
 barcode_selection <- "Control"
 
+# Upper bound of cell number. Disable by setting it to NULL
+ncell_upper_bound <- 12000
+
 # Specify genes of interest
-gene_list <- list(
-    set1=c('SYT1', 'GAD2', 'SOX14'),
-    set2=c('SYT1', 'SLC17A6', 'RNF220'),
-    set3=c('LAMP5', 'BCL11B', 'TUBB3', 'GRN'),
-    set4=c(
-        'ATP1B1',
-        'HSP90AA1',
-        'HSP90AB1',
-        'NEFL',
-        'CLU',
-        'GAPDH',
-        'PSAP',
-        'SERINC1',
-        'TUBA1B',
-        'PRNP',
-        'MEG3',
-        'MALAT1',
-        'NRG3',
-        'MALAT1',
-        'NRG3',
-        'KCNIP4',
-        'NALF1',
-        'PTPRD',
-        'ROBO1',
-        'MAGI2',
-        'FTX',
-        'LRP1B',
-        'CALB1'
-    )
+gene_set <- c(
+    "SYT1", "GAD2", "SOX14", "SLC17A6", "RNF220", "LAMP5", 
+    "BCL11B", "TUBB3", "GRN", "ATP1B1", "HSP90AA1", "HSP90AB1",
+    "NEFL", "CLU", "GAPDH", "PSAP", "SERINC1", "TUBA1B", 
+    "PRNP", "MEG3", "NRG3", "MALAT1", "KCNIP4", "NALF1", 
+    "PTPRD", "ROBO1", "MAGI2", "FTX", "LRP1B", "CALB1", 
+    "NR2F2", "ERBB4", "PVALB", "CALB2", "MEIS2"
 )
 
 # Specify colors for plots
@@ -177,7 +161,6 @@ sct_mat <- GetAssayData(seurat, assay="SCT", layer="data")
 all_genes <- rownames(sct_mat)
 
 # Remove genes of interest if absent and print
-gene_set <- unique(unlist(gene_list))
 genes_absent <- gene_set[!gene_set %in% all_genes]
 genes_present <- setdiff(gene_set, genes_absent)
 print(paste0("- Genes of interest: ", paste0(gene_set, collapse=", ")))
@@ -231,26 +214,103 @@ This analysis is performed using raw counts from annotated datasets listed below
 # --------------------------------------------------------------------------------
 
 # Import input annotated AnnData obj
-adatas = {name: sc.read_h5ad(path) for name, path in r.h5ad_list.items()}
+adata = sc.read_h5ad(r.input_h5ad)
 
-print("Input annotated dataset loaded and concatenated:")
-for name, path in r.h5ad_list.items():
-    print(name, "-", path)
-
-# Concatenate all obj
-adata = ad.concat(
-    list(adatas.values()),
-    keys=list(adatas.keys()),
-    index_unique="_",
-    label="AnnData",
-    join="outer",
-    merge="same")
-
+print("Input annotated dataset loaded and concatenated:", r.input_h5ad)
 print(adata)
 
 # Prep features and barcodes as a list for the next step
 all_features = list(adata.var_names)
 all_barcodes = list(adata.obs.index)
+```
+
+All input cells:
+
+```{r input_cell_counts, results='asis'}
+py$adata[['obs']][[celltype_col]] %>%
+    table %>%
+    as.data.frame() %>%
+    set_names(c('celltype', 'nCells')) %>%
+    knitr::kable()
+```
+
+```{python filter_neurons}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally filter neurons
+# --------------------------------------------------------------------------------
+
+# Filter neurons if specified
+if r.filter_neurons:
+    neuron_mask = adata.obs[r.celltype_col].str.contains('Neu', na=False)
+    adata = adata[neuron_mask, :]
+    print("Input cells are narrowed to neurons.")
+
+print(adata)
+```
+
+```{python filter_by_condition}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally narrow cells to those from conditions of interest
+# --------------------------------------------------------------------------------
+
+if r.barcode_selection is not None:
+    barcodes = adata.obs[r.selection_col].isin([r.barcode_selection])
+    adata = adata[barcodes, :]
+    print("Barcodes aligning the following conditions are filtered:",
+        r.barcode_selection,
+        "in",
+        r.selection_col)
+    print(adata)
+```
+
+```{r barcode_cell_counts, results='asis'}
+if (!is.null(barcode_selection)) {
+    py$adata[['obs']][[celltype_col]] %>%
+        table %>%
+        as.data.frame() %>%
+        set_names(c('celltype', 'nCells')) %>%
+        knitr::kable() %>%
+        print()
+}
+```
+
+```{python apply_upperbound}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally filter cells to retain a specified number of cells
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Retain randomly selected N cells the most, if specified
+if r.ncell_upper_bound is not None:
+    max_ncells = int(r.ncell_upper_bound)
+    print("In each cell subtype, cells are randomly selected to retain only", max_ncells, "cells.")
+    obs = adata.obs.copy()
+    rng = np.random.default_rng(42)
+    retained_cells = []
+    for celltype, idx in obs.groupby(r.celltype_col).groups.items():
+        idx = np.array(list(idx))
+        if len(idx) > max_ncells:
+            keep = rng.choice(idx, size=max_ncells, replace=False)
+        else:
+            keep = idx
+        print(celltype, "---- from", len(idx), "to", len(keep))
+        retained_cells.extend(keep)
+
+    adata = adata[retained_cells]
+```
+
+```{r filtered_cell_counts, results='asis'}
+if (filter_neurons) {
+    py$adata[['obs']][[celltype_col]] %>%
+        table %>%
+        as.data.frame() %>%
+        set_names(c('celltype', 'nCells')) %>%
+        knitr::kable() %>%
+        print()
+}
 ```
 
 To transfer annotations from the annotated dataset to the Visium dataset, the annotated dataset is converted
@@ -285,24 +345,7 @@ subset(nCount_RNA > 0)
 print(ad_seurat)
 ```
 
-```{r select_cells, cache=TRUE, dependson='adata_to_seurat'}
-
-# --------------------------------------------------------------------------------
-# This chunk optionally selects samples of interest
-# --------------------------------------------------------------------------------
-
-if (!is.null(barcode_selection)) {
-    m_df <- ad_seurat@meta.data
-    barcodes_selected <- m_df[m_df[[selection_col]] %in% barcode_selection,] %>%
-        rownames()
-    print(paste0(length(barcodes_selected), " cells are filtered to proceed with the next steps."))
-    print(paste0("These are for the following cells: ", barcode_selection, " in ", selection_col))
-    ad_seurat <- subset(ad_seurat, cells=barcodes_selected)
-    print(ad_seurat)
-}
-```
-
-```{r prep_rctd, cache=TRUE, dependson=c('adata_to_seurat', 'select_cells')}
+```{r prep_rctd, cache=TRUE, dependson='adata_to_seurat'}
 
 # --------------------------------------------------------------------------------
 # This chunk preps input for RCTD
@@ -646,8 +689,6 @@ for (name in Images(seurat)) {
     }
 }
 ```
-
-
 
 # Updated Seurat obj
 

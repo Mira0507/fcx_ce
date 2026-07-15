@@ -345,7 +345,7 @@ subset(nCount_RNA > 0)
 print(ad_seurat)
 ```
 
-```{r prep_rctd, cache=TRUE, dependson='adata_to_seurat'
+```{r prep_rctd, cache=TRUE, dependson='adata_to_seurat'}
 
 # --------------------------------------------------------------------------------
 # This chunk preps input for RCTD
