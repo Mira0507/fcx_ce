@@ -218,10 +218,6 @@ adata = sc.read_h5ad(r.input_h5ad)
 
 print("Input annotated dataset loaded and concatenated:", r.input_h5ad)
 print(adata)
-
-# Prep features and barcodes as a list for the next step
-all_features = list(adata.var_names)
-all_barcodes = list(adata.obs.index)
 ```
 
 All input cells:
@@ -322,6 +318,12 @@ Annotation transfer with the doublet mode option computes in the following two c
 
 - **first_type**: first predicted celltype
 - **second_type**: second predicted celltype, if exists
+
+```{python retreive_adata}
+# Prep features and barcodes as a list for the next step
+all_features = list(adata.var_names)
+all_barcodes = list(adata.obs.index)
+```
 
 ```{r adata_to_seurat, cache=TRUE}
 
