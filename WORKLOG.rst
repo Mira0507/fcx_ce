@@ -2914,3 +2914,39 @@ fcx_ce
         - fix color map inconsistency
         - ``visium-thalamus-allcells.Rmd`` in progress
 
+
+2026-07-14
+----------
+
+@Mira0507
+
+- Rerun Schulmann et al. Visium deconvolution
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+    - notes
+        - use updated ``AnnData`` from our dataset, copied from
+          Amber to ``input/Schulmann_visium/combined_reclustered.h5ad``
+        - apply an upper bound of 12,000 cells through random selection.
+        - refactor to make this script available for all analysis options
+
+
+2026-07-15
+----------
+
+@Mira0507
+
+- Rerun Schulmann et al. Visium deconvolution
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+    - notes
+        - relax the max number of cells per celltype in reference
+          by specifying the ``n_max_cells`` argument in the ``Reference``
+          function
+        - improve visualization by adding a log2-transformed proportions
+          to the fixed and adjusted scales
