@@ -72,91 +72,54 @@ random.seed(1516)
 
 # Paths to input datasets
 input_path <- "../../input/Schulmann_visium/Visium_thal_seurat.rds"
-h5ad_list <- list(
-    InNeuSOX14neg="../../input/thalamus_neurons_reannotated/InNeuSOX14neg_adata.h5ad",
-    InNeuSOX14pos="../../input/thalamus_neurons_reannotated/InNeuSOX14pos_adata.h5ad",
-    ExNeuRNF220neg="../../input/thalamus_neurons_reannotated/ExNeuRNF220neg_adata.h5ad",
-    ExNeuRNF220pos="../../input/thalamus_neurons_reannotated/ExNeuRNF220pos_adata.h5ad",
-    AST="../../input/thalamus_glials_reannotated/Astrocyte_adata.h5ad",
-    OPC="../../input/thalamus_glials_reannotated/OPC_adata.h5ad",
-    OL="../../input/thalamus_glials_reannotated/OL_adata.h5ad",
-    MG="../../input/thalamus_glials_reannotated/Microglia_adata.h5ad",
-    PVM="../../input/thalamus_glials_reannotated/PVM_adata.h5ad",
-    Lympho="../../input/thalamus_glials_reannotated/Lymphocyte_adata.h5ad",
-    BVC="../../input/thalamus_glials_reannotated/BVC_adata.h5ad",
-    CP="../../input/thalamus_glials_reannotated/CP_adata.h5ad"
-)
+input_h5ad <- "../../input/Schulmann_visium/combined_reclustered.h5ad"
 
 # Path to output directory
-out_dir <- "visium-thalamus-allcells-controls"
+out_dir <- "visium-thalamus-allcells"
 
-# Column names for cell subtypes and disease conditions
-celltype_col <- "annotation_04142026"
+
+# Column names for cell subtypes
+celltype_col <- "annotation_06012026"
+
+# Filter neurons?
+filter_neurons <- FALSE
+
+# Column name for disease conditions
 selection_col <- "general_disease"
 
 # Filter specific barcodes based on the `selection_col` column in the metadata?
 # Set to NULL to disable
 barcode_selection <- "Control"
 
-# Subsampling proportion
-# NOTE: specify 1 to use all barcodes
-sample_prop <- 0.5
+# Upper bound of cell number. Disable by setting it to NULL
+ncell_upper_bound <- 12000
 
 # Specify genes of interest
-gene_list <- list(
-    set1=c('SYT1', 'GAD2', 'SOX14'),
-    set2=c('SYT1', 'SLC17A6', 'RNF220'),
-    set3=c('LAMP5', 'BCL11B', 'TUBB3', 'GRN'),
-    set4=c(
-        'ATP1B1',
-        'HSP90AA1',
-        'HSP90AB1',
-        'NEFL',
-        'CLU',
-        'GAPDH',
-        'PSAP',
-        'SERINC1',
-        'TUBA1B',
-        'PRNP',
-        'MEG3',
-        'MALAT1',
-        'NRG3',
-        'MALAT1',
-        'NRG3',
-        'KCNIP4',
-        'NALF1',
-        'PTPRD',
-        'ROBO1',
-        'MAGI2',
-        'FTX',
-        'LRP1B',
-        'CALB1'
-    )
+gene_set <- c(
+    "SYT1", "GAD2", "SOX14", "SLC17A6", "RNF220", "LAMP5", 
+    "BCL11B", "TUBB3", "GRN", "ATP1B1", "HSP90AA1", "HSP90AB1",
+    "NEFL", "CLU", "GAPDH", "PSAP", "SERINC1", "TUBA1B", 
+    "PRNP", "MEG3", "NRG3", "MALAT1", "KCNIP4", "NALF1", 
+    "PTPRD", "ROBO1", "MAGI2", "FTX", "LRP1B", "CALB1", 
+    "NR2F2", "ERBB4", "PVALB", "CALB2", "MEIS2"
 )
-
-# Annotation column names (specify to NULL if unnecessary)
-celltype_col <- "annotation_04142026"
-celltype_col_glial <- 'renamed_annotation_cell_type_post_outlier_removal'
 
 # Specify colors for plots
-# plot_colors <- c('#F4F1DE', '#E07A5F', '#3D405B', '#4ecdc4')
 plot_colors <- c(
-    "#3C5488",
-    "#4DBBD5",
-    "#F4F1DE",
-    "#E64B35",
-    "#00A087",
-    "#8491B4",
-    "#91D1C2",
-    "#7E6148",
-    "#B09C85",
-    "#DC0000",
-    "#7A21DD",
-    "#FFD400"
+    Astrocyte="#FFD700",
+    BVC="#4DBBD5",
+    `ExNeu RNF220-`="#F4F1DE",
+    `ExNeu RNF220+`="#E64B35",
+    `InNeu SOX14-`="#00A087",
+    `InNeu SOX14+`="#8491B4",
+    OL="#91D1C2",
+    OPC="#7E6148",
+    Microglia="#B09C85",
+    PVM="#DC0000",
+    CP="#7A21DD",
+    Lymphocyte="#FFD400",
+    Undetermined="#000000"
 )
-
-# Collapse all glial celltypes into "Glia"?
-collapse_glia <- FALSE
 
 # Create directories if missing
 for (p in c(out_dir)) {
@@ -213,7 +176,6 @@ sct_mat <- GetAssayData(seurat, assay="SCT", layer="data")
 all_genes <- rownames(sct_mat)
 
 # Remove genes of interest if absent and print
-gene_set <- unique(unlist(gene_list))
 genes_absent <- gene_set[!gene_set %in% all_genes]
 genes_present <- setdiff(gene_set, genes_absent)
 print(paste0("- Genes of interest: ", paste0(gene_set, collapse=", ")))
@@ -266,48 +228,100 @@ This analysis is performed using raw counts from annotated datasets listed below
 # This chunk loads annotated AnnData obj
 # --------------------------------------------------------------------------------
 
-if r.sample_prop < 1:
-    print("barcode subsampling specified:", r.sample_prop, "x nBarcodes")
+# Import input annotated AnnData obj
+adata = sc.read_h5ad(r.input_h5ad)
 
-adatas = {}
+print("Input annotated dataset loaded:", r.input_h5ad)
+print(adata)
+```
 
-for name, path in r.h5ad_list.items():
-    # Load input AnnData
-    adata_i = sc.read_h5ad(path)
-    # Subsample barcodes from each AnnData obj, if specified
-    if r.sample_prop < 1:
-        # Extract barcodes
-        barcodes = list(adata_i.obs_names)
-        # Subsample barcodes
-        k = max(1, int(len(barcodes) * r.sample_prop))
-        indices = random.sample(range(len(barcodes)), k)
-        barcodes_sub = [barcodes[i] for i in indices]
-        # Subset the AnnData
-        adata_sub = adata_i[barcodes_sub].copy()
-        # Add the subsetted AnnData to the `adatas` dictionary
-        adatas[name] = adata_sub
-    # Add the entire AnnData, otherwise
-    else:
-        adatas[name] = adata_i
+All input cells:
 
-print("Input annotated dataset loaded and concatenated:")
-for name, path in r.h5ad_list.items():
-    print(name, "-", path)
+```{r input_cell_counts, results='asis'}
+py$adata[['obs']][[celltype_col]] %>%
+    table %>%
+    as.data.frame() %>%
+    set_names(c('celltype', 'nCells')) %>%
+    knitr::kable()
+```
 
-# Concatenate all obj
-adata = ad.concat(
-    list(adatas.values()),
-    keys=list(adatas.keys()),
-    index_unique="_",
-    label="AnnData",
-    join="outer",
-    merge="same")
+```{python filter_neurons}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally filter neurons
+# --------------------------------------------------------------------------------
+
+# Filter neurons if specified
+if r.filter_neurons:
+    neuron_mask = adata.obs[r.celltype_col].str.contains('Neu', na=False)
+    adata = adata[neuron_mask, :]
+    print("Input cells are narrowed to neurons.")
 
 print(adata)
+```
 
-# Prep features and barcodes as a list for the next step
-all_features = list(adata.var_names)
-all_barcodes = list(adata.obs.index)
+```{python filter_by_condition}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally narrow cells to those from conditions of interest
+# --------------------------------------------------------------------------------
+
+if r.barcode_selection is not None:
+    barcodes = adata.obs[r.selection_col].isin([r.barcode_selection])
+    adata = adata[barcodes, :]
+    print("Barcodes aligning the following conditions are filtered:",
+        r.barcode_selection,
+        "in",
+        r.selection_col)
+    print(adata)
+```
+
+```{r barcode_cell_counts, results='asis'}
+if (!is.null(barcode_selection)) {
+    py$adata[['obs']][[celltype_col]] %>%
+        table %>%
+        as.data.frame() %>%
+        set_names(c('celltype', 'nCells')) %>%
+        knitr::kable() %>%
+        print()
+}
+```
+
+```{python apply_upperbound}
+
+# --------------------------------------------------------------------------------
+# This chunk optionally filter cells to retain a specified number of cells
+# --------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Retain randomly selected N cells the most, if specified
+if r.ncell_upper_bound is not None:
+    max_ncells = int(r.ncell_upper_bound)
+    print("In each cell subtype, cells are randomly selected to retain only", max_ncells, "cells.")
+    obs = adata.obs.copy()
+    rng = np.random.default_rng(42)
+    retained_cells = []
+    for celltype, idx in obs.groupby(r.celltype_col).groups.items():
+        idx = np.array(list(idx))
+        if len(idx) > max_ncells:
+            keep = rng.choice(idx, size=max_ncells, replace=False)
+        else:
+            keep = idx
+        print(celltype, "---- from", len(idx), "to", len(keep))
+        retained_cells.extend(keep)
+
+    adata = adata[retained_cells]
+```
+
+```{r filtered_cell_counts, results='asis'}
+if (filter_neurons) {
+    py$adata[['obs']][[celltype_col]] %>%
+        table %>%
+        as.data.frame() %>%
+        set_names(c('celltype', 'nCells')) %>%
+        knitr::kable() %>%
+        print()
+}
 ```
 
 To transfer annotations from the annotated dataset to the Visium dataset, the annotated dataset is converted
@@ -320,6 +334,12 @@ Annotation transfer with the doublet mode option computes in the following two c
 - **first_type**: first predicted celltype
 - **second_type**: second predicted celltype, if exists
 
+```{python retreive_adata}
+# Prep features and barcodes as a list for the next step
+all_features = list(adata.var_names)
+all_barcodes = list(adata.obs.index)
+```
+
 ```{r adata_to_seurat, cache=TRUE}
 
 # --------------------------------------------------------------------------------
@@ -331,20 +351,10 @@ ad_mat <- t(py$adata[['layers']][['counts']])
 rownames(ad_mat) <- py$all_features
 colnames(ad_mat) <- py$all_barcodes
 
-# Prep metadata
-ad_meta <- py$adata[['obs']]
-if (any(is.na(ad_meta[[celltype_col]])) & !is.null(celltype_col_glial)) {
-    ad_meta[[celltype_col]] <- ifelse(
-        is.na(ad_meta[[celltype_col]]),
-        ad_meta[[celltype_col_glial]],
-        ad_meta[[celltype_col]]
-    )
-}
-
 # Build a new Seurat obj using raw counts
 ad_seurat <- CreateSeuratObject(
     counts=ad_mat,
-    meta.data=ad_meta
+    meta.data=py$adata[['obs']]
 ) %>%
 # Filter nonzero-count cells
 subset(nCount_RNA > 0)
@@ -352,24 +362,7 @@ subset(nCount_RNA > 0)
 print(ad_seurat)
 ```
 
-```{r select_cells, cache=TRUE, dependson='adata_to_seurat'}
-
-# --------------------------------------------------------------------------------
-# This chunk optionally selects samples of interest
-# --------------------------------------------------------------------------------
-
-if (!is.null(barcode_selection)) {
-    m_df <- ad_seurat@meta.data
-    barcodes_selected <- m_df[m_df[[selection_col]] %in% barcode_selection,] %>%
-        rownames()
-    print(paste0(length(barcodes_selected), " cells are filtered to proceed with the next steps."))
-    print(paste0("These are for the following cells: ", barcode_selection, " in ", selection_col))
-    ad_seurat <- subset(ad_seurat, cells=barcodes_selected)
-    print(ad_seurat)
-}
-```
-
-```{r prep_rctd, cache=TRUE, dependson=c('adata_to_seurat', 'select_cells')}
+```{r prep_rctd, cache=TRUE, dependson='adata_to_seurat'}
 
 # --------------------------------------------------------------------------------
 # This chunk preps input for RCTD
@@ -390,10 +383,15 @@ nUMI <-ad_seurat@meta.data[['nCount_RNA']]
 names(nUMI) <- colnames(ad_seurat)
 
 # Create a new `Reference`
-reference <- Reference(counts, cluster, nUMI)
+reference <- Reference(
+    counts,
+    cluster,
+    nUMI,
+    n_max_cells=ncell_upper_bound)
 
 # Prep a list of query across images
 query_list <- mclapply(1:length(Images(seurat)), function(i) {
+
     # Extract raw counts per image
     ct <- GetAssayData(
         seurat,
@@ -427,7 +425,9 @@ set_names(Images(seurat))
 rctd_list <- lapply(
     names(query_list), function(name) {
         # Create a new RCTD obj
-        create.RCTD(query_list[[name]], reference, max_cores=n_cores) %>%
+        create.RCTD(query_list[[name]],
+                    reference,
+                    max_cores=n_cores) %>%
             # Run RCTD
             run.RCTD(doublet_mode="doublet")
     }) %>%
@@ -438,52 +438,27 @@ rctd_list <- lapply(
 
 The top 2 cell subtypes are visualized separately.
 
-```{r doublet_separated, results='asis'}
+```{r prep_doublet_separated}
 
 # --------------------------------------------------------------------------------
-# This chunk visualizes RCTD results from the doublet mode separately
+# This chunk preps to visualize RCTD results from the doublet mode separately
 # --------------------------------------------------------------------------------
 
 # Add RCTD results to the metadata of Visium obj
-rctd_df <- map_df(rctd_list, ~.x@results$results_df)
-
-# Convert individual glial cells into "Glia" if specified
-anno_cols <- c('first_type', 'second_type')
-if (collapse_glia) {
-    for (name in anno_cols) {
-        rctd_df[[name]] <- map_chr(
-            as.character(rctd_df[[name]]),
-            ~ifelse(str_detect(.x, "Neu"), .x, "Glia"))
-    }
-}
-
-# Relevel cells
-anno_levels <- as.character(unique(cluster))
-anno_levels <- if (collapse_glia) {
-    c(anno_levels[anno_levels != "Glia"], "Glia")
-} else {
-    anno_levels
-}
-
-for (anno in anno_cols) {
-    rctd_df[[anno]] <- factor(rctd_df[[anno]], levels=anno_levels)
-}
-
-# If uncertain, replace the annotation of the second type with "Undetermined"
-if (any(rctd_df[['spot_class']] == 'doublet_uncertain')) {
-    anno_levels <- c(anno_levels, "Undetermined")
-    rctd_df[['second_type']] <- as.character(rctd_df[['second_type']])
-    rctd_df[rctd_df[['spot_class']] == "doublet_uncertain", 'second_type'] <- "Undetermined"
-    rctd_df[['second_type']] <- factor(rctd_df[['second_type']], levels=anno_levels)
-    # Specify colors for individual cell subtypes
-    plot_cols <- c(plot_colors, "black")
-} else {
-    plot_cols <- plot_colors
-}
-names(plot_cols) <- anno_levels
+rctd_df <- lapply(rctd_list, function(res) {
+    df_names <- c('results_df', 'weights')
+    results_df <- res@results[['results_df']]
+    weights_df <- res@results[['weights_doublet']]
+    colnames(weights_df) <- c('first_weight', 'second_weight')
+    return(cbind(results_df, weights_df))
+}) %>%
+bind_rows()
 
 # Add the transferred annotation to the metadata of Visium seurat obj
 seurat <- AddMetaData(seurat, metadata=rctd_df)
+```
+
+```{r vis_doublet_separated, results='asis'}
 
 # Plot and save
 for (name in Images(seurat)) {
@@ -492,7 +467,7 @@ for (name in Images(seurat)) {
         SpatialDimPlot(seurat,
                        group.by=anno,
                        pt.size.factor=3.5,
-                       cols=plot_cols,
+                       cols=plot_colors,
                        images=name) +
         theme(legend.margin=margin(0, 0, 0, 0), 
               legend.title=element_text(size=8),
@@ -509,18 +484,15 @@ for (name in Images(seurat)) {
 
 ### Per-spot {.tabset}
 
-The top 2 cell subtypes are visualized across spots with a uniform weight.
+Per-spot proportions are visualized.
 
 ```{r doublet_both, results='asis'}
 
 # --------------------------------------------------------------------------------
 # This chunk visualizes RCTD results from the doublet mode in a single plot
 # --------------------------------------------------------------------------------
-# Specify colors for plots
-plot_cols <- c(plot_colors, "black")
 
 coords_list <- list()
-
 for (name in Images(seurat)) {
     cat('####', name, '\n\n')
 
@@ -528,33 +500,32 @@ for (name in Images(seurat)) {
     coords <- GetTissueCoordinates(seurat, image=name) %>%
         set_names(c('x', 'y'))
     coords_list[[name]] <- coords
-    celltype_df <- seurat@meta.data[, c('first_type', 'second_type')]
+    # Clean the data frame
+    celltype_df <- seurat@meta.data[,
+        c('first_type',
+          'second_type',
+          'first_weight',
+          'second_weight')] %>%
+        rownames_to_column('barcode') %>%
+        pivot_wider(names_from='first_type', values_from='first_weight') %>%
+        pivot_wider(names_from='second_type', values_from='second_weight') %>%
+        column_to_rownames('barcode')
+    # Imput missing values with zero
+    celltype_df[is.na(celltype_df)] <- 0
     coords <- cbind(coords, celltype_df[rownames(coords),])
-    # Extract celltypes
-    top_celltypes <- as.vector(celltype_df) %>%
-        unlist() %>%
-        unique() %>%
-        levels()
-
-    # Add celltype columns with an weight of 0.5 if they align with any of the top 2 celltypes
-    for (c in top_celltypes) {
-        coords[, c] <- ifelse(
-            coords$first_type == c & coords$second_type == c, 1, 
-            ifelse(coords$first_type != c & coords$second_type != c, 0, 0.5))
-    }
 
     # Plot celltype proportions by coordinate
     p <- ggplot() +
         scatterpie::geom_scatterpie(
             data=coords,
-            cols=top_celltypes,
+            cols=colnames(coords)[-c(1:2)],
             color=NA,
             aes(x=x, y=y, r=1)) +
         coord_equal() +
         custom_theme() +
         coord_flip() + 
         scale_x_reverse() +
-        scale_fill_manual(values=plot_cols)
+        scale_fill_manual(values=plot_colors)
 
     print(p)
 
@@ -646,42 +617,30 @@ seurat@meta.data <- cbind(seurat@meta.data, weights_df)
 # This chunk preps plots the proportion of cell subtypes computed using the multi-node RCTD
 # --------------------------------------------------------------------------------
 
+all_celltypes <- colnames(weights_df)
+
 for (name in Images(seurat)) {
     cat('####', name, '\n\n')
 
-    # Prep input data frame for coordinates
+    # Prep input data frame
     coords <- coords_list[[name]]
-
-    # Extract barcodes for the current image
-    barcode_set <- rownames(coords)
-
-    # Sum all glial proportions if specified and subset barcodes
-    glial_cols <- all_celltypes[!str_detect(all_celltypes, "Neu")]
-    neuronal_cols <- all_celltypes[str_detect(all_celltypes, "Neu")]
-    prop_df <- if (collapse_glia) {
-        weights_df[barcode_set, 'Glia'] <- weights_df[barcode_set, glial_cols] %>%
-            rowSums()
-        weights_df[barcode_set, c(neuronal_cols, 'Glia')]
-    } else {
-        weights_df[barcode_set, ]
-    }
-
-    # Add proportions to the coordinate data frame
-    coords <- cbind(coords, prop_df)
+    coords <- cbind(
+        coords,
+        weights_df[rownames(coords), ])
     coords_list[[name]] <- coords
 
     # Plot celltype proportions by coordinate
     p <- ggplot() +
         scatterpie::geom_scatterpie(
             data=coords,
-            cols=colnames(prop_df),
+            cols=all_celltypes,
             color=NA,
             aes(x=x, y=y, r=1)) +
         coord_equal() +
         custom_theme() +
         coord_flip() + 
-        scale_fill_manual(values=plot_cols) +
-        scale_x_reverse()
+        scale_x_reverse() +
+        scale_fill_manual(values=plot_colors)
 
     print(p)
 
@@ -696,9 +655,18 @@ for (name in Images(seurat)) {
 
 ### Density heatmap {.tabset}
 
-Here, we visualize the proportion of individual cell subtypes ranging from 0 to 1.
+Here, we visualize the proportion of individual cell subtypes ranging from 0 to 1. Note that the following
+pseudocount is added to all proportions so we transform to a log2 scale. The pseudocount is calculated
+as the minimum proportion greater than zero within all input cells.
 
-```{r vis_rctd_individual, results='asis'}
+```{r pseudocount}
+# Compute the minimum proportion greater than zero
+all_prop <- unlist(coords[, all_celltypes])
+nonzero_min <- min(all_prop[all_prop > 0])
+print(paste0("A pseudocount of ", nonzero_min, " is added..."))
+```
+
+```{r vis_rctd_individual, results='asis', fig.width=12}
 
 # --------------------------------------------------------------------------------
 # This chunk preps plots the proportion of cell subtypes computed using the multi-node RCTD
@@ -708,8 +676,18 @@ for (name in Images(seurat)) {
 
     cat('####', name, '{.tabset}\n\n')
 
-    # Extract the coordinate data frame for each celltype
-    coords <- coords_list[[name]]
+    # Extract the coordinate data frame for each celltype add the pseudocount
+    coords <- coords_list[[name]] %>%
+        mutate_at(all_celltypes, function(x) x + nonzero_min)
+
+    # Calculate log2-transformed min and max proportions
+    l2_props <- coords[, all_celltypes] %>%
+        unlist() %>%
+        log2()
+    l2_min_max <- c(min(l2_props), max(l2_props))
+
+    # Add a pseudocount to avoid zero prior to log-transformation
+    coords <- coords
 
     for (celltype in all_celltypes) {
 
@@ -722,25 +700,48 @@ for (name in Images(seurat)) {
         for (prop in c('fixed', 'adjusted')) {
 
             cat('######', prop, 'scale\n\n')
-            # Plot celltype proportions by coordinate
-            p <- ggplot(coords_i, aes(x=x, y=y, color=proportion)) +
+            # Plot celltype proportions by coordinate, with and without a log2-transformation
+            p1 <- ggplot(coords_i, aes(x=x, y=y, color=proportion)) +
                 geom_point(size=0.5) +
-                custom_theme() + 
-                coord_flip() + 
-                scale_x_reverse() 
-            p  <- if (prop == "fixed") {
-                p + scale_color_gradient(low='yellow', high='red', limits=c(0, 1))
-            } else {
-                p + scale_color_gradient(low='yellow', high='red')
-            }
+                ggtitle('Raw proportion')
+            p2 <- ggplot(coords_i, aes(x=x, y=y, color=log2(proportion))) +
+                geom_point(size=0.5) +
+                ggtitle('Log2-transformed proportion')
+            p_list <- list(raw=p1, l2=p2) %>%
+                map(~.x +
+                    custom_theme() + 
+                    coord_flip() + 
+                    scale_x_reverse() 
+                )
+            p_list <- lapply(names(p_list), function(pname) {
+                p <- if (prop == "fixed" & pname == "raw") {
+                    p_list[[pname]] + 
+                        scale_color_gradient(
+                            low='yellow',
+                            high='red',
+                            limits=c(0, 1))
+                } else if (prop == "fixed" & pname == "l2") {
+                    p_list[[pname]] + 
+                        scale_color_gradient(
+                            low='yellow',
+                            high='red',
+                            limits=c(l2_min_max[1], l2_min_max[2]))
+                } else {
+                    p_list[[pname]] + 
+                        scale_color_gradient(low='yellow', high='red')
+                }
+                return(p)
+                })
 
-            print(p)
+            p_final <- p_list[[1]] | p_list[[2]]
+            print(p_final)
+            cat('\n\n')
 
             # Save and link
             p_path <- file.path(
                 out_dir,
                 paste0(name, '_', celltype, '_', prop, '.svg'))
-            ggsave(p_path, p, device="svg")
+            ggsave(p_path, p_final, device="svg")
             link_plot(p_path)
         }
     }
