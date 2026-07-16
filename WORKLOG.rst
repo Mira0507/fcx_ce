@@ -2950,3 +2950,17 @@ fcx_ce
           function
         - improve visualization by adding a log2-transformed proportions
           to the fixed and adjusted scales
+
+2026-07-16
+----------
+
+- Rerun Schulmann et al. Visium deconvolution
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+    - notes
+        - bugfix
+        - override the dot color to yellow if cell proportion is zero
