@@ -500,19 +500,33 @@ for (name in Images(seurat)) {
     coords <- GetTissueCoordinates(seurat, image=name) %>%
         set_names(c('x', 'y'))
     coords_list[[name]] <- coords
-    # Clean the data frame
+    # Reshape the data frame
     celltype_df <- seurat@meta.data[,
         c('first_type',
           'second_type',
           'first_weight',
           'second_weight')] %>%
         rownames_to_column('barcode') %>%
-        pivot_wider(names_from='first_type', values_from='first_weight') %>%
-        pivot_wider(names_from='second_type', values_from='second_weight') %>%
-        column_to_rownames('barcode')
+        pivot_wider(names_from='first_type',
+                    values_from='first_weight',
+                    values_fill=0,
+                    names_repair="minimal",
+                    values_fn=sum) %>%
+        pivot_wider(names_from='second_type',
+                    values_from='second_weight',
+                    values_fill=0,
+                    names_repair="minimal",
+                    values_fn=sum)
+
+    # Clean columns
+    cell_df <- celltype_df[, 'barcode']
+    for (c in colnames(celltype_df)[-1]) {
+        cell_df[, c] <- celltype_df[, c] %>% rowSums
+    }
+    cell_df <- cell_df %>% column_to_rownames('barcode')
+
     # Imput missing values with zero
-    celltype_df[is.na(celltype_df)] <- 0
-    coords <- cbind(coords, celltype_df[rownames(coords),])
+    coords <- cbind(coords, cell_df[rownames(coords),])
 
     # Plot celltype proportions by coordinate
     p <- ggplot() +
@@ -523,7 +537,7 @@ for (name in Images(seurat)) {
             aes(x=x, y=y, r=1)) +
         coord_equal() +
         custom_theme() +
-        coord_flip() + 
+        coord_flip() +
         scale_x_reverse() +
         scale_fill_manual(values=plot_colors)
 
