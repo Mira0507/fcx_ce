@@ -518,12 +518,11 @@ for (name in Images(seurat)) {
                     names_repair="minimal",
                     values_fn=sum)
 
-    # Clean columns
-    cell_df <- celltype_df[, 'barcode']
-    for (c in colnames(celltype_df)[-1]) {
-        cell_df[, c] <- celltype_df[, c] %>% rowSums
-    }
-    cell_df <- cell_df %>% column_to_rownames('barcode')
+    # Aggregate duplicated columns
+    cell_df <- sapply(
+        split.default(celltype_df[,-1], names(celltype_df)[-1]),
+        rowSums)
+    rownames(cell_df) <- celltype_df$barcode
 
     # Imput missing values with zero
     coords <- cbind(coords, cell_df[rownames(coords),])
@@ -537,7 +536,7 @@ for (name in Images(seurat)) {
             aes(x=x, y=y, r=1)) +
         coord_equal() +
         custom_theme() +
-        coord_flip() +
+        coord_flip() + 
         scale_x_reverse() +
         scale_fill_manual(values=plot_colors)
 
@@ -700,9 +699,6 @@ for (name in Images(seurat)) {
         log2()
     l2_min_max <- c(min(l2_props), max(l2_props))
 
-    # Add a pseudocount to avoid zero prior to log-transformation
-    coords <- coords
-
     for (celltype in all_celltypes) {
 
         # Prep input data frame
@@ -710,6 +706,12 @@ for (name in Images(seurat)) {
         # Filter a single celltype
         coords_i <- coords[, c('x', 'y', celltype)]
         colnames(coords_i)[3] <- 'proportion'
+
+        # Is this celltype zero %?
+        zero_prop <- ifelse(
+            sum(coords_i[['proportion']] - nonzero_min) == 0,
+            TRUE,
+            FALSE)
 
         for (prop in c('fixed', 'adjusted')) {
 
@@ -747,6 +749,12 @@ for (name in Images(seurat)) {
                 return(p)
                 })
 
+            # Override the dot color to yellow if the celltype computed as zero %
+            if (zero_prop) {
+                print(paste0("Computed proportion of ", name, " ", celltype, ": 0"))
+                p_list <- map(p_list, ~.x + geom_point(color='yellow'))
+            }
+
             p_final <- p_list[[1]] | p_list[[2]]
             print(p_final)
             cat('\n\n')
@@ -761,7 +769,6 @@ for (name in Images(seurat)) {
     }
 }
 ```
-
 
 # Updated Seurat obj
 
