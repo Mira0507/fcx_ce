@@ -2964,3 +2964,18 @@ fcx_ce
     - notes
         - bugfix
         - override the dot color to yellow if cell proportion is zero
+
+2026-07-17
+----------
+
+@Mira0507
+
+- Rerun Schulmann et al. Visium marker gene update
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - add more marker genes
