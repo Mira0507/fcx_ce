@@ -95,12 +95,15 @@ ncell_upper_bound <- 12000
 
 # Specify genes of interest
 gene_set <- c(
-    "SYT1", "GAD2", "SOX14", "SLC17A6", "RNF220", "LAMP5", 
+    "SYT1", "GAD2", "SOX14", "SLC17A6", "RNF220", "LAMP5",
     "BCL11B", "TUBB3", "GRN", "ATP1B1", "HSP90AA1", "HSP90AB1",
-    "NEFL", "CLU", "GAPDH", "PSAP", "SERINC1", "TUBA1B", 
-    "PRNP", "MEG3", "NRG3", "MALAT1", "KCNIP4", "NALF1", 
-    "PTPRD", "ROBO1", "MAGI2", "FTX", "LRP1B", "CALB1", 
-    "NR2F2", "ERBB4", "PVALB", "CALB2", "MEIS2"
+    "NEFL", "CLU", "GAPDH", "PSAP", "SERINC1", "TUBA1B",
+    "PRNP", "MEG3", "NRG3", "MALAT1", "KCNIP4", "NALF1",
+    "PTPRD", "ROBO1", "MAGI2", "FTX", "LRP1B", "CALB1",
+    "NR2F2", "ERBB4", "PVALB", "CALB2", "MEIS2",
+    "NPY", "GAD1", "LHX6", "SST", "ADARB2",
+    "VIP", "CXCL14", "TCF7L2", "FOXP2", "NRP1",
+    "HTR2C", "IL1RAPL2"
 )
 
 # Specify colors for plots
