@@ -623,6 +623,10 @@ Excel-readable tables are linked in the following table:
 - input summary: object statistics before cleanup
 - nuclear summary: object statistics after cleanup and connected-component labeling
 - parameter summary: adaptive thresholds estimated from the image
+- image QC summary: image-level QC summary for the run
+- scale parameter summary: scale-aware parameter summary describing the estimated typical nucleus size
+  and derived watershed settings, including estimated nucleus area, radius, diameter, smoothing sigma, 
+  and peak footprint
 
 ```{r summary_tables, results='asis'}
 
