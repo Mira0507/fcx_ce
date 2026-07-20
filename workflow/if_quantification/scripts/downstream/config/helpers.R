@@ -38,7 +38,7 @@ link_output <- function(p) {
 #' @param in_df data frame returned by the summarize_components function in Python
 #'
 #' @return ggplot
-plot_histo <- function(in_df) {
+plot_histo <- function(in_df, xintercept=0) {
   ggplot(in_df, aes_string(x='area')) +
       geom_histogram(binwidth=max(in_df[['area']]) / 50,
                      fill="lightblue",
@@ -46,7 +46,7 @@ plot_histo <- function(in_df) {
       theme_bw() +
       xlab('Area (Pixels)') +
       ylab('Occurence') +
-      geom_vline(xintercept=df[['median_area']],
+      geom_vline(xintercept=xintercept,
                  color="red",
                  linetype="dashed")
 }

@@ -2890,3 +2890,92 @@ fcx_ce
         - refactored code
         - added scatter pieplots with uniformly weighted duplicate proportions
 
+
+2026-07-13
+----------
+
+@Mira0507
+
+- Update TDP43 IF quantification scripts
+    - conda env: ``senv``
+    - scripts updated
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.R``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+    - notes
+        - this update focused on refactoring analysis code to adapt input image diversity
+          such as image magnification, tissue area, and the pattern of slide glass artifacts.
+
+- Bugfix to Schulmann et al. the Visium deconvolution script
+    - conda env: ``venv``
+    - script: ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+    - notes
+        - fix color map inconsistency
+        - ``visium-thalamus-allcells.Rmd`` in progress
+
+
+2026-07-14
+----------
+
+@Mira0507
+
+- Rerun Schulmann et al. Visium deconvolution
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+    - notes
+        - use updated ``AnnData`` from our dataset, copied from
+          Amber to ``input/Schulmann_visium/combined_reclustered.h5ad``
+        - apply an upper bound of 12,000 cells through random selection.
+        - refactor to make this script available for all analysis options
+
+
+2026-07-15
+----------
+
+@Mira0507
+
+- Rerun Schulmann et al. Visium deconvolution
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+    - notes
+        - relax the max number of cells per celltype in reference
+          by specifying the ``n_max_cells`` argument in the ``Reference``
+          function
+        - improve visualization by adding a log2-transformed proportions
+          to the fixed and adjusted scales
+
+2026-07-16
+----------
+
+- Rerun Schulmann et al. Visium deconvolution
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+    - notes
+        - bugfix
+        - override the dot color to yellow if cell proportion is zero
+
+2026-07-17
+----------
+
+@Mira0507
+
+- Rerun Schulmann et al. Visium marker gene update
+    - conda env: ``venv``
+    - scripts: 
+        - ``workflow/schulmann_visium/visium-thalamus-allcells-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-allcells.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus-controls.Rmd``
+        - ``workflow/schulmann_visium/visium-thalamus.Rmd``
+    - notes
+        - add more marker genes

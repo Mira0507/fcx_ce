@@ -36,6 +36,13 @@ set.seed(2570)
 
 ```{r config}
 
+# ------------------------------------------------------------------
+# Aim of this config section:
+# - centralize all workflow settings
+# - support future multi-sample use
+# - allow scale-aware behavior when image metadata are available
+# ------------------------------------------------------------------
+
 # Path to output directory
 out_dir <- "dapi"
 if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
@@ -51,43 +58,66 @@ output_obj <- file.path(out_dir, "nuclear_seg.zarr")
 sq_layer <- config[['sq_layer']]
 out_layer <- config[['out_layer']]
 
-# Specify channel
+# Specify DAPI channel
 chan <- config[['channels']][['dapi']]
 
-# Specify connectivity to determine which neighboring pixels are 
+# Sample / image metadata
+# Aim:
+# - carry identity and scale metadata into exported tables
+# - allow later pooling across many samples
+sample_id <- config[['sample']][['sample_id']]
+image_id <- config[['sample']][['image_id']]
+sample_group <- config[['sample']][['group']]
+pixel_size_um <- config[['sample']][['pixel_size_um']]
+magnification <- config[['sample']][['magnification']]
+
+# Specify connectivity to determine which neighboring pixels are
 # considered connected when forming objects
 connectivity <- config[['connectivity']]
 
-# Specify parameters for cleaning
-# Debris-control parameter
-# (treat the smallest tail of objects as the best estimate of likely noise/speckle scale.)
+# ------------------------------------------------------------------
+# Adaptive cleanup parameters
+# Aim:
+# - estimate cleanup thresholds from the image itself
+# - add safety bounds to improve robustness on unusual images
+# ------------------------------------------------------------------
 min_component_quantile <- config[['nuc']][["min_component_quantile"]]
-# small-hole filling parameter
-# (The 25th percentile is more permissive than the 10th percentile,
-# which makes sense because internal holes can be somewhat larger than isolated specks)
 area_threshold_quantile <- config[['nuc']][["area_threshold_quantile"]]
-# merged-object/artifact flagging parameter
-# (isolates the extreme upper tail rather than the center of the size distribution,
-# which is where you’d expect merged nuclei or image artifacts to appear)
 large_object_quantile <- config[['nuc']][["large_object_quantile"]]
-# Safety cap
-# (Without it, one or two giant bizarre objects could push the “large object” 
-# threshold so high that genuinely suspicious large nuclei would no longer be flagged.)
 max_reasonable_area_multiplier <- config[['nuc']][["max_reasonable_area_multiplier"]]
-# Sigma for Guanssian filter preceding watershed
-dt_smoothing_sigma <- config[['nuc']][['dt_smoothing_sigma']]
-# how close two peaks can be before they are treated as one
-# (A larger footprint reduces over-splitting; a smaller one increases sensitivity
-# to local bumps and may split one nucleus into multiple labels.)
-peak_footprint <- config[['nuc']][['peak_footprint']]
 
-# readability and speed of QC visualization
+min_plausible_nucleus_area_px <- config[['nuc']][["min_plausible_nucleus_area_px"]]
+max_plausible_nucleus_area_px <- config[['nuc']][["max_plausible_nucleus_area_px"]]
+min_min_size_px <- config[['nuc']][["min_min_size_px"]]
+max_min_size_px <- config[['nuc']][["max_min_size_px"]]
+min_hole_area_px <- config[['nuc']][["min_hole_area_px"]]
+max_hole_area_px <- config[['nuc']][["max_hole_area_px"]]
+
+# ------------------------------------------------------------------
+# Watershed splitting parameters
+# Aim:
+# - allow either manual pixel-based settings or image-adaptive estimation
+# ------------------------------------------------------------------
+watershed_for_splitting <- config[['nuc']][['watershed_for_splitting']]
+watershed_auto_compute <- config[['nuc']][['watershed']][['auto_compute']]
+
+manual_dt_smoothing_sigma <- config[['nuc']][['watershed']][['dt_smoothing_sigma']]
+manual_peak_footprint <- config[['nuc']][['watershed']][['peak_footprint']]
+
+sigma_as_fraction_of_radius <- config[['nuc']][['watershed']][['sigma_as_fraction_of_radius']]
+peak_footprint_as_fraction_of_diameter <- config[['nuc']][['watershed']][['peak_footprint_as_fraction_of_diameter']]
+
+min_dt_smoothing_sigma <- config[['nuc']][['watershed']][['min_dt_smoothing_sigma']]
+max_dt_smoothing_sigma <- config[['nuc']][['watershed']][['max_dt_smoothing_sigma']]
+min_peak_footprint <- config[['nuc']][['watershed']][['min_peak_footprint']]
+max_peak_footprint <- config[['nuc']][['watershed']][['max_peak_footprint']]
+
+# Readability and speed of QC visualization
 qc_overlay_max_objects <- config[['nuc']][['qc_overlay_max_objects']]
 
 # Additional TRUE/FALSE options
 fill_holes <- config[['nuc']][['fill_holes']]
 border_clear <- config[['nuc']][['border_clear']]
-watershed_for_splitting <- config[['nuc']][['watershed_for_splitting']]
 
 # Load helper functions
 source(config[['helper']][['R']])
@@ -123,6 +153,8 @@ Assumptions:
   not fixed arbitrarily
 - segmentation outputs will later feed cytoplasmic compartment construction 
   and downstream TDP43 localization analysis
+- sample/image metadata may be missing for a demo image, so the workflow must
+  still run when `pixel_size_um` is unknown
 
 # Loading input `ImageContainer`
 
@@ -148,7 +180,10 @@ We aim to give a first-pass description of object sizes/shapes in the input
 ```{python input_summary}
 
 # ------------------------------------------------------------------------------
-# This chunk inspects the input image
+# Aim of this chunk:
+# - inspect the incoming DAPI mask
+# - summarize connected components before cleanup
+# - record image-level context for later QC across samples
 # ------------------------------------------------------------------------------
 
 # Duplicate a layer in the ImageContainer obj
@@ -158,10 +193,29 @@ img.add_img(cleaned_img, layer=r.out_layer)
 # Retrieve the Dask array with nuclear staining ([y, x, z, channels])
 binary_mask = img[r.out_layer].data[:, :, 0, r.chan]
 
+# Convert explicitly to boolean so downstream morphology behaves consistently
+binary_mask = np.asarray(binary_mask).astype(bool)
+
+# Record image-level summary values
+image_shape = binary_mask.shape
+image_area_px = int(binary_mask.shape[0] * binary_mask.shape[1])
+input_foreground_pixels = int(binary_mask.sum())
+input_foreground_fraction = (
+    float(input_foreground_pixels / image_area_px) if image_area_px > 0 else np.nan
+)
+
 # Compute input sizes and shapes
 initial_labels, initial_df = summarize_components(
     binary_mask,
-    connectivity=r.connectivity)
+    connectivity=r.connectivity
+)
+
+print("sample_id =", r.sample_id)
+print("image_id =", r.image_id)
+print("image_shape =", image_shape)
+print("image_area_px =", image_area_px)
+print("input_foreground_pixels =", input_foreground_pixels)
+print("input_foreground_fraction =", input_foreground_fraction)
 ```
 
 Metrics:
@@ -186,27 +240,84 @@ print(tail(py$initial_df))
 
 # Estimating cleanup parameters adaptively {.tabset}
 
-We examine the distribution of connected-component areas from `initial_df`, as summarized below:
+The adaptive cleanup strategy is based on the connected-component size
+distribution from the current image, but adds two safeguards:
+
+- **plausibility filtering** so very tiny debris or giant artifacts do not dominate
+  cleanup estimation
+- **bounded auto-estimation** so cleanup and watershed parameters stay within a
+  stable range across diverse images
+
+In addition, watershed splitting parameters are now resolved in one of two ways:
+
+- **auto mode**: derived from the estimated nucleus scale in the image
+- **manual mode**: uses the explicit pixel-based settings in the config file
 
 ```{python cleanup_parameters}
 
 # ------------------------------------------------------------------------------
-# This chunk calculates estimate parameters
+# Aim of this chunk:
+# - estimate cleanup thresholds from the connected-component distribution
+# - add guardrails for unusual images
+# - estimate scale-aware watershed parameters from the observed nucleus size
 # ------------------------------------------------------------------------------
 
-# reticulate::repl_python()
-param_est = estimate_cleanup_parameters( 
+param_est = estimate_cleanup_parameters(
     initial_df,
     min_component_quantile=r.min_component_quantile,
     area_threshold_quantile=r.area_threshold_quantile,
     large_object_quantile=r.large_object_quantile,
-    max_reasonable_area_multiplier=r.max_reasonable_area_multiplier)
+    max_reasonable_area_multiplier=r.max_reasonable_area_multiplier,
+    min_plausible_nucleus_area_px=r.min_plausible_nucleus_area_px,
+    max_plausible_nucleus_area_px=r.max_plausible_nucleus_area_px,
+    min_min_size_px=r.min_min_size_px,
+    max_min_size_px=r.max_min_size_px,
+    min_hole_area_px=r.min_hole_area_px,
+    max_hole_area_px=r.max_hole_area_px
+)
+
+scale_est = estimate_nuclear_scale_parameters(
+    initial_df,
+    pixel_size_um=r.pixel_size_um,
+    sigma_as_fraction_of_radius=r.sigma_as_fraction_of_radius,
+    peak_footprint_as_fraction_of_diameter=r.peak_footprint_as_fraction_of_diameter,
+    min_dt_smoothing_sigma=r.min_dt_smoothing_sigma,
+    max_dt_smoothing_sigma=r.max_dt_smoothing_sigma,
+    min_peak_footprint=r.min_peak_footprint,
+    max_peak_footprint=r.max_peak_footprint,
+    min_plausible_nucleus_area_px=r.min_plausible_nucleus_area_px,
+    max_plausible_nucleus_area_px=r.max_plausible_nucleus_area_px
+)
+
+# Resolve the actual watershed parameters used in this run
+# Background:
+# - auto mode adapts to the image-derived nucleus scale
+# - manual mode preserves explicit user control if needed
+if bool(r.watershed_auto_compute):
+    dt_smoothing_sigma = scale_est["dt_smoothing_sigma"]
+    peak_footprint = scale_est["peak_footprint"]
+else:
+    dt_smoothing_sigma = r.manual_dt_smoothing_sigma
+    peak_footprint = r.manual_peak_footprint
+
+print("Resolved watershed sigma =", dt_smoothing_sigma)
+print("Resolved peak footprint =", peak_footprint)
 ```
+
+## Cleanup parameters {.tabset}
+
+Metrics:
 
 - `min_size`: Lower bound for removing tiny disconnected debris objects
 - `area_threshold`: Maximum hole size that may be filled if `fill_holes = TRUE`
 - `large_object_cutoff`: Upper-tail threshold used to flag unusually large objects for review
 - `median_area`: Useful descriptive summary of the connected-component distribution
+- `n_components`: Total number of positive connected components detected in the input mask
+  before plausibility filtering
+- `n_plausible_components`: Number of connected components whose areas fall within the configured 
+  plausible nucleus-size range
+- `fraction_plausible_components`: Proportion of all detected connected components that fall 
+  within the configured plausible nucleus-size range
 
 Note that the red dashed vertical lines indicate median area. The “after” histogram is shown 
 only to make the distribution easier to read after excluding extreme large objects from plotting;
@@ -215,29 +326,58 @@ it does not mean those large objects are removed from segmentation.
 ```{r parameters_df, results='asis'}
 
 # ------------------------------------------------------------------------------
-# This chunk visualizes area distribution and median area
+# This chunk visualizes area distribution and median area for cleanup parameters
 # ------------------------------------------------------------------------------
 
 # Print estimated parameters
-df <- as.data.frame(py$param_est)
+df <- as.data.frame(py$param_est) %>%
+    gather('metric', 'value')
 knitr::kable(df)
 
 # Remove objects that are greater than large object cutoff
 filtered_df <- py$initial_df %>%
-  dplyr::filter(area <= df[['large_object_cutoff']])
+  dplyr::filter(area <= df['large_object_cutoff', 'value'])
 
 df_list <- list(before=py$initial_df, after=filtered_df)
 
 # Visualize data
+xintercept <- df[df$metric == 'median_area', 'value']
 for (name in names(df_list)) {
-    cat('##', name, 'filtering at the large obj cutoff\n\n')
-    print(plot_histo(df_list[[name]]))
+    cat('###', name, 'filtering at the large obj cutoff\n\n')
+    print(plot_histo(df_list[[name]], xintercept=xintercept))
     cat('\n\n')
 }
 ```
 
 Note that the red dashed vertical lines indicate median area. 
 
+## Scale parameters
+
+- `estimated_typical_nucleus_area_px`: Median area of plausible connected components,
+  used as the workflow’s estimate of a typical nucleus size in pixels.
+- `estimated_nucleus_radius_px`: Approximate nucleus radius inferred from `estimated_typical_nucleus_area_px`,
+  assuming a roughly circular nucleus.
+- `estimated_nucleus_diameter_px`: Approximate nucleus diameter inferred from the estimated 
+  typical nucleus area.
+- `dt_smoothing_sigma`: Gaussian smoothing width applied to the distance-transform image 
+  before watershed peak detection; helps reduce over-splitting from small local bumps.
+- `peak_footprint`: Size of the local neighborhood used when detecting distance-transform peaks 
+  for watershed markers; larger values are more conservative, smaller values are more sensitive.
+
+```{r scale_df, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes area distribution and median area
+# ------------------------------------------------------------------------------
+
+# Print estimated parameters
+df <- data.frame(
+    unlist(py$scale_est) %>%
+        map(~ifelse(is.null(.x), "NULL", .x))
+) %>%
+gather('metric', 'value')
+knitr::kable(df)
+```
 
 # Cleaning mask
 
@@ -250,10 +390,13 @@ This step performs the following:
 ```{python cleanup_mask}
 
 # ------------------------------------------------------------------------------
-# This chunk cleans the binary mask
+# Aim of this chunk:
+# - apply conservative cleanup to the binary DAPI mask
+# - remove tiny disconnected debris
+# - fill small internal holes
+# - preserve border-touching nuclei unless border_clear is explicitly enabled
 # ------------------------------------------------------------------------------
 
-# reticulate::repl_python()
 cleaned_mask = clean_input_mask(
     binary_mask,
     min_size=int(param_est["min_size"]),
@@ -261,7 +404,7 @@ cleaned_mask = clean_input_mask(
     connectivity=r.connectivity,
     fill_holes=bool(r.fill_holes),
     border_clear=bool(r.border_clear)
-    )
+)
 ```
 
 # Segmenting nuclei
@@ -278,20 +421,24 @@ We label connected components directly, otherwise.
 ```{python nuc_seg}
 
 # ------------------------------------------------------------------------------
-# This chunk runs segmentation optionally
+# Aim of this chunk:
+# - split merged nuclei using watershed when enabled
+# - use resolved scale-aware parameters in auto mode
+# - otherwise fall back to plain connected components
 # ------------------------------------------------------------------------------
 
 if bool(r.watershed_for_splitting):
     nuclear_labels = split_merged_nuclei(
         cleaned_mask,
-        sigma=r.dt_smoothing_sigma,
-        peak_footprint=r.peak_footprint,
-        connectivity=r.connectivity)
+        sigma=dt_smoothing_sigma,
+        peak_footprint=peak_footprint,
+        connectivity=r.connectivity
+    )
 else:
     nuclear_labels = measure.label(
         cleaned_mask,
         connectivity=r.connectivity
-        )
+    )
 ```
 
 # Building the final feature table
@@ -317,11 +464,18 @@ segmentation artifacts.
 ```{python feature_df}
 
 # ------------------------------------------------------------------------------
-# This chunk runs segmentation optionally
+# Aim of this chunk:
+# - build the per-nucleus feature table
+# - add QC flags and metadata for future multi-sample comparison
+# - export an image-level summary table for run diagnostics
 # ------------------------------------------------------------------------------
 
 # Summarize image properties in a data frame
 nuclei_df = regionprops_dataframe(nuclear_labels)
+
+# Add border-touching flag so edge nuclei can be reviewed later without
+# forcing their removal up front
+nuclei_df = add_border_flag(nuclei_df, nuclear_labels)
 
 # Add QC flags
 if nuclei_df.shape[0] > 0:
@@ -330,22 +484,55 @@ if nuclei_df.shape[0] > 0:
 else:
     nuclei_df["is_large_object_flag"] = pd.Series(dtype=bool)
 
+# Add sample/image metadata to support future pooled analyses
+nuclei_df["sample_id"] = r.sample_id
+nuclei_df["image_id"] = r.image_id
+nuclei_df["group"] = r.sample_group
+nuclei_df["pixel_size_um"] = r.pixel_size_um
+nuclei_df["magnification"] = r.magnification
+
+# Record the resolved cleanup / splitting settings used for this image
+nuclei_df["estimated_min_size"] = int(param_est["min_size"])
+nuclei_df["estimated_area_threshold"] = int(param_est["area_threshold"])
+nuclei_df["estimated_large_object_cutoff"] = int(param_est["large_object_cutoff"])
+nuclei_df["resolved_dt_smoothing_sigma"] = float(dt_smoothing_sigma)
+nuclei_df["resolved_peak_footprint"] = int(peak_footprint)
+
 print(nuclei_df.head())
 print(nuclei_df.tail())
 
 run_summary = {
+    "sample_id": r.sample_id,
+    "image_id": r.image_id,
+    "group": r.sample_group,
+    "pixel_size_um": r.pixel_size_um,
+    "magnification": r.magnification,
     "input_shape": tuple(binary_mask.shape),
+    "image_area_px": int(binary_mask.shape[0] * binary_mask.shape[1]),
     "input_foreground_pixels": int(binary_mask.sum()),
     "cleaned_foreground_pixels": int(cleaned_mask.sum()),
+    "input_foreground_fraction": float(binary_mask.sum() / (binary_mask.shape[0] * binary_mask.shape[1])),
+    "cleaned_foreground_fraction": float(cleaned_mask.sum() / (binary_mask.shape[0] * binary_mask.shape[1])),
     "n_initial_components": int(initial_df.shape[0]),
     "n_final_nuclei": int(nuclei_df.shape[0]),
     "estimated_min_size": int(param_est["min_size"]),
     "estimated_area_threshold": int(param_est["area_threshold"]),
-    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
+    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"]),
+    "estimated_typical_nucleus_area_px": scale_est["estimated_typical_nucleus_area_px"],
+    "estimated_nucleus_radius_px": scale_est["estimated_nucleus_radius_px"],
+    "estimated_nucleus_diameter_px": scale_est["estimated_nucleus_diameter_px"],
+    "resolved_dt_smoothing_sigma": float(dt_smoothing_sigma),
+    "resolved_peak_footprint": int(peak_footprint),
+    "watershed_auto_compute": bool(r.watershed_auto_compute),
+    "border_clear": bool(r.border_clear),
+    "fill_holes": bool(r.fill_holes)
 }
 
-for key,value in run_summary.items():
+for key, value in run_summary.items():
     print(key, "=", value)
+
+image_qc_df = pd.DataFrame([run_summary])
+scale_parameter_df = pd.DataFrame([scale_est])
 ```
 
 ```{python add_to_img}
@@ -436,30 +623,57 @@ Excel-readable tables are linked in the following table:
 ```{r summary_tables, results='asis'}
 
 # ------------------------------------------------------------------------------
-# This chunk saves and links output summary tables
+# Aim of this chunk:
+# - save all object-level and image-level summary tables
+# - keep outputs easy to combine across multiple images later
 # ------------------------------------------------------------------------------
 
 df_list <- list(
-    input_summary=py$initial_df,
-    nuclear_summary=py$nuclei_df,
-    parameter_summary=py$param_est
+    input_summary = py$initial_df,
+    nuclear_summary = py$nuclei_df,
+    parameter_summary = as.data.frame(py$param_est),
+    image_qc_summary = py$image_qc_df,
+    scale_parameter_summary = py$scale_parameter_df
 )
 
-path_df <- data.frame(table=names(df_list), link="")
+path_df <- data.frame(table = names(df_list), link = "")
 
 for (name in names(df_list)) {
     tsv <- file.path(out_dir, paste0(name, ".tsv"))
-    write.table(df_list[[name]],
-                tsv,
-                quote=FALSE,
-                row.names=FALSE,
-                col.names=TRUE)
+    df <- df_list[[name]]
+    tryCatch({
+        write.table(
+            df,
+            tsv,
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t"
+        )
+    }, error = function(e) {
+        c_length <- apply(df, 2, class)
+        for (c in colnames(df)) {
+            if (is.list(df[[c]])) {
+                df[[c]] <- df[[c]] %>%
+                    paste(sep=", ")
+            }
+        }
+        write.table(
+            df,
+            tsv,
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t"
+        )
+    })
+
     path_df[path_df$table == name, 'link'] <- tsv
 }
 
 knitr::kable(
     path_df %>%
-        mutate(link=paste0("[", link, "](", link, ")"))
+        mutate(link = paste0("[", link, "](", link, ")"))
 )
 ```
 
@@ -476,8 +690,6 @@ Output images are saved as the following object:
 img.save(r.output_obj)
 print(r.output_obj)
 ```
-
-
 
 # Session info
 
