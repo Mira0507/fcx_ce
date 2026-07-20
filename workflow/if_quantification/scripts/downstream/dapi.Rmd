@@ -33,6 +33,28 @@ set.seed(2570)
 # options(mc.cores=n_cores)
 ```
 
+```{r import r_config}
+# Load configuration
+config <- yaml::read_yaml("config/config.yaml")
+
+# Specify conda env
+use_condaenv(config[['conda_env']])
+```
+
+```{python ppackages}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import ndimage as ndi
+from skimage import io, measure, morphology, segmentation, feature, color, util
+from matplotlib.colors import ListedColormap
+from skimage.segmentation import watershed
+import dask.array as da
+import squidpy as sq
+import xarray as xr
+import subprocess
+import os
+```
 
 ```{r config}
 
@@ -46,9 +68,6 @@ set.seed(2570)
 # Path to output directory
 out_dir <- "dapi"
 if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
-
-# Load configuration
-config <- yaml::read_yaml("config/config.yaml")
 
 # Input & output obj paths
 input_obj <- '../../../../../squidpy_masking/scripts/snakemake/results/noperm/post_processing.zarr'
@@ -125,21 +144,6 @@ source(config[['helper']][['R']])
 # Specify conda env
 use_condaenv(config[['conda_env']])
 source_python(config[['helper']][['py']])
-```
-
-```{python ppackages}
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy import ndimage as ndi
-from skimage import io, measure, morphology, segmentation, feature, color, util
-from matplotlib.colors import ListedColormap
-from skimage.segmentation import watershed
-import dask.array as da
-import squidpy as sq
-import xarray as xr
-import subprocess
-import os
 ```
 
 This workflow performs **nuclear cleaning and segmentation** from 
@@ -268,8 +272,8 @@ param_est = estimate_cleanup_parameters(
     area_threshold_quantile=r.area_threshold_quantile,
     large_object_quantile=r.large_object_quantile,
     max_reasonable_area_multiplier=r.max_reasonable_area_multiplier,
-    min_plausible_nucleus_area_px=r.min_plausible_nucleus_area_px,
-    max_plausible_nucleus_area_px=r.max_plausible_nucleus_area_px,
+    min_plausible_object_area_px=r.min_plausible_nucleus_area_px,
+    max_plausible_object_area_px=r.max_plausible_nucleus_area_px,
     min_min_size_px=r.min_min_size_px,
     max_min_size_px=r.max_min_size_px,
     min_hole_area_px=r.min_hole_area_px,
@@ -336,7 +340,7 @@ knitr::kable(df)
 
 # Remove objects that are greater than large object cutoff
 filtered_df <- py$initial_df %>%
-  dplyr::filter(area <= df['large_object_cutoff', 'value'])
+  dplyr::filter(area <= df[df$metric == 'large_object_cutoff', 'value'])
 
 df_list <- list(before=py$initial_df, after=filtered_df)
 
