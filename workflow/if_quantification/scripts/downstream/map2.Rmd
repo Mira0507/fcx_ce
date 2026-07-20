@@ -174,7 +174,8 @@ Metrics:
 
 # Summarizing initial input summary
 
-We aim to give a first-pass description of object sizes/shapes in the input
+This chunk measures MAP2-positive objects before cleanup so the size distribution can be used 
+to estimate adaptive thresholds and document starting image quality.
 
 ```{python processed_input_summary}
 
@@ -284,7 +285,7 @@ df_list <- list(before=py$initial_df, after=filtered_df)
 # Visualize data
 xintercept <- df[df$metric == 'median_area', 'value']
 for (name in names(df_list)) {
-    cat('###', name, 'filtering at the large obj cutoff\n\n')
+    cat('##', name, 'filtering at the large obj cutoff\n\n')
     print(plot_histo(df_list[[name]], xintercept=xintercept))
     cat('\n\n')
 }
@@ -293,3 +294,319 @@ for (name in names(df_list)) {
 Note that the red dashed vertical lines indicate median area. The “after” histogram is shown 
 only to make the distribution easier to read after excluding extreme large objects from plotting;
 it does not mean those large objects are removed from segmentation.
+
+# Cleaning the MAP2 mask
+
+This section removes very small disconnected debris, optionally fills small holes, and optionally
+applies a light morphology opening for conservative cleanup.
+
+```{python clean_mask}
+
+# ------------------------------------------------------------------------------
+# This chunk removes tiny disconnected debris, optionally fills small holes,
+# and preserves the main MAP2-positive territories while keeping cleanup conservative
+# ------------------------------------------------------------------------------
+
+cleaned_mask = clean_input_mask(
+    cyt,
+    min_size=int(param_est["min_size"]),
+    area_threshold=int(param_est["area_threshold"]),
+    connectivity=r.connectivity,
+    fill_holes=bool(r.fill_holes),
+    border_clear=bool(r.border_clear)
+)
+
+if bool(r.apply_opening) and int(r.opening_radius) > 0:
+    cleaned_mask = morphology.binary_opening(
+        cleaned_mask,
+        footprint=morphology.disk(int(r.opening_radius))
+    )
+
+cleaned_foreground_pixels = int(cleaned_mask.sum())
+cleaned_foreground_fraction = float(cleaned_foreground_pixels / image_area_px) if image_area_px > 0 else np.nan
+
+print("cleaned_foreground_pixels =", cleaned_foreground_pixels)
+print("cleaned_foreground_fraction =", cleaned_foreground_fraction)
+```
+
+# Segmenting cytoplasmic regions
+
+This step labels connected MAP2-positive objects after cleanup.
+
+
+```{python label_cyto}
+
+# ------------------------------------------------------------------------------
+# This chunk labels cleaned cytoplasmic objects
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Label cytoplasmic objects
+cyto_labels = measure.label(cleaned_mask, connectivity=r.connectivity)
+```
+
+# Building the final feature table
+
+This step computes region-level measurements from the final labeled image. Refer to the following table
+for detailed information:
+
+- label
+- area
+- centroid
+- bounding box
+- eccentricity
+- solidity
+- extent
+- major/minor axis lengths
+- equivalent diameter
+- perimeter
+
+The `is_large_object_flag` column is included for QC only. It can help identify large connected 
+regions that may represent biologically real extended neuronal structure, merged signal, or 
+segmentation artifacts.
+
+```{python feature_df}
+
+# ------------------------------------------------------------------------------
+# This chunk summarizes final MAP2-positive segmented objects
+# ------------------------------------------------------------------------------
+
+cytoplasm_df = regionprops_dataframe(cyto_labels)
+cytoplasm_df = add_border_flag(cytoplasm_df, cyto_labels)
+
+if cytoplasm_df.shape[0] > 0:
+    large_cutoff = param_est["large_object_cutoff"]
+    cytoplasm_df["is_large_object_flag"] = cytoplasm_df["area"] >= large_cutoff
+else:
+    cytoplasm_df["is_large_object_flag"] = pd.Series(dtype=bool)
+
+cytoplasm_df = append_sample_metadata(
+    cytoplasm_df,
+    sample_id=r.sample_id,
+    image_id=r.image_id,
+    group=r.group,
+    pixel_size_um=r.pixel_size_um,
+    magnification=r.magnification
+)
+
+print(cytoplasm_df.head())
+print(cytoplasm_df.tail())
+```
+
+```{python add_to_img}
+
+# ------------------------------------------------------------------------------
+# this chunk adds the cleaned masked array back to the imagecontainer obj
+# ------------------------------------------------------------------------------
+
+# reticulate::repl_python()
+# Add the cleaned mask array to the ImageContainer obj
+img[r.out_layer].data[:, :, 0, r.cyt_chan] = cleaned_mask
+
+# Delete unnecessary layers
+layers_del = [l for l in list(img) if l not in ['image', r.sq_layer, r.out_layer]]
+print("The following layers are deleted: ", layers_del)
+for l in layers_del:
+    del img[l]
+```
+
+# Building run-level QC summary
+
+Metrics:
+
+- `input_foreground_fraction`: fraction of image occupied by MAP2 signal before cleanup.
+- `cleaned_foreground_fraction`: fraction of image occupied by MAP2 signal after cleanup.
+- `n_initial_components`: number of connected components before cleanup.
+- `n_final_components`: number of connected components after cleanup.
+- `fraction_foreground_retained`: fraction of MAP2-positive pixels retained after cleanup.
+- `fraction_components_retained`: fraction of connected objects retained after cleanup.
+- `n_large_objects_final`: number of final objects exceeding the adaptive large-object QC threshold.
+- `n_border_objects_final`: number of final objects touching the image edge.
+- `flag_low_signal_image`: warns that the image contains very little MAP2-positive foreground.
+- `flag_component_collapse`: warns that many initial objects collapsed into far fewer final objects.
+
+```{python run_qc}
+
+# ------------------------------------------------------------------------------
+# this chunk summaizes the processing outcome at the image/run level
+# ------------------------------------------------------------------------------
+
+run_summary = build_mask_run_summary(
+    input_mask=cyt,
+    cleaned_mask=cleaned_mask,
+    initial_df=initial_df,
+    final_df=cytoplasm_df,
+    sample_id=r.sample_id,
+    image_id=r.image_id,
+    group=r.group,
+    pixel_size_um=r.pixel_size_um,
+    magnification=r.magnification
+)
+
+run_summary["estimated_min_size"] = int(param_est["min_size"])
+run_summary["estimated_area_threshold"] = int(param_est["area_threshold"])
+run_summary["estimated_large_object_cutoff"] = int(param_est["large_object_cutoff"])
+run_summary["n_large_objects_final"] = int(cytoplasm_df["is_large_object_flag"].sum()) if cytoplasm_df.shape[0] > 0 else 0
+run_summary["n_border_objects_final"] = int(cytoplasm_df["touches_border"].sum()) if cytoplasm_df.shape[0] > 0 else 0
+
+artifact_flags = flag_sparse_or_artifact_image(
+    run_summary["input_foreground_fraction"],
+    run_summary["cleaned_foreground_fraction"],
+    run_summary["n_initial_components"],
+    run_summary["n_final_components"]
+)
+
+run_summary_df = pd.DataFrame([run_summary])
+```
+
+```{r print_run_qc, results='asis'}
+py$run_summary_df %>%
+    t() %>%
+    as.data.frame() %>%
+    rownames_to_column('metric') %>%
+    set_names(c('metric', 'value')) %>%
+    knitr::kable()
+```
+
+# Visualizing cleaned nuclear segmentation {.tabset}
+
+- Input: `r sq_layer`
+- Output: `r out_layer`
+
+Unique pixels at each array are visualized using the following pseudocolors:
+
+```{python vis_prep}
+
+# ------------------------------------------------------------------------------
+# This chunk is used to prepare visualizing processed images
+# ----------------------------------------------------------------------------
+
+# Specify a colormap used for unique pixels
+color_map = {r.sq_layer: 'dodgerblue', r.out_layer: 'orange'}
+for key, value in color_map.items(): 
+    print(key, "=", value)
+
+# Specify a function to visualize unique pixels
+def display_merge(layer_list):
+
+    # Stack binary images
+    for l in layer_list:
+        ar = img[l].data[:, :, 0, r.chan]
+        plt.imshow(ar,
+                   cmap=ListedColormap([(1, 1, 1, 0), color_map[l]]),
+                   alpha=0.5)
+    plt.xticks([])
+    plt.yticks([])
+    plt.savefig(f"{r.out_dir}/unique_pixels.png", dpi=600)
+    plt.show()
+```
+
+```{r vis_images, results='asis'}
+
+# ------------------------------------------------------------------------------
+# This chunk visualizes input and output masking
+# ------------------------------------------------------------------------------
+
+# Visualize binary images across the channels
+for (layer in c(sq_layer, out_layer)) {
+    cat("## Channel", chan, "&", layer, "Layer\n\n")
+    # Command to show image
+    t_deparsed_1 <- paste0("img.show('", layer, "', channel=", chan, ", cmap='gray')")
+    t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/", layer, "_channel_", chan,  ".png', dpi=600)")
+    t_deparsed_3 <- "plt.close()"
+    t_deparsed <- c(t_deparsed_1, t_deparsed_2, t_deparsed_3)
+    subchunkify(name=paste0(layer, "_", chan), t_deparsed=t_deparsed)
+
+    link_output(paste0(out_dir, "/", layer, "_channel_", chan, ".png"))
+    cat('\n\n')
+}
+
+# Overlay images before and after cleaning
+cat("## Unique pixels\n\n")
+t_deparsed <- paste0("display_merge(list(color_map.keys()))\n")
+subchunkify(name="unique_pixels", t_deparsed=t_deparsed)
+link_output(paste0(out_dir, "/unique_pixels.png"))
+```
+
+# Summary tables
+
+Excel-readable tables are linked in the following table:
+
+- input summary: object statistics before cleanup
+- parameter summary: adaptive thresholds estimated from the image
+- 
+
+```{r summary_tables, results='asis'}
+
+# ------------------------------------------------------------------------------
+# Aim of this chunk:
+# - save all object-level and image-level summary tables
+# - keep outputs easy to combine across multiple images later
+# ------------------------------------------------------------------------------
+
+df_list <- list(
+    input_summary = py$initial_df,
+    parameter_summary = as.data.frame(py$param_est),
+    image_qc_summary = py$run_summary_df
+)
+
+path_df <- data.frame(table = names(df_list), link = "")
+
+for (name in names(df_list)) {
+    tsv <- file.path(out_dir, paste0(name, ".tsv"))
+    df <- df_list[[name]]
+    tryCatch({
+        write.table(
+            df,
+            tsv,
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t"
+        )
+    }, error = function(e) {
+        c_length <- apply(df, 2, class)
+        for (c in colnames(df)) {
+            if (is.list(df[[c]])) {
+                df[[c]] <- df[[c]] %>%
+                    paste(sep=", ")
+            }
+        }
+        write.table(
+            df,
+            tsv,
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t"
+        )
+    })
+
+    path_df[path_df$table == name, 'link'] <- tsv
+}
+
+knitr::kable(
+    path_df %>%
+        mutate(link = paste0("[", link, "](", link, ")"))
+)
+```
+
+# Saving the `ImageContainer` object
+
+Output images are saved as the following object:
+
+```{python save_zarr}
+
+# ------------------------------------------------------------------------------
+# This chunk saves updated ImageContainer as Zarr
+# ------------------------------------------------------------------------------
+
+img.save(r.output_obj)
+print(r.output_obj)
+```
+
+# Session info
+
+```{r session_info, collapse=FALSE}
+sessionInfo()
+```
