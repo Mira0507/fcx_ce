@@ -533,8 +533,9 @@ link_output(paste0(out_dir, "/unique_pixels.png"))
 Excel-readable tables are linked in the following table:
 
 - input summary: object statistics before cleanup
+- nuclear summary: object statistics after cleanup and connected-component labeling
 - parameter summary: adaptive thresholds estimated from the image
-- 
+- image QC summary: image-level QC summary for the run
 
 ```{r summary_tables, results='asis'}
 
