@@ -117,21 +117,40 @@ nuc:
     # Readability and speed of QC visualization
     qc_overlay_max_objects: 500
 
+# ------------------------------------------------------------------
 # Cytoplasmic segmentation parameters
+# Aim:
+# - make MAP2 cleanup adaptive but bounded for heterogeneous images
+# - preserve large structures for QC review rather than removing them by default
+# ------------------------------------------------------------------
 cyt:
-    # Debris-control parameter
     min_component_quantile: 0.10
-    # Small-hole filling parameter
     area_threshold_quantile: 0.25
-    # Upper-tail cutoff to flag excessively large MAP2 objects
     large_object_quantile: 0.95
-    # Safety cap for large-object threshold
-    max_reasonable_area_multiplier: 5
-    # Readability and speed of QC visualization
-    qc_overlay_max_objects: 300
-    # Additional TRUE/FALSE options
+    max_reasonable_area_multiplier: 5.0
+
+    # Plausibility bounds for adaptive MAP2 cleanup
+    # These are broad defaults and may need tuning for your image scale.
+    min_plausible_cyt_area_px: 25
+    max_plausible_cyt_area_px: 200000
+
+    # Guardrails for adaptive thresholds
+    min_min_size_px: 4
+    max_min_size_px: 10000
+
+    min_hole_area_px: 4
+    max_hole_area_px: 25000
+
+    # Conservative cleanup toggles
     fill_holes: true
     border_clear: false
+
+    # Optional light morphology opening to suppress tiny spurs/noise
+    apply_opening: false
+    opening_radius: 1
+
+    # Readability and speed of QC visualization
+    qc_overlay_max_objects: 300
 
 target:
     # Lower quantile of connected-component area used to estimate the minimum object size.

@@ -1,3 +1,40 @@
+def append_sample_metadata(df,
+                           sample_id=None,
+                           image_id=None,
+                           group=None,
+                           pixel_size_um=None,
+                           magnification=None):
+    """
+    Add sample/image metadata columns to a dataframe.
+
+    Aim:
+    - keep every exported table self-describing across multi-image runs
+    - avoid losing sample identity when tables are pooled downstream
+    """
+    df = df.copy()
+    df["sample_id"] = sample_id
+    df["image_id"] = image_id
+    df["group"] = group
+    df["pixel_size_um"] = pixel_size_um
+    df["magnification"] = magnification
+    return df
+
+def safe_fraction(numerator, denominator, fallback=np.nan):
+    """
+    Safely divide two numbers and return a fallback if the denominator is zero.
+
+    Aim:
+    - avoid division-by-zero failures in image-level QC summaries
+    - keep batch outputs numerically stable on empty or sparse images
+    """
+    try:
+        denominator = float(denominator)
+        if denominator == 0:
+            return fallback
+        return float(numerator) / denominator
+    except Exception:
+        return fallback
+
 def robust_quantile(x, q, fallback=None):
     x = np.asarray(x)
     x = x[np.isfinite(x)]
@@ -22,8 +59,8 @@ def estimate_cleanup_parameters(component_df,
                                 area_threshold_quantile=0.25,
                                 large_object_quantile=0.99,
                                 max_reasonable_area_multiplier=4.0,
-                                min_plausible_nucleus_area_px=16,
-                                max_plausible_nucleus_area_px=50000,
+                                min_plausible_object_area_px=16,
+                                max_plausible_object_area_px=50000,
                                 min_min_size_px=4,
                                 max_min_size_px=5000,
                                 min_hole_area_px=4,
@@ -77,8 +114,8 @@ def estimate_cleanup_parameters(component_df,
     # ------------------------------------------------------------
     # Keep only biologically plausible objects for threshold estimation
     plausible_areas = areas[
-        (areas >= min_plausible_nucleus_area_px) &
-        (areas <= max_plausible_nucleus_area_px)
+        (areas >= min_plausible_object_area_px) &
+        (areas <= max_plausible_object_area_px)
     ]
 
     # Fallback if the plausible filter is too strict for a given image
@@ -482,3 +519,115 @@ def overlay_plot(arr_1, arr_2, out_path, arr_3=None):
     plt.savefig(out_path, dpi=600, bbox_inches="tight")
     plt.close()
 
+def save_labeled_overlay(binary_mask, label_img, out_path, max_objects=300):
+    """
+    Save a QC image showing the cleaned binary mask with a semi-random label overlay.
+
+    Aim:
+    - make object separation visually inspectable after cleanup
+    - keep dense images readable by optionally truncating the displayed label range
+    """
+    binary_mask = np.asarray(binary_mask).astype(bool)
+    label_img = np.asarray(label_img)
+
+    plt.figure(figsize=(8, 8))
+    plt.imshow(binary_mask, cmap="gray", alpha=0.6)
+
+    if np.max(label_img) > 0:
+        shown = label_img.copy()
+        if max_objects is not None and max_objects > 0:
+            shown[shown > max_objects] = 0
+        plt.imshow(shown, cmap="nipy_spectral", alpha=0.5)
+
+    plt.xticks([])
+    plt.yticks([])
+    plt.savefig(out_path, dpi=600, bbox_inches="tight")
+    plt.close()
+
+def build_mask_run_summary(input_mask,
+                           cleaned_mask,
+                           initial_df,
+                           final_df,
+                           sample_id=None,
+                           image_id=None,
+                           group=None,
+                           pixel_size_um=None,
+                           magnification=None):
+    """
+    Build an image-level summary for a binary-mask cleanup workflow.
+
+    Metrics:
+    - image_area_px: total pixel count in the image
+    - input_foreground_pixels: number of positive pixels before cleanup
+    - cleaned_foreground_pixels: number of positive pixels after cleanup
+    - input_foreground_fraction: fraction of image positive before cleanup
+    - cleaned_foreground_fraction: fraction of image positive after cleanup
+    - n_initial_components: number of connected components before cleanup
+    - n_final_components: number of connected components after cleanup
+    - fraction_foreground_retained: cleaned/input foreground ratio
+    - fraction_components_retained: final/initial component ratio
+
+    Aim:
+    - create one compact per-image QC row
+    - support later cross-sample batch review and troubleshooting
+    """
+    input_mask = np.asarray(input_mask).astype(bool)
+    cleaned_mask = np.asarray(cleaned_mask).astype(bool)
+
+    image_area_px = int(input_mask.size)
+    input_foreground_pixels = int(input_mask.sum())
+    cleaned_foreground_pixels = int(cleaned_mask.sum())
+
+    n_initial_components = int(initial_df.shape[0]) if initial_df is not None else 0
+    n_final_components = int(final_df.shape[0]) if final_df is not None else 0
+
+    return {
+        "sample_id": sample_id,
+        "image_id": image_id,
+        "group": group,
+        "pixel_size_um": pixel_size_um,
+        "magnification": magnification,
+        "image_height_px": int(input_mask.shape[0]),
+        "image_width_px": int(input_mask.shape[1]),
+        "image_area_px": image_area_px,
+        "input_foreground_pixels": input_foreground_pixels,
+        "cleaned_foreground_pixels": cleaned_foreground_pixels,
+        "input_foreground_fraction": safe_fraction(input_foreground_pixels, image_area_px),
+        "cleaned_foreground_fraction": safe_fraction(cleaned_foreground_pixels, image_area_px),
+        "n_initial_components": n_initial_components,
+        "n_final_components": n_final_components,
+        "fraction_foreground_retained": safe_fraction(cleaned_foreground_pixels, input_foreground_pixels),
+        "fraction_components_retained": safe_fraction(n_final_components, n_initial_components)
+    }
+
+def flag_sparse_or_artifact_image(input_foreground_fraction,
+                                  cleaned_foreground_fraction,
+                                  n_initial_components,
+                                  n_final_components,
+                                  low_signal_threshold=0.001,
+                                  collapse_ratio_threshold=0.10):
+    """
+    Return lightweight QC flags for sparse or unstable images.
+
+    Aim:
+    - provide batch-friendly warning columns without hard-failing the run
+    - distinguish low-signal images from images where cleanup drastically changed structure
+    """
+    flags = {}
+
+    flags["flag_low_signal_image"] = bool(
+        np.isfinite(input_foreground_fraction) and input_foreground_fraction < low_signal_threshold
+    )
+
+    component_ratio = safe_fraction(n_final_components, n_initial_components)
+    flags["flag_component_collapse"] = bool(
+        np.isfinite(component_ratio) and component_ratio < collapse_ratio_threshold
+    )
+
+    flags["flag_cleanup_expanded_foreground"] = bool(
+        np.isfinite(input_foreground_fraction) and
+        np.isfinite(cleaned_foreground_fraction) and
+        cleaned_foreground_fraction > input_foreground_fraction * 1.5
+    )
+
+    return flags
