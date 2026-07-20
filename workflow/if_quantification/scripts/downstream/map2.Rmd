@@ -33,15 +33,33 @@ set.seed(2570)
 # options(mc.cores=n_cores)
 ```
 
+```{r import r_config}
+# Load configuration
+config <- yaml::read_yaml("config/config.yaml")
+
+# Specify conda env
+use_condaenv(config[['conda_env']])
+```
+
+```{python ppackages}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import ndimage as ndi
+from skimage import io, measure, morphology, segmentation
+from matplotlib.colors import ListedColormap
+import dask.array as da
+import squidpy as sq
+import xarray as xr
+import subprocess
+import os
+```
 
 ```{r config}
 
 # Path to output directory
 out_dir <- "map2"
 if (! dir.exists(out_dir)) { dir.create(out_dir, recursive=TRUE) }
-
-# Load configuration
-config <- yaml::read_yaml("config/config.yaml")
 
 # Input & output obj paths
 input_obj <- "dapi/nuclear_seg.zarr"
@@ -58,51 +76,44 @@ cyt_chan <- config[['channels']][['map2']]
 # considered connected when forming objects
 connectivity <- config[['connectivity']]
 
-# Specify parameters for cleaning
-# Debris-control parameter
-min_component_quantile <- config[['cyt']][['min_component_quantile']]
+# Sample/image metadata propagated to outputs
+sample_id <- config[["sample"]][["sample_id"]]
+image_id <- config[["sample"]][["image_id"]]
+group <- config[["sample"]][["group"]]
+pixel_size_um <- config[["sample"]][["pixel_size_um"]]
+magnification <- config[["sample"]][["magnification"]]
 
-# Small-hole filling parameter
-area_threshold_quantile <- config[['cyt']][['area_threshold_quantile']]
+# Cytoplasmic adaptive cleanup settings
+min_component_quantile <- config[["cyt"]][["min_component_quantile"]]
+area_threshold_quantile <- config[["cyt"]][["area_threshold_quantile"]]
+large_object_quantile <- config[["cyt"]][["large_object_quantile"]]
+max_reasonable_area_multiplier <- config[["cyt"]][["max_reasonable_area_multiplier"]]
 
-# Upper-tail cutoff to flag excessively large objects
-large_object_quantile <- config[['cyt']][['large_object_quantile']]
+# Cytoplasmic plausibility guardrails
+min_plausible_cyt_area_px <- config[["cyt"]][["min_plausible_cyt_area_px"]]
+max_plausible_cyt_area_px <- config[["cyt"]][["max_plausible_cyt_area_px"]]
+min_min_size_px <- config[["cyt"]][["min_min_size_px"]]
+max_min_size_px <- config[["cyt"]][["max_min_size_px"]]
+min_hole_area_px <- config[["cyt"]][["min_hole_area_px"]]
+max_hole_area_px <- config[["cyt"]][["max_hole_area_px"]]
 
-# Safety cap for large-object threshold
-max_reasonable_area_multiplier <- config[['cyt']][['max_reasonable_area_multiplier']]
+# Optional cleanup behaviors
+fill_holes <- config[["cyt"]][["fill_holes"]]
+border_clear <- config[["cyt"]][["border_clear"]]
+apply_opening <- config[["cyt"]][["apply_opening"]]
+opening_radius <- config[["cyt"]][["opening_radius"]]
 
-# Readability and speed of QC visualization
-qc_overlay_max_objects <- config[['cyto']][['qc_overlay_max_objects']]
+# QC / output behavior
+qc_overlay_max_objects <- config[["cyt"]][["qc_overlay_max_objects"]]
+save_intermediates <- config[["output"]][["save_intermediates"]]
+save_qc_plots <- config[["output"]][["save_qc_plots"]]
 
-# Additional TRUE/FALSE options
-fill_holes <- config[['cyt']][['fill_holes']]
-border_clear <- config[['cyt']][['border_clear']]
-
-# Load helper functions
+# Load python helper functions
 source(config[['helper']][['R']])
-
-# Specify conda env
-use_condaenv(config[['conda_env']])
 source_python(config[['helper']][['py']])
 ```
 
-```{python ppackages}
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy import ndimage as ndi
-from skimage import io, measure, morphology, segmentation, feature, color, util
-from matplotlib.colors import ListedColormap
-from skimage.segmentation import watershed
-import dask.array as da
-import squidpy as sq
-import xarray as xr
-import subprocess
-import os
-```
-
-This workflow performs **cytoplasmic cleaning and segmentation** from 
-a **binarized MAP2 mask**.
+This workflow performs **cytoplasmic cleaning and segmentation** from a **binarized MAP2 mask**.
 
 Assumptions:
 
@@ -131,10 +142,6 @@ print("Input loaded:\n", r.input_obj)
 print("ImageContainer:\n", img)
 ```
 
-# Summarizing initial input summary
-
-We aim to give a first-pass description of object sizes/shapes in the input
-
 ```{python input_summary}
 
 # ------------------------------------------------------------------------------
@@ -143,28 +150,65 @@ We aim to give a first-pass description of object sizes/shapes in the input
 
 # Retrieve the Dask arrays for channels of interest ([y, x, z, channels])
 cyt = img[r.out_layer].data[:, :, 0, r.cyt_chan]
-cyt = cyt > 0
-
-# Compute input sizes and shapes
-initial_labels, initial_df = summarize_components(
-    cyt,
-    connectivity=r.connectivity)
+cyt = np.asarray(cyt > 0).astype(bool)
 ```
 
 Metrics:
 
-- Label: A unique integer assigned to each segmented object so individual nuclei 
-  can be identified and tracked separately.
-- Area: The number of foreground pixels belonging to a segmented object, 
-  representing its size in pixel units.
-- Bounding box: The smallest axis-aligned rectangle that fully contains 
-  the segmented object.
-- Eccentricity: A shape descriptor measuring how elongated an object is, 
-  where 0 is circle-like and values closer to 1 are more ellipse-like or stretched.
-- Solidity: The fraction of the object’s area relative to the area of its convex hull,
-  indicating how solid versus indented or irregular the shape is.
-- Extent: The fraction of the bounding box occupied by the object, reflecting how fully 
- the object fills its enclosing rectangle.
+- `image_area_px`: total number of pixels in the 2D image plane.
+- `input_foreground_pixels`: number of MAP2-positive pixels before cleanup.
+- `input_foreground_fraction`: fraction of the image occupied by MAP2-positive signal before cleanup.
+- `label`: unique integer identifier for each connected object.
+- `area`: number of pixels in an object.
+- `bbox`: smallest axis-aligned rectangle enclosing the object.
+- `centroid`: object center of mass in pixel coordinates.
+- `eccentricity`: elongation measure; values near 0 are rounder, values near 1 are more elongated.
+- `solidity`: object area divided by convex hull area; lower values suggest more irregular or indented shapes.
+- `extent`: fraction of the bounding box occupied by the object.
+- `major_axis_length / minor_axis_length`: ellipse-based axis lengths describing object size and elongation.
+- `equivalent_diameter_area`: diameter of a circle with the same area as the object.
+- `perimeter`: approximate object boundary length in pixels.
+- `touches_border`: whether the object touches the image edge.
+- `is_large_object_flag`: whether the object area exceeds the image-adaptive large-object QC cutoff.
+
+
+# Summarizing initial input summary
+
+We aim to give a first-pass description of object sizes/shapes in the input
+
+```{python processed_input_summary}
+
+# ------------------------------------------------------------------------------
+# This chunk quantify the size and shape distribution of MAP2-positive objects before cleanup
+# and create the empirical basis for adaptive threshold estimation
+# ------------------------------------------------------------------------------
+
+image_shape = tuple(cyt.shape)
+image_area_px = int(cyt.size)
+input_foreground_pixels = int(cyt.sum())
+input_foreground_fraction = float(input_foreground_pixels / image_area_px) if image_area_px > 0 else np.nan
+
+print("image_shape =", image_shape)
+print("image_area_px =", image_area_px)
+print("input_foreground_pixels =", input_foreground_pixels)
+print("input_foreground_fraction =", input_foreground_fraction)
+
+initial_labels, initial_df = summarize_components(
+    cyt,
+    connectivity=r.connectivity
+)
+
+# Append the border-touching QC flag
+initial_df = add_border_flag(initial_df, initial_labels)
+initial_df = append_sample_metadata(
+    initial_df,
+    sample_id=r.sample_id,
+    image_id=r.image_id,
+    group=r.group,
+    pixel_size_um=r.pixel_size_um,
+    magnification=r.magnification
+)
+```
 
 ```{r input_summary_df}
 print(head(py$initial_df))
@@ -178,7 +222,8 @@ We examine the distribution of connected-component areas from `initial_df`, as s
 ```{python cleanup_parameters}
 
 # ------------------------------------------------------------------------------
-# This chunk calculates estimate parameters
+# This chunk estimates conservative cleanup thresholds from the current image and keeps
+# thresholds adaptive while preventing extreme sparse/artifact-heavy images from destabilizing them
 # ------------------------------------------------------------------------------
 
 # reticulate::repl_python()
@@ -187,13 +232,35 @@ param_est = estimate_cleanup_parameters(
     min_component_quantile=r.min_component_quantile,
     area_threshold_quantile=r.area_threshold_quantile,
     large_object_quantile=r.large_object_quantile,
-    max_reasonable_area_multiplier=r.max_reasonable_area_multiplier)
+    max_reasonable_area_multiplier=r.max_reasonable_area_multiplier,
+    min_plausible_object_area_px=r.min_plausible_cyt_area_px,
+    max_plausible_object_area_px=r.max_plausible_cyt_area_px,
+    min_min_size_px=r.min_min_size_px,
+    max_min_size_px=r.max_min_size_px,
+    min_hole_area_px=r.min_hole_area_px,
+    max_hole_area_px=r.max_hole_area_px
+)
+
+param_df = pd.DataFrame([param_est])
+param_df = append_sample_metadata(
+    param_df,
+    sample_id=r.sample_id,
+    image_id=r.image_id,
+    group=r.group,
+    pixel_size_um=r.pixel_size_um,
+    magnification=r.magnification
+)
 ```
 
-- `min_size`: Lower bound for removing tiny disconnected debris objects
-- `area_threshold`: Maximum hole size that may be filled if `fill_holes = TRUE`
-- `large_object_cutoff`: Upper-tail threshold used to flag unusually large objects for review
-- `median_area`: Useful descriptive summary of the connected-component distribution
+Parameters:
+
+- `min_size`: smallest object size retained during debris removal.
+- `area_threshold`: largest internal hole size that will be filled when hole filling is enabled.
+- `large_object_cutoff`: image-adaptive QC threshold used to flag unusually large MAP2 objects.
+- `median_area`: median area of the plausibility-filtered object distribution used for stable thresholding.
+- `n_components`: number of connected components in the original mask.
+- `n_plausible_components`: number of objects falling inside the configured plausible size range.
+- `fraction_plausible_components`: fraction of all objects considered plausible during adaptive estimation.
 
 The distribution of object area is explored using histograms, before and after removing large objects.
 
@@ -204,19 +271,21 @@ The distribution of object area is explored using histograms, before and after r
 # ------------------------------------------------------------------------------
 
 # Print estimated parameters
-df <- as.data.frame(py$param_est)
+df <- as.data.frame(py$param_est) %>%
+    gather('metric', 'value')
 knitr::kable(df)
 
 # Remove objects that are greater than large object cutoff
 filtered_df <- py$initial_df %>%
-  dplyr::filter(area <= df[['large_object_cutoff']])
+  dplyr::filter(area <= df[df$metric == 'large_object_cutoff', 'value'])
 
 df_list <- list(before=py$initial_df, after=filtered_df)
 
 # Visualize data
+xintercept <- df[df$metric == 'median_area', 'value']
 for (name in names(df_list)) {
-    cat('##', name, 'filtering at the large obj cutoff\n\n')
-    print(plot_histo(df_list[[name]]))
+    cat('###', name, 'filtering at the large obj cutoff\n\n')
+    print(plot_histo(df_list[[name]], xintercept=xintercept))
     cat('\n\n')
 }
 ```
@@ -224,238 +293,3 @@ for (name in names(df_list)) {
 Note that the red dashed vertical lines indicate median area. The “after” histogram is shown 
 only to make the distribution easier to read after excluding extreme large objects from plotting;
 it does not mean those large objects are removed from segmentation.
-
-# Cleaning mask
-
-This step performs the following:
-
-- removes very small foreground objects using min_size
-- fills small holes using area_threshold if enabled
-- optionally removes border-touching objects if `border_clear = TRUE`
-- optionally applies morphological opening to reduce thin protrusions
-- optionally suppresses very thin branch-like foreground signal
-
-In the current workflow, these cleanup steps are intended to reduce non-somatic signal 
-while preserving larger compact regions.
-
-
-```{python clean_mask}
-
-# ------------------------------------------------------------------------------
-# This chunk cleans the binary mask
-# ------------------------------------------------------------------------------
-
-cleaned_mask = clean_input_mask(
-    cyt,
-    min_size=int(param_est["min_size"]),
-    area_threshold=int(param_est["area_threshold"]),
-    connectivity=r.connectivity,
-    fill_holes=bool(r.fill_holes),
-    border_clear=bool(r.border_clear)
-)
-```
-
-# Segmenting cytoplasmic regions
-
-This step labels connected MAP2-positive objects after cleanup.
-
-```{python label_cyto}
-
-# ------------------------------------------------------------------------------
-# This chunk labels cleaned cytoplasmic objects
-# ------------------------------------------------------------------------------
-
-# reticulate::repl_python()
-cyto_labels = measure.label(cleaned_mask, connectivity=r.connectivity)
-```
-
-# Building the final feature table
-
-This step computes region-level measurements from the final labeled image. Refer to the following table
-for detailed information:
-
-- label
-- area
-- centroid
-- bounding box
-- eccentricity
-- solidity
-- extent
-- major/minor axis lengths
-- equivalent diameter
-- perimeter
-
-The `is_large_object_flag` column is included for QC only. It can help identify large connected 
-regions that may represent biologically real extended neuronal structure, merged signal, or 
-segmentation artifacts.
-
-```{python feature_df}
-
-# ------------------------------------------------------------------------------
-# This chunk summarizes final MAP2-positive segmented objects
-# ------------------------------------------------------------------------------
-
-cytoplasm_df = regionprops_dataframe(cyto_labels)
-
-if cytoplasm_df.shape[0] > 0:
-    large_cutoff = param_est["large_object_cutoff"]
-    cytoplasm_df["is_large_object_flag"] = cytoplasm_df["area"] >= large_cutoff
-else:
-    cytoplasm_df["is_large_object_flag"] = pd.Series(dtype=bool)
-
-print(cytoplasm_df.head())
-print(cytoplasm_df.tail())
-
-run_summary = {
-    "input_shape": tuple(cyt.shape),
-    "input_foreground_pixels": int(cyt.sum()),
-    "cleaned_foreground_pixels": int(cleaned_mask.sum()),
-    "n_initial_components": int(initial_df.shape[0]),
-    "n_final_cyto_components": int(cytoplasm_df.shape[0]),
-    "estimated_min_size": int(param_est["min_size"]),
-    "estimated_area_threshold": int(param_est["area_threshold"]),
-    "estimated_large_object_cutoff": int(param_est["large_object_cutoff"])
-}
-
-for key,value in run_summary.items():
-    print(key, "=", value)
-```
-
-```{python add_to_img}
-
-# ------------------------------------------------------------------------------
-# This chunk adds the cleaned masked array back to the ImageContainer obj
-# ------------------------------------------------------------------------------
-
-# reticulate::repl_python()
-# Add the cleaned mask array to the ImageContainer obj
-img[r.out_layer].data[:, :, 0, r.cyt_chan] = cleaned_mask
-
-# Delete unnecessary layers
-layers_del = [l for l in list(img) if l not in ['image', r.sq_layer, r.out_layer]]
-print("The following layers are deleted: ", layers_del)
-for l in layers_del:
-    del img[l]
-```
-
-# Visualizing cleaned cytoplasmic segmentation {.tabset}
-
-- Input: `r sq_layer`
-- Output: `r out_layer`
-
-Unique pixels at each array are visualized using the following pseudocolors:
-
-```{python vis_prep}
-
-# ------------------------------------------------------------------------------
-# This chunk is used to prepare visualizing processed images
-# ----------------------------------------------------------------------------
-
-# Specify a colormap used for unique pixels
-color_map = {r.sq_layer: 'dodgerblue', r.out_layer: 'orange'}
-for key, value in color_map.items(): 
-    print(key, "=", value)
-
-# Specify a function to visualize unique pixels
-def display_merge(layer_list):
-
-    # Stack binary images
-    for l in layer_list:
-        ar = img[l].data[:, :, 0, r.cyt_chan]
-        plt.imshow(ar,
-                   cmap=ListedColormap([(1, 1, 1, 0), color_map[l]]),
-                   alpha=0.5)
-    plt.xticks([])
-    plt.yticks([])
-    plt.savefig(f"{r.out_dir}/unique_pixels.png", dpi=600)
-    plt.show()
-```
-
-```{r vis_images, results='asis'}
-
-# ------------------------------------------------------------------------------
-# This chunk visualizes input and output masking
-# ------------------------------------------------------------------------------
-
-# Visualize binary images across the channels
-for (layer in c(sq_layer, out_layer)) {
-    cat("## Channel", cyt_chan, "&", layer, "Layer\n\n")
-    # Command to show image
-    t_deparsed_1 <- paste0("img.show('", layer, "', channel=", cyt_chan, ", cmap='gray')")
-    t_deparsed_2 <- paste0("plt.savefig('", out_dir, "/", layer, "_channel_", cyt_chan,  ".png', dpi=600)")
-    t_deparsed_3 <- "plt.close()"
-    t_deparsed <- c(t_deparsed_1, t_deparsed_2, t_deparsed_3)
-    subchunkify(name=paste0(layer, "_", cyt_chan), t_deparsed=t_deparsed)
-
-    link_output(paste0(out_dir, "/", layer, "_channel_", cyt_chan, ".png"))
-    cat('\n\n')
-}
-
-# Overlay images before and after cleaning
-cat("## Unique pixels\n\n")
-t_deparsed <- paste0("display_merge(list(color_map.keys()))\n")
-subchunkify(name="unique_pixels", t_deparsed=t_deparsed)
-link_output(paste0(out_dir, "/unique_pixels.png"))
-```
-
-
-# Summary tables
-
-Excel-readable tables are linked in the following table:
-
-- input summary: object statistics before cleanup
-- cytoplasmic summary: object statistics after cleanup and connected-component labeling
-- parameter summary: adaptive thresholds estimated from the image
-
-```{r summary_tables, results='asis'}
-
-# ------------------------------------------------------------------------------
-# This chunk saves and links output summary tables
-# ------------------------------------------------------------------------------
-
-df_list <- list(
-    input_summary=py$initial_df,
-    cytoplasmic_summary=py$cytoplasm_df,
-    parameter_summary=py$param_est
-)
-
-path_df <- data.frame(table=names(df_list), link="")
-
-for (name in names(df_list)) {
-    tsv <- file.path(out_dir, paste0(name, ".tsv"))
-    write.table(df_list[[name]],
-                tsv,
-                quote=FALSE,
-                row.names=FALSE,
-                col.names=TRUE)
-    path_df[path_df$table == name, 'link'] <- tsv
-}
-
-knitr::kable(
-    path_df %>%
-        mutate(link=paste0("[", link, "](", link, ")"))
-)
-```
-
-# Saving the `ImageContainer` object
-
-Output images are saved as the following object:
-
-```{python save_zarr}
-
-# ------------------------------------------------------------------------------
-# This chunk saves updated ImageContainer as Zarr
-# ------------------------------------------------------------------------------
-
-img.save(r.output_obj)
-print(r.output_obj)
-```
-
-# Session info
-
-```{r session_info, collapse=FALSE}
-sessionInfo()
-```
-
-
-
