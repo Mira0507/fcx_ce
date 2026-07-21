@@ -2979,3 +2979,24 @@ fcx_ce
         - ``workflow/schulmann_visium/visium-thalamus.Rmd``
     - notes
         - add more marker genes
+
+
+2026-07-20
+----------
+
+@Mira0507
+
+- Refactor TDP43 IF quantification
+    - conda env: ``senv``
+    - scripts
+        - ``workflow/if_quantification/scripts/downstream/config/config.yaml``
+        - ``workflow/if_quantification/scripts/downstream/config/helpers.py``
+        - ``workflow/if_quantification/scripts/downstream/dapi.Rmd``
+        - ``workflow/if_quantification/scripts/downstream/map2.Rmd``
+    - notes
+        - bugfix to ``dapi.Rmd``
+        - aimed to analyze a wide range of input image images in magnification,
+          tissue size, and slide glass artifacts
+        - refactored code across ``Rmd``, configuration, and helper functions
+          based on this goal
+
